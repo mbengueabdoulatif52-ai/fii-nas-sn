@@ -21,15 +21,15 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getFirestore, enableIndexedDbPersistence, doc, setDoc, getDoc, getDocs, onSnapshot, collection, addDoc, deleteDoc, query, orderBy, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, RecaptchaVerifier, signInWithPhoneNumber } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
-  apiKey:            "AIzaSyDNb0ei06G6_zyC0IFHLry2fd84N0d6dGI",
-  authDomain:        "fii-nas-sn.firebaseapp.com",
-  projectId:         "fii-nas-sn",
-  storageBucket:     "fii-nas-sn.firebasestorage.app",
-  messagingSenderId: "681237565391",
-  appId:             "1:681237565391:web:e258ab568b74cb9983ccba"
+  apiKey:            "AIzaSyC5KhJwhBx9oHFHIGnVsexT1pA5nRw1OkQ",
+  authDomain:        "fii-nas.firebaseapp.com",
+  projectId:         "fii-nas",
+  storageBucket:     "fii-nas.firebasestorage.app",
+  messagingSenderId: "702473958247",
+  appId:             "1:702473958247:web:eab92d357a584cc42035c2"
 };
 
 const app  = initializeApp(firebaseConfig);
@@ -45,7 +45,7 @@ enableIndexedDbPersistence(db).catch(err=>{
   }
 });
 
-window._fb = { db, auth, doc, setDoc, getDoc, getDocs, onSnapshot, collection, addDoc, deleteDoc, query, orderBy, where, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, RecaptchaVerifier, signInWithPhoneNumber };
+window._fb = { db, auth, doc, setDoc, getDoc, getDocs, onSnapshot, collection, addDoc, deleteDoc, query, orderBy, where, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut };
 </script>
 
 <style>
@@ -78,7 +78,16 @@ body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin
 #auth h1{font-size:26px;font-weight:600;margin-bottom:8px}
 #auth p{font-size:14px;color:var(--text2);margin-bottom:2rem;line-height:1.6;max-width:280px}
 .btn-g{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;padding:14px;background:var(--surf);border:1px solid var(--border2);border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:14px;font-weight:500;cursor:pointer;transition:.15s}
-.btn-g:hover{background:var(--surf2)}
+.btn-g:hover{opacity:.9}
+.btn-g:disabled{opacity:.6;cursor:default}
+.btn-g{background:var(--text)!important;color:var(--bg)!important;border-color:transparent!important;min-height:52px}
+#auth-msg{min-height:20px;margin:12px 0 0;font-size:13px;color:var(--text2);max-width:280px}
+#auth-msg.err{color:var(--red)}
+.auth-trust{display:flex;gap:10px;align-items:flex-start;text-align:left;max-width:300px;margin-top:2rem;padding:12px 14px;border:0.5px solid var(--border2);border-radius:var(--r);background:var(--surf);font-size:12.5px;line-height:1.5;color:var(--text2)}
+.auth-trust svg{flex:none;margin-top:1px;color:var(--green)}
+#load-slow{display:none;margin-top:14px;text-align:center}
+#load-slow p{font-size:13px;color:var(--text2);margin:0 0 10px}
+#load-slow button{padding:10px 18px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surf);color:var(--text);font-family:var(--font);font-size:13px;cursor:pointer}
 
 /* TOPBAR */
 #topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;z-index:100;background:rgba(17,17,17,.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:0.5px solid var(--border)}
@@ -245,56 +254,19 @@ select option{background:#2c2c2e;color:#f5f5f7}
 </head>
 <body>
 
-<div id="loading"><div class="spin"></div><p style="font-size:13px;color:var(--text3)">Chargement...</p></div>
+<div id="loading"><div class="spin"></div><p style="font-size:13px;color:var(--text2)">Chargement...</p>
+  <div id="load-slow"><p>La connexion est lente. Patientez encore un peu.</p><button type="button" onclick="location.reload()">Réessayer</button></div></div>
 
 <div id="auth" style="display:none">
   <div class="logo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v2m0 8v2M9.5 9h3a1.5 1.5 0 0 1 0 3h-3m0 0h3.5a1.5 1.5 0 0 1 0 3H9.5"/></svg></div>
   <h1 style="color:var(--text);font-weight:500">FII'NAS</h1>
   <p>Suivez revenus, dépenses et épargne. Synchronisé sur tous vos appareils en temps réel.</p>
-  <button class="btn-g" onclick="doSignIn()">
+  <button class="btn-g" id="btn-google" type="button" onclick="doSignIn()">
     <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-    Continuer avec Google
+    <span id="btn-google-label">Continuer avec Google</span>
   </button>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-      <div style="flex:1;height:0.5px;background:rgba(255,255,255,.15)"></div>
-      <span style="font-size:12px;color:rgba(255,255,255,.4)">ou</span>
-      <div style="flex:1;height:0.5px;background:rgba(255,255,255,.15)"></div>
-    </div>
-    <div id="phone-auth-section">
-      <div id="phone-step1">
-        <div style="display:flex;gap:8px;margin-bottom:10px">
-          <select id="phone-country" style="width:90px;padding:12px 8px;background:rgba(255,255,255,.08);border:0.5px solid rgba(255,255,255,.2);border-radius:var(--r);color:#fff;font-size:13px;font-family:var(--font);outline:none">
-            <option value="+221">SN +221</option>
-            <option value="+33">FR +33</option>
-            <option value="+1">US +1</option>
-            <option value="+212">MA +212</option>
-            <option value="+225">CI +225</option>
-            <option value="+237">CM +237</option>
-          </select>
-          <input id="phone-number" type="tel" placeholder="77 123 45 67" inputmode="numeric"
-            style="flex:1;padding:12px;background:rgba(255,255,255,.08);border:0.5px solid rgba(255,255,255,.2);border-radius:var(--r);color:#fff;font-size:14px;font-family:var(--font);outline:none">
-          <button onclick="sendOTP()" id="otp-send-btn"
-            style="padding:12px 14px;background:var(--acc);border:none;border-radius:var(--r);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
-            Envoyer
-          </button>
-        </div>
-        <div id="recaptcha-container"></div>
-      </div>
-      <div id="phone-step2" style="display:none">
-        <p style="font-size:12px;color:rgba(255,255,255,.6);margin-bottom:8px;text-align:center" id="otp-msg">Code envoyé</p>
-        <div style="display:flex;gap:8px">
-          <input id="otp-code" type="text" placeholder="Code à 6 chiffres" inputmode="numeric" maxlength="6"
-            style="flex:1;padding:12px;background:rgba(255,255,255,.08);border:0.5px solid rgba(255,255,255,.2);border-radius:var(--r);color:#fff;font-size:14px;font-family:var(--font);outline:none;letter-spacing:4px;text-align:center">
-          <button onclick="verifyOTP()"
-            style="padding:12px 14px;background:var(--acc);border:none;border-radius:var(--r);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">
-            Valider
-          </button>
-        </div>
-        <button onclick="document.getElementById('phone-step1').style.display='block';document.getElementById('phone-step2').style.display='none'" style="width:100%;background:none;border:none;color:rgba(255,255,255,.5);font-size:12px;cursor:pointer;margin-top:8px;font-family:var(--font)">
-          Changer de numero
-        </button>
-      </div>
-    </div>
+  <p id="auth-msg" role="status" aria-live="polite"></p>
+  <div class="auth-trust"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span>Vos données restent privées : seules les personnes que vous invitez y ont accès.</span></div>
 </div>
 
 <div id="app" style="display:none">
@@ -346,7 +318,7 @@ select option{background:#2c2c2e;color:#f5f5f7}
         <div class="flbl">Montant (FCFA)</div>
         <div class="amtwrap">
           <div class="amtcur">FCFA</div>
-          <input class="amtinp" type="text" id="f-amt" placeholder="0" inputmode="numeric" oninput="fmtAmtInput(this);setFormDirty(true)">
+          <input class="amtinp" type="text" id="f-amt" placeholder="0" inputmode="numeric" oninput="fmtAmtInput(this);setFormDirty(true);updReste()">
         </div>
       </div>
       <div class="fgrp">
@@ -355,20 +327,20 @@ select option{background:#2c2c2e;color:#f5f5f7}
           <button class="chip" onclick="selCat(this,'Revenu','r')"><span style="display:inline-flex;align-items:center;gap:4px"><svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#30d158"/></svg> Revenu</span></button>
           <button class="chip v" onclick="selCat(this,'Dépenses variables','v')"><span style="display:inline-flex;align-items:center;gap:4px"><svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#ef4444"/></svg> Variables</span></button>
           <button class="chip" onclick="selCat(this,'Dépenses fixes','f')"><span style="display:inline-flex;align-items:center;gap:4px"><svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#3b82f6"/></svg> Fixes</span></button>
-          <button class="chip" onclick="selCat(this,'Social &amp; Culturel','sc')"><span style="display:inline-flex;align-items:center;gap:4px"><svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#ec4899"/></svg> Social</span></button>
           <button class="chip" onclick="selCat(this,'Epargne','e')"><span style="display:inline-flex;align-items:center;gap:4px"><svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#a855f7"/></svg> Épargne</span></button>
         </div>
       </div>
       <div class="frow">
         <div class="fgrp">
           <div class="flbl">Poste</div>
-          <select class="fsel" id="f-poste"></select>
+          <select class="fsel" id="f-poste" onchange="updReste()"></select>
         </div>
         <div class="fgrp">
           <div class="flbl">Date</div>
-          <input class="finp" type="date" id="f-date">
+          <input class="finp" type="date" id="f-date" onchange="updReste()">
         </div>
       </div>
+      <div id="f-reste"></div>
       <div class="fgrp">
         <div class="flbl">Commentaire (facultatif)</div>
         <input class="finp" type="text" id="f-cmt" placeholder="Wave, Yango, MAB Ibrahima...">
@@ -414,8 +386,18 @@ select option{background:#2c2c2e;color:#f5f5f7}
     <div class="ytabs" id="ytabs"></div>
     <div class="mtabs" id="mtabs"></div>
     <div id="bud-solde"></div>
+    <div style="display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+      <button id="bud-plan-btn" onclick="openPlanSheet()" style="background:var(--bd);border:0.5px solid var(--blue);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--blue);cursor:pointer;font-family:var(--font);display:flex;align-items:center;gap:5px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        Plan 2026–2031
+      </button>
+      <button id="bud-copy-btn" onclick="openCopyBudget()" style="background:none;border:0.5px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);cursor:pointer;font-family:var(--font);display:flex;align-items:center;gap:5px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+        Copier depuis un autre mois
+      </button>
+    </div>
     <div id="bform"></div>
-    <button class="btn-p" onclick="saveBudget()" style="margin-top:4px;margin-bottom:2px">
+    <button class="btn-p" onclick="saveBudget()"  style="margin-top:4px;margin-bottom:2px">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12l5 5L20 7"/></svg>
       Enregistrer le budget
     </button>
@@ -627,11 +609,10 @@ select option{background:#2c2c2e;color:#f5f5f7}
 
 <script>
 const DEFAULT_CATS={
-  'Revenu':['Salaire','Prêt reçu','Activités secondaires','Aides reçues','Autres revenus'],
-  'Dépenses fixes':['Loyer','Electricité','Eau','Forfait mobile','Wifi','Abonnements','Frais scolaires','Assurances'],
-  'Dépenses variables':['Dépense quotidienne','Transport','Santé','Habillement & Beauté','Loisirs & Sorties','Imprévus','Remboursement dettes'],
-  'Social & Culturel':['Solidarité familiale','Cérémonies','Événements religieux','Dons'],
-  'Epargne':['Tontine','Épargne mobile','Épargne bancaire','Projet immobilier']
+  'Revenu':['Salaire net','Revenus investissements','Extras professionnels','Entrée exceptionnelles','Autres'],
+  'Dépenses fixes':['Frais bancaires','Assurances','Mensualité de prêt','Aides versées','Frais de scolarité','Gardien','Electricité','Eau','Location','Abonnements','Téléphone'],
+  'Dépenses variables':['Achats divers','Alimentation','Entretien auto','Santé','Dons','Loisir','Prêts','Remboursement','Imprévus','Transport','Voiture','Sport','Investissements'],
+  'Epargne':['Epargne projet','Epargne de précaution']
 };
 // CATS est maintenant dynamique — initialisé depuis Firebase ou DEFAULT_CATS au premier login
 let CATS={...DEFAULT_CATS};
@@ -667,13 +648,7 @@ function loadCatsFromSettings(settings){
   }
 }
 
-const CICO={
-  'Revenu':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#30d158"/></svg>',
-  'Dépenses fixes':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#3b82f6"/></svg>',
-  'Dépenses variables':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#f59e0b"/></svg>',
-  'Social & Culturel':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#ec4899"/></svg>',
-  'Epargne':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#8b5cf6"/></svg>'
-};
+const CICO={'Revenu':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#30d158"/></svg>','Dépenses fixes':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#3b82f6"/></svg>','Dépenses variables':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#ef4444"/></svg>','Epargne':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#a855f7"/></svg>'};
 const CCLS={'Revenu':'r','Dépenses fixes':'f','Dépenses variables':'v','Epargne':'e'};
 const PC=['#3b82f6','#ef4444','#f59e0b','#a855f7','#22c55e','#ec4899','#06b6d4','#f97316','#84cc16'];
 const MFR=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
@@ -687,6 +662,7 @@ let sharedSpaceId=null; // ID de l'espace partagé (null = espace perso)
 let userRole='admin';   // 'admin' ou 'reader'
 let userName='';        // Nom affiché sur les transactions
 let txFilt='all',txPosteFilter='',dTab='all',bYear=new Date().getFullYear().toString(),bMonth=new Date().getMonth()+1;
+let budgetDetails={};
 let selCatVal='Dépenses variables';
 
 const _fmt=v=>new Intl.NumberFormat('fr-FR').format(Math.round(Math.abs(v)));
@@ -707,46 +683,23 @@ function yml(ym){const[y,m]=ym.split('-');return MFR[parseInt(m)-1]+' '+y;}
 
 function waitFB(cb){const t=()=>window._fb?cb():setTimeout(t,50);t();}
 
-let confirmationResult=null;
-
-function sendOTP(){
-  const country=document.getElementById('phone-country')?.value||'+221';
-  const raw=(document.getElementById('phone-number')?.value||'').replace(/[^0-9]/g,'');
-  if(!raw||raw.length<8){toast('Entrez un numéro valide');return;}
-  const phone=country+raw;
-  const btn=document.getElementById('otp-send-btn');
-  if(btn){btn.disabled=true;btn.textContent='Envoi...';}
-  if(!window._fb){toast('Chargement...');if(btn){btn.disabled=false;btn.textContent='Envoyer';}return;}
-  const{auth,RecaptchaVerifier,signInWithPhoneNumber}=window._fb;
-  try{
-    if(!window._recaptcha){
-      window._recaptcha=new RecaptchaVerifier(auth,'recaptcha-container',{size:'invisible',callback:()=>{}});
-    }
-    signInWithPhoneNumber(auth,phone,window._recaptcha).then(result=>{
-      confirmationResult=result;
-      document.getElementById('phone-step1').style.display='none';
-      document.getElementById('phone-step2').style.display='block';
-      document.getElementById('otp-msg').textContent='Code SMS envoyé au '+phone;
-      if(btn){btn.disabled=false;btn.textContent='Envoyer';}
-    }).catch(e=>{
-      window._recaptcha=null;
-      if(btn){btn.disabled=false;btn.textContent='Envoyer';}
-      toast('Erreur: '+e.message);
+function authState(busy,msg,isErr){
+  const b=document.getElementById('btn-google'),l=document.getElementById('btn-google-label'),m=document.getElementById('auth-msg');
+  if(b)b.disabled=busy;
+  if(l)l.textContent=busy?'Connexion en cours...':'Continuer avec Google';
+  if(m){m.textContent=msg||'';m.className=isErr?'err':'';}
+}
+function doSignIn(){
+  authState(true,'Ouverture de la fenêtre Google...',false);
+  waitFB(()=>{
+    const{auth,signInWithPopup,GoogleAuthProvider}=window._fb;
+    signInWithPopup(auth,new GoogleAuthProvider()).catch(e=>{
+      const closed=e&&(e.code==='auth/popup-closed-by-user'||e.code==='auth/cancelled-popup-request');
+      authState(false,closed?'Connexion annulée. Vous pouvez réessayer.':'Connexion impossible. Vérifiez votre connexion internet et réessayez.',!closed);
     });
-  }catch(e){
-    if(btn){btn.disabled=false;btn.textContent='Envoyer';}
-    toast('Erreur: '+e.message);
-  }
+  });
 }
-
-function verifyOTP(){
-  const code=(document.getElementById('otp-code')?.value||'').trim();
-  if(!code||code.length<6){toast('Entrez le code à 6 chiffres');return;}
-  if(!confirmationResult){toast('Demandez un nouveau code');return;}
-  confirmationResult.confirm(code).catch(()=>toast('Code incorrect'));
-}
-
-function doSignIn(){waitFB(()=>{const{auth,signInWithPopup,GoogleAuthProvider}=window._fb;signInWithPopup(auth,new GoogleAuthProvider()).catch(e=>toast('Erreur: '+e.message));});}
+setTimeout(()=>{const ld=document.getElementById('loading');const sl=document.getElementById('load-slow');if(ld&&ld.style.display!=='none'&&sl)sl.style.display='block';},8000);
 function doSignOut(){waitFB(()=>{window._fb.signOut(window._fb.auth);});}
 
 waitFB(()=>{
@@ -766,6 +719,7 @@ waitFB(()=>{
       syncPostes();
     } else {
       uid=null;
+      authState(false,'',false);
       document.getElementById('auth').style.display='flex';
       document.getElementById('app').style.display='none';
       if(unsub1)unsub1();if(unsub2)unsub2();
@@ -819,6 +773,7 @@ function subscribe(){
       const newHash=JSON.stringify(d.budget||{});
       if(newHash!==lastSettingsHash){
         budget=d.budget||{};
+        budgetDetails=d.budgetDetails||{};
         custom=d.custom||{};
         loadCatsFromSettings(d);
       }
@@ -834,7 +789,7 @@ async function saveSettings(){
   const{db,doc,setDoc}=window._fb;
   lastSettingsHash=JSON.stringify(budget);
   pendingSaves+=2;
-  await setDoc(doc(db,dataPath()+'/data/settings'),{budget,custom,cats:CATS},{merge:true});
+  await setDoc(doc(db,dataPath()+'/data/settings'),{budget,budgetDetails,custom,cats:CATS},{merge:true});
 }
 
 function buildMonthSel(){
@@ -1029,7 +984,7 @@ function renderAlerts(ym){
       const r=t.filter(x=>x.cat===cat&&x.poste===p).reduce((s,x)=>s+(x.amt||0),0);
       const b=bud[p]||0;
       if(b>0&&r>b){alerts.push({p,r,b,pct:Math.round(r/b*100)});}
-      else if(b>0&&r>=b*0.9&&r<b){alerts.push({p,r,b,pct:Math.round(r/b*100),warn:true});}
+      else if(b>0&&r>=b*ALERT_PCT&&r<b){alerts.push({p,r,b,pct:Math.round(r/b*100),warn:true});}
     });
   });
   const el=document.getElementById('alerts-wrap');
@@ -1190,6 +1145,7 @@ function selCat(el,cat,cls){
 function syncPostes(){
   const p=getAllPostes(selCatVal);
   document.getElementById('f-poste').innerHTML=p.map(x=>`<option>${x}</option>`).join('');
+  updReste();
 }
 async function saveTx(){
   if(!isAdmin()){toast('Mode lecture — modification non autorisée');return;}
@@ -1206,6 +1162,7 @@ async function saveTx(){
   if(inner)inner.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" style="animation:sp .8s linear infinite" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Enregistrement…';
   const{db,collection,addDoc}=window._fb;
   const data={amt,date,cat:selCatVal,poste,cmt,ts:new Date().toISOString(),createdBy:userName,createdById:uid};
+  const alertInfo=budgetStatus(selCatVal,poste,date.slice(0,7),amt);
   try{
     await addDoc(collection(db,dataPath()+'/transactions'),data);
   }catch(e){
@@ -1221,7 +1178,175 @@ async function saveTx(){
     :'Enregistré hors ligne · sync au retour du réseau');
   setFormDirty(false);
   goP('tx',document.querySelectorAll('.ni')[1]);
+  if(alertInfo&&alertInfo.crossed)showBudgetAlert(alertInfo);
 }
+
+// ═══════════════ ALERTES BUDGET ═══════════════
+const ALERT_PCT=0.8; // alerte « proche du budget » dès 80 %
+const EXPENSE_CATS=['Dépenses fixes','Dépenses variables'];
+function spentYM(cat,poste,ym){return txYM(ym).filter(x=>x.cat===cat&&x.poste===poste).reduce((s,x)=>s+(x.amt||0),0);}
+// État du poste avant/après une saisie de `add` FCFA
+function budgetStatus(cat,poste,ym,add){
+  if(!EXPENSE_CATS.includes(cat)||!poste||!ym)return null;
+  const b=gBud(ym,poste);if(!(b>0))return null;
+  const before=spentYM(cat,poste,ym),after=before+(add||0);
+  const lvl=v=>v>b?2:v>=b*ALERT_PCT?1:0;
+  return{poste,ym,b,before,after,reste:b-after,pct:Math.round(after/b*100),level:lvl(after),crossed:lvl(after)>lvl(before)};
+}
+function updReste(){
+  const el=document.getElementById('f-reste');if(!el)return;
+  const poste=document.getElementById('f-poste')?.value;
+  const date=document.getElementById('f-date')?.value||new Date().toISOString().split('T')[0];
+  const raw=(document.getElementById('f-amt')?.value||'').replace(/\s/g,'').replace(/,/g,'.');
+  const amt=parseFloat(raw)||0;
+  const ym=date.slice(0,7);
+  if(!EXPENSE_CATS.includes(selCatVal)||!poste){el.innerHTML='';return;}
+  const b=gBud(ym,poste);
+  if(!(b>0)){el.innerHTML=`<div style="font-size:11px;color:var(--text3);margin:-4px 0 10px">Pas de budget pour ${poste} en ${yml(ym)}.</div>`;return;}
+  const spent=spentYM(selCatVal,poste,ym),reste=b-spent,after=spent+amt;
+  const pctNow=Math.min(100,Math.round(spent/b*100));
+  const col=spent>b?'var(--red)':spent>=b*ALERT_PCT?'var(--amber)':'var(--green)';
+  const bg=spent>b?'var(--rd)':spent>=b*ALERT_PCT?'rgba(255,214,10,.1)':'var(--gd)';
+  let warn='';
+  if(amt>0&&after>b)warn=`<div style="font-size:11px;color:var(--red);margin-top:5px">Avec cette saisie : ${fmt(after)} F, soit ${fmt(after-b)} F au-delà du budget.</div>`;
+  else if(amt>0&&after>=b*ALERT_PCT)warn=`<div style="font-size:11px;color:var(--amber);margin-top:5px">Avec cette saisie : ${Math.round(after/b*100)} % du budget utilisé.</div>`;
+  el.innerHTML=`<div style="background:${bg};border-radius:10px;padding:10px 12px;margin:-2px 0 12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px"><span style="color:${col};font-weight:600">${reste>=0?'Reste ce mois':'Budget dépassé de'}</span><span style="color:${col};font-weight:600;font-family:var(--mono)">${fmt(Math.abs(reste))} F</span></div>
+    <div style="height:4px;background:var(--border);border-radius:2px;margin-top:7px"><div style="width:${pctNow}%;height:4px;background:${col};border-radius:2px"></div></div>
+    <div style="font-size:10px;color:var(--text3);margin-top:5px;font-family:var(--mono)">${fmt(spent)} dépensés sur ${fmt(b)} · ${yml(ym)}</div>${warn}</div>`;
+}
+function showBudgetAlert(a){
+  const over=a.level===2,col=over?'var(--red)':'var(--amber)';
+  const bg=document.createElement('div');
+  bg.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:flex-end;justify-content:center';
+  bg.innerHTML=`<div style="background:var(--surf);border-radius:16px 16px 0 0;padding:18px 20px calc(18px + env(safe-area-inset-bottom,0px));width:100%;max-width:480px">
+    <div style="width:32px;height:4px;background:var(--border2);border-radius:2px;margin:0 auto 14px"></div>
+    <div style="font-size:15px;font-weight:600;color:${col}">${over?'Budget '+a.poste+' dépassé':a.poste+' : '+a.pct+' % du budget'}</div>
+    <div style="font-size:12px;color:var(--text2);margin-top:6px;font-family:var(--mono)">${fmt(a.after)} F sur ${fmt(a.b)} F en ${yml(a.ym)} (${a.pct} %)</div>
+    <div style="height:4px;background:var(--border);border-radius:2px;margin-top:10px"><div style="width:${Math.min(100,a.pct)}%;height:4px;background:${col};border-radius:2px"></div></div>
+    <div style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.5">${over?`Le dépassement de ${fmt(-a.reste)} F réduit d'autant ton épargne prévue ce mois-ci.`:`Il te reste ${fmt(a.reste)} F sur ce poste jusqu'à la fin du mois.`}</div>
+    <button class="btn-p" style="margin-top:14px;background:var(--surf2);color:var(--text)">Compris</button>
+  </div>`;
+  bg.addEventListener('click',e=>{if(e.target===bg||e.target.closest('button'))bg.remove();});
+  document.body.appendChild(bg);
+}
+
+// ═══════════════ PLAN BUDGÉTAIRE 2026–2031 (sans prime) ═══════════════
+const PLAN_START='2026-11',PLAN_END='2031-10',PLAN_END_Y=2031;
+const PLAN={
+  salaire:716200,salaireInc:30000,setec:10000,remu:50000,remuInc:15000,
+  pret:227000,finPret:'2030-09',
+  fixes:{'Frais bancaires':8000,'Assurances':20000,'Gardien':1500,'Electricité':15000,'Eau':6000,'Location':135000,'Abonnements':35000,'Téléphone':4000},
+  parents:115000,conjoint:15000,foyer:50000,
+  vars:{'Achats divers':15000,'Alimentation':20000,'Santé':7000,'Dons':35000,'Loisir':7000,'Prêts':15000,'Imprévus':15000,'Transport':8000,'Voiture':15000,'Tour de famille':6000},
+  avantMariage:{'Dons':35000,'Prêts':0}, // effort jusqu'au mariage
+  pretEnt:1575000,pretEntMois:'2027-09',pretEntMens:65000,pretEntDebut:'2028-06', // prêt de MBENGUE ARCHIBUILDING pour le mariage
+  dette:158777,detteMens:0, // dette reportée : regroupée dans le prêt du mariage
+  mariage:2000000,foyerPrep:300000,noces:400000,nocesDelai:31,majFetes:0.3,
+  fetes:{'Ramadan':50000,'Korité':120000,'Tabaski':250000,'Tamkharit':15000,'Grand Magal de Touba':75000,'Gamou':25000,'Rentrée scolaire':50000},
+  // Mois de dépense de chaque fête (dates lunaires estimées, à ajuster selon l'annonce)
+  cal:[['2027-02','Ramadan'],['2027-03','Korité'],['2027-05','Tabaski'],['2027-06','Tamkharit'],['2027-07','Grand Magal de Touba'],['2027-08','Gamou'],
+       ['2028-02','Ramadan'],['2028-02','Korité'],['2028-05','Tabaski'],['2028-06','Tamkharit'],['2028-07','Grand Magal de Touba'],['2028-08','Gamou'],
+       ['2029-01','Ramadan'],['2029-02','Korité'],['2029-04','Tabaski'],['2029-05','Tamkharit'],['2029-07','Grand Magal de Touba'],['2029-07','Gamou'],
+       ['2030-01','Ramadan'],['2030-02','Korité'],['2030-04','Tabaski'],['2030-05','Tamkharit'],['2030-06','Grand Magal de Touba'],['2030-07','Gamou'],
+       ['2031-01','Ramadan'],['2031-01','Korité'],['2031-04','Tabaski'],['2031-05','Tamkharit'],['2031-06','Grand Magal de Touba'],['2031-07','Gamou'],
+       ['2027-10','Rentrée scolaire'],['2028-10','Rentrée scolaire'],['2029-10','Rentrée scolaire'],['2030-10','Rentrée scolaire'],['2031-10','Rentrée scolaire']]
+};
+const P_FETES='Fêtes religieuses',P_MARIAGE='Mariage et foyer',P_EPARGNE='Epargne de précaution';
+function ymAdd(ym,n){const[y,m]=ym.split('-').map(Number);const t=y*12+(m-1)+n;return ymk(Math.floor(t/12),t%12+1);}
+function planMonths(){const out=[];for(let ym=PLAN_START;ym<=PLAN_END;ym=ymAdd(ym,1))out.push(ym);return out;}
+function buildPlan(marYm){
+  const bud={},det={};let detteRest=PLAN.detteMens>0?PLAN.dette:0,pretRest=PLAN.pretEnt+(PLAN.detteMens>0?0:PLAN.dette);
+  const evts={};const addE=(ym,l,a)=>{(evts[ym]=evts[ym]||[]).push({label:l,amt:a});};
+  addE(ymAdd(marYm,-3),'Préparation du foyer (1/2)',PLAN.foyerPrep/2);
+  addE(ymAdd(marYm,-2),'Préparation du foyer (2/2)',PLAN.foyerPrep/2);
+  addE(ymAdd(marYm,-1),'Mariage : préparatifs et dot',PLAN.mariage*0.4);
+  addE(marYm,'Mariage : cérémonie',PLAN.mariage*0.6);
+  addE(ymAdd(marYm,PLAN.nocesDelai),'Voyage de noces',PLAN.noces);
+  let cum=0;const summary={};
+  planMonths().forEach(ym=>{
+    const y=parseInt(ym.slice(0,4)),k=y-2026,after=ym>marYm,b={},d={};
+    b['Salaire net']=PLAN.salaire+PLAN.salaireInc*k;
+    b['Autres']=PLAN.setec; d['Autres']=[{label:'Forfait SETEC',amt:PLAN.setec}];
+    b['Extras professionnels']=PLAN.remu+PLAN.remuInc*k; d['Extras professionnels']=[{label:'Rémunération MBENGUE ARCHIBUILDING',amt:b['Extras professionnels']}];
+    if(ym<=PLAN.finPret)b['Mensualité de prêt']=PLAN.pret;
+    Object.assign(b,PLAN.fixes);
+    b['Aides versées']=PLAN.parents+(after?0:PLAN.conjoint);
+    d['Aides versées']=[{label:'Parents',amt:PLAN.parents}];if(!after)d['Aides versées'].push({label:'Conjoint',amt:PLAN.conjoint});
+    Object.assign(b,PLAN.vars);
+    if(!after)Object.assign(b,PLAN.avantMariage);
+    if(ym===PLAN.pretEntMois){b['Autres']+=PLAN.pretEnt;d['Autres'].push({label:'Prêt MBENGUE ARCHIBUILDING (mariage)',amt:PLAN.pretEnt});}
+    if(after){b['Alimentation']+=PLAN.foyer;d['Alimentation']=[{label:'Courant',amt:PLAN.vars['Alimentation']},{label:'Charges du foyer',amt:PLAN.foyer}];}
+    if(detteRest>0){const r=Math.min(PLAN.detteMens,detteRest);detteRest-=r;b['Remboursement']=r;d['Remboursement']=[{label:'Dette MBENGUE ARCHIBUILDING',amt:r}];}
+    if(ym>=PLAN.pretEntDebut&&pretRest>0){const r=Math.min(PLAN.pretEntMens,pretRest);pretRest-=r;b['Remboursement']=(b['Remboursement']||0)+r;(d['Remboursement']=d['Remboursement']||[]).push({label:'Prêt mariage et dette MBENGUE ARCHIBUILDING',amt:r});}
+    const fl=PLAN.cal.filter(c=>c[0]===ym).map(c=>({label:c[1],amt:Math.round(PLAN.fetes[c[1]]*((after&&c[1]!=='Rentrée scolaire')?1+PLAN.majFetes:1))}));
+    if(fl.length){b[P_FETES]=fl.reduce((s,x)=>s+x.amt,0);d[P_FETES]=fl;}
+    if(evts[ym]){b[P_MARIAGE]=evts[ym].reduce((s,x)=>s+x.amt,0);d[P_MARIAGE]=evts[ym];}
+    let rev=0,dep=0;
+    Object.entries(b).forEach(([p,v])=>{if(getPlanCat(p)==='Revenu')rev+=v;else dep+=v;});
+    const sol=rev-dep;cum+=sol;
+    const ep=Math.max(0,Math.floor(sol/1000)*1000);
+    if(ep>0)b[P_EPARGNE]=ep;
+    bud[ym]=b;det[ym]=d;summary[ym]={sol,cum};
+  });
+  return{bud,det,summary};
+}
+const PLAN_REVENUS=['Salaire net','Autres','Extras professionnels'];
+const PLAN_FIXES=['Mensualité de prêt','Aides versées',...Object.keys(PLAN.fixes)];
+function getPlanCat(p){if(PLAN_REVENUS.includes(p))return'Revenu';if(PLAN_FIXES.includes(p))return'Dépenses fixes';if(p===P_EPARGNE)return'Epargne';return'Dépenses variables';}
+function planStats(marYm){
+  const{summary}=buildPlan(marYm);const yms=Object.keys(summary);
+  let min=Infinity,minYm='';yms.forEach(ym=>{if(summary[ym].cum<min){min=summary[ym].cum;minYm=ym;}});
+  return{min,minYm,end:summary[PLAN_END].cum,atMar:summary[marYm]?summary[marYm].cum:null};
+}
+function renderPlanStats(){
+  const v=document.getElementById('plan-mar')?.value;const el=document.getElementById('plan-stats');if(!v||!el)return;
+  const st=planStats(v);const ok=st.min>=0;
+  el.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px">
+    <div style="background:var(--surf2);border-radius:9px;padding:8px"><div style="font-size:10px;color:var(--text3)">ÉPARGNE AU PLUS BAS</div><div style="font-weight:600;font-family:var(--mono);color:${ok?'var(--text)':'var(--red)'}">${fmtS(st.min)} F</div><div style="font-size:10px;color:var(--text3)">${yml(st.minYm)}</div></div>
+    <div style="background:var(--surf2);border-radius:9px;padding:8px"><div style="font-size:10px;color:var(--text3)">ÉPARGNE OCT. 2031</div><div style="font-weight:600;font-family:var(--mono)">${fmt(st.end)} F</div><div style="font-size:10px;color:var(--text3)">sans prime</div></div>
+  </div>
+  <div style="font-size:11px;margin-top:8px;color:${ok?'var(--green)':'var(--red)'}">${ok?'Le budget reste dans le vert sur toute la période.':'Le budget passe dans le rouge : choisis un mariage plus tard.'}</div>`;
+}
+function openPlanSheet(){
+  if(!isAdmin()){toast('Mode lecture — modification non autorisée');return;}
+  const bg=document.createElement('div');bg.id='plan-sheet';
+  bg.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:flex-end;justify-content:center';
+  const nb=planMonths().filter(ym=>Object.keys(budget[ym]||{}).length>0).length;
+  bg.innerHTML=`<div style="background:var(--surf);border-radius:16px 16px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom,0px));width:100%;max-width:480px;max-height:88vh;overflow-y:auto">
+    <div style="font-size:15px;font-weight:600;color:var(--text);display:flex;justify-content:space-between;align-items:center">
+      Plan budgétaire 2026–2031
+      <button onclick="document.getElementById('plan-sheet').remove()" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--text2);padding:0" aria-label="Fermer">×</button>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-top:6px;line-height:1.5">Remplit tes budgets de novembre 2026 à octobre 2031 : salaire +30 000 par an, rémunération de l'entreprise +15 000 par an, prêt bancaire jusqu'en septembre 2030, fêtes religieuses et mariage. Dons à 35 000 par mois, aucun prêt aux proches jusqu'au mariage. Prêt de MBENGUE ARCHIBUILDING : 1 575 000 en septembre 2027 ; avec la dette actuelle de 158 777, le tout est remboursé 65 000 par mois de juin 2028 à août 2030. <b>La prime n'est pas comptée</b> : si elle arrive, elle sert à rembourser l'entreprise plus vite.</div>
+    <div style="margin-top:14px"><div class="flbl">Mois du mariage</div><input class="finp" type="month" id="plan-mar" value="2027-12" min="2027-03" max="2031-09" onchange="renderPlanStats()"></div>
+    <div id="plan-stats"></div>
+    <div style="font-size:11px;color:var(--text3);margin-top:12px;line-height:1.5">Postes ajoutés s'ils n'existent pas : ${P_FETES}, ${P_MARIAGE}, Tour de famille. Les fêtes et le mariage sont détaillés dans chaque mois.</div>
+    ${nb?`<div style="font-size:11px;color:var(--amber);margin-top:8px">${nb} mois ont déjà un budget sur cette période : ils seront remplacés.</div>`:''}
+    <div id="plan-err" style="font-size:11px;color:var(--red);min-height:14px;margin-top:6px"></div>
+    <button class="btn-p" id="plan-apply" onclick="applyPlan()" style="margin-top:4px">Appliquer le plan</button>
+  </div>`;
+  bg.addEventListener('click',e=>{if(e.target===bg)bg.remove();});
+  document.body.appendChild(bg);renderPlanStats();
+}
+async function applyPlan(){
+  const marYm=document.getElementById('plan-mar')?.value;const err=document.getElementById('plan-err');
+  if(!marYm||marYm<'2027-03'||marYm>'2031-09'){err.textContent='Choisis un mois de mariage entre mars 2027 et septembre 2031.';return;}
+  const btn=document.getElementById('plan-apply');btn.disabled=true;btn.textContent='Application…';
+  try{
+    const{bud,det}=buildPlan(marYm);
+    if(!CATS['Dépenses variables'])CATS['Dépenses variables']=[];
+    [P_FETES,P_MARIAGE,'Tour de famille'].forEach(p=>{if(!getAllPostes('Dépenses variables').includes(p))CATS['Dépenses variables'].push(p);});
+    if(!CATS['Epargne'])CATS['Epargne']=[];
+    if(!getAllPostes('Epargne').includes(P_EPARGNE))CATS['Epargne'].push(P_EPARGNE);
+    Object.keys(bud).forEach(ym=>{budget[ym]=bud[ym];budgetDetails[ym]=det[ym];});
+    await saveSettings();
+    document.getElementById('plan-sheet')?.remove();
+    syncPostes();renderCPUI();renderCurrent();
+    toast('Plan appliqué jusqu\'en octobre 2031 ✓');
+  }catch(e){err.textContent='Erreur : '+e.message;btn.disabled=false;btn.textContent='Appliquer le plan';}
+}
+
 // Corbeille temporaire (session)
 // Corbeille — persistée 1h dans localStorage
 const TRASH_KEY='fiinas-trash';
@@ -1391,7 +1516,7 @@ function renderTX(){
 
 // BUDGET
 function renderBudPage(){
-  const years=[new Date().getFullYear(),new Date().getFullYear()+1,new Date().getFullYear()+2];
+  const y0=new Date().getFullYear();const years=[];for(let y=y0;y<=Math.max(y0+2,PLAN_END_Y);y++)years.push(y);
   document.getElementById('ytabs').innerHTML=years.map(y=>`<button class="ytab ${y.toString()===bYear?'active':''}" onclick="setBY(this,'${y}')">${y}</button>`).join('');
   document.getElementById('mtabs').innerHTML=MFR.map((m,i)=>`<button class="mtab ${(i+1)===bMonth?'active':''}" onclick="setBM(this,${i+1})">${MS[i]}</button>`).join('');
   renderBForm();
@@ -1448,23 +1573,48 @@ function renderBudSolde(){
 
 function renderBForm(){
   const ym=ymk(bYear,bMonth);const bud=budget[ym]||{};
+  const det=budgetDetails[ym]||{};
   let html='';
-  ['Revenu','Dépenses fixes','Dépenses variables','Social & Culturel','Epargne'].forEach(cat=>{
+  ['Revenu','Dépenses fixes','Dépenses variables','Epargne'].forEach(cat=>{
     const ps=getAllPostes(cat);
     const total=ps.reduce((s,p)=>s+(bud[p]||0),0);
     html+=`<div class="card"><div class="ct">${CICO[cat]} ${cat}${total>0?` <span style="float:right;color:${cat==='Revenu'?'#34d399':'#fb7185'};font-family:var(--mono)">${fmt(total)} F</span>`:''}</div>
       ${ps.map(p=>{
         const id='bi_'+btoa(encodeURIComponent(p));
         const val=bud[p]||'';
-        return `<div class="brow" style="align-items:center">
-          <div class="brow-n">${p}</div>
-          <div style="position:relative;width:120px">
-            <input class="binp" type="text" inputmode="numeric" id="${id}"
-              value="${val?new Intl.NumberFormat('fr-FR').format(val):''}"
-              placeholder="0"
-              style="width:120px;text-align:right;padding-right:8px"
-              oninput="fmtBudInput(this);renderBudSolde()"
-              data-raw="${val||0}">
+        const details=det[p]||[];
+        const detTotal=details.reduce((s,d)=>s+d.amt,0);
+        const pKey=btoa(encodeURIComponent(ym+'|'+p));
+        return `<div class="brow" style="flex-direction:column;align-items:stretch;gap:0">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:2px 0">
+            <div class="brow-n" style="flex:1">${p}</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="position:relative;width:120px">
+                <input class="binp" type="text" inputmode="numeric" id="${id}"
+                  value="${val?new Intl.NumberFormat('fr-FR').format(val):''}"
+                  placeholder="0"
+                  style="width:120px;text-align:right;padding-right:8px"
+                  oninput="fmtBudInput(this);renderBudSolde()"
+                  data-raw="${val||0}">
+              </div>
+              <button onclick="toggleBudDetail('${pKey}')" style="background:none;border:none;cursor:pointer;padding:2px;color:var(--text2);font-size:14px;line-height:1;display:flex;align-items:center" title="Sous-détails">
+                <svg id="chv_${pKey}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14" style="transition:transform .2s;${details.length?'':'opacity:.4'}"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+            </div>
+          </div>
+          <div id="det_${pKey}" style="display:none;border-top:0.5px solid var(--border);margin-top:4px;padding-top:6px">
+            ${details.map((d,i)=>`
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:0.5px solid var(--border)">
+                <span style="font-size:12px;color:var(--text);flex:1">${d.label}</span>
+                <span style="font-size:12px;font-family:var(--mono);color:var(--text2);margin:0 8px">${fmt(d.amt)} F</span>
+                <button onclick="removeBudDetail('${ym}','${p.replace(/'/g,"\'")}',${i})" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;padding:0 2px;line-height:1">×</button>
+              </div>`).join('')}
+            <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+              <input id="dl_${pKey}" type="text" placeholder="Ex: Carte BRT, Netflix..." style="flex:1;min-width:0;background:var(--surf);border:0.5px solid var(--border);border-radius:8px;padding:6px 8px;font-size:12px;color:var(--text);outline:none;font-family:var(--font)">
+              <input id="da_${pKey}" type="text" inputmode="numeric" placeholder="Montant" style="width:70px;background:var(--surf);border:0.5px solid var(--border);border-radius:8px;padding:6px 8px;font-size:12px;color:var(--text);outline:none;font-family:var(--font)">
+              <button onclick="addBudDetail('${ym}','${p.replace(/'/g,"\'")}','${pKey}')" style="width:28px;height:28px;border-radius:8px;border:none;background:var(--orange);color:#fff;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</button>
+            </div>
+            ${details.length?`<div style="font-size:11px;color:var(--text3);text-align:right;margin-top:4px">Total sous-détails : <b style="color:var(--text2)">${fmt(detTotal)} F</b></div>`:''}
           </div>
         </div>`;
       }).join('')}
@@ -1472,6 +1622,93 @@ function renderBForm(){
   });
   document.getElementById('bform').innerHTML=html;
   renderBudSolde();
+}
+
+function openCopyBudget(){
+  const curYm=ymk(bYear,bMonth);
+  // Générer liste des mois disponibles (qui ont un budget)
+  const available=Object.keys(budget).filter(ym=>ym!==curYm&&Object.keys(budget[ym]||{}).length>0);
+  if(!available.length){toast('Aucun budget à copier');return;}
+  // Trier du plus récent au plus ancien
+  available.sort((a,b)=>b.localeCompare(a));
+  const bg=document.createElement('div');
+  bg.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:flex-end;justify-content:center';
+  bg.innerHTML=`<div style="background:var(--surf);border-radius:16px 16px 0 0;padding:20px;width:100%;max-width:480px;max-height:80vh;overflow-y:auto">
+    <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+      Copier le budget de...
+      <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--text2);padding:0">×</button>
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Les montants et sous-détails seront copiés. Vous pourrez les modifier librement.</div>
+    ${available.map(ym=>`
+      <div onclick="copyBudgetFrom('${ym}',this.closest('[style*=fixed]'))" style="padding:12px 14px;border:0.5px solid var(--border);border-radius:10px;margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:13px;font-weight:500;color:var(--text)">${yml(ym)}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${Object.keys(budget[ym]||{}).length} postes budgétisés</div>
+        </div>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="color:var(--text3)"><path d="M9 18l6-6-6-6"/></svg>
+      </div>`).join('')}
+  </div>`;
+  bg.addEventListener('click',e=>{if(e.target===bg)bg.remove();});
+  document.body.appendChild(bg);
+}
+
+async function copyBudgetFrom(srcYm, modal){
+  const curYm=ymk(bYear,bMonth);
+  const curBud=budget[curYm]||{};
+  const hasData=Object.values(curBud).some(v=>v>0);
+  if(hasData){
+    if(!confirm('Le mois '+yml(curYm)+' a déjà un budget. Écraser ?'))return;
+  }
+  // Copie profonde — complètement indépendante de la source
+  budget[curYm]=JSON.parse(JSON.stringify(budget[srcYm]||{}));
+  budgetDetails[curYm]=JSON.parse(JSON.stringify(budgetDetails[srcYm]||{}));
+  await saveSettings();
+  if(modal)modal.remove();
+  renderBForm();
+  toast('Budget copié depuis '+yml(srcYm)+' ✓');
+}
+
+function toggleBudDetail(pKey){
+  const el=document.getElementById('det_'+pKey);
+  const chv=document.getElementById('chv_'+pKey);
+  if(!el)return;
+  const open=el.style.display==='none';
+  el.style.display=open?'block':'none';
+  if(chv)chv.style.transform=open?'rotate(180deg)':'';
+}
+
+async function addBudDetail(ym,poste,pKey){
+  const label=document.getElementById('dl_'+pKey)?.value.trim();
+  const amtRaw=document.getElementById('da_'+pKey)?.value.replace(/[^0-9]/g,'');
+  const amt=parseInt(amtRaw)||0;
+  if(!label||!amt){toast('Label et montant requis');return;}
+  if(!budgetDetails[ym])budgetDetails[ym]={};
+  if(!budgetDetails[ym][poste])budgetDetails[ym][poste]=[];
+  budgetDetails[ym][poste].push({label,amt});
+  // Mettre à jour le total du poste automatiquement
+  const total=budgetDetails[ym][poste].reduce((s,d)=>s+d.amt,0);
+  if(!budget[ym])budget[ym]={};
+  budget[ym][poste]=total;
+  await saveSettings();
+  renderBForm();
+  // Réouvrir le détail
+  setTimeout(()=>{
+    const el=document.getElementById('det_'+pKey);
+    const chv=document.getElementById('chv_'+pKey);
+    if(el){el.style.display='block';}
+    if(chv)chv.style.transform='rotate(180deg)';
+  },50);
+}
+
+async function removeBudDetail(ym,poste,idx){
+  if(!budgetDetails[ym]||!budgetDetails[ym][poste])return;
+  budgetDetails[ym][poste].splice(idx,1);
+  // Recalculer le total
+  const total=budgetDetails[ym][poste].reduce((s,d)=>s+d.amt,0);
+  if(!budget[ym])budget[ym]={};
+  budget[ym][poste]=total>0?total:(budget[ym][poste]||0);
+  await saveSettings();
+  renderBForm();
 }
 async function saveBudget(){
   const ym=ymk(bYear,bMonth);const bud={};
@@ -1494,7 +1731,7 @@ async function saveBudget(){
 function renderCPUI(){
   const el=document.getElementById('cpui');if(!el)return;
   let html='';
-  ['Revenu','Dépenses fixes','Dépenses variables','Social & Culturel','Epargne'].forEach(cat=>{
+  ['Revenu','Dépenses fixes','Dépenses variables','Epargne'].forEach(cat=>{
     const postes=CATS[cat]||[];
     const defaults=DEFAULT_CATS[cat]||[];
     const catId=cat.replace(/ /g,'_');
