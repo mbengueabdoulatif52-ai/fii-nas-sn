@@ -836,6 +836,8 @@ function renderModulesUI(){
 }
 async function toggleModule(k){
   modules[k]=!modules[k];
+  // Désactivé volontairement : on ne le resuggère plus sur l'accueil (réactivable dans Profil → Modules)
+  if(!modules[k])suggMasq[k]=Date.now()+3650*86400000;
   renderModulesUI();renderCptDash();renderObjDash();renderDetDash();
   try{await saveSettings();}catch(e){toast('⚠ Réglage non enregistré : '+e.message);}
   if(k==='dettes'&&modules.dettes){toast('Dettes et prêts activé');if(!dettes.length){goP('det',null);openAddDette();}}
