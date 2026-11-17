@@ -898,18 +898,28 @@ async function saveCorrection(id){
 function openVirement(){
   if(comptes.length<2){toast('Ajoute au moins deux comptes pour faire un virement');return;}
   const opts=sel=>comptes.map(c=>`<option value="${esc(c.id)}" ${c.id===sel?'selected':''}>${esc(c.nom)}</option>`).join('');
+  virFraisTouche=false;
   openSheet(sheetHead('Virement')+`
     <div class="fgrp"><div class="flbl">De</div><select class="fsel" id="vi-de" onchange="virPreview()">${opts(comptes[0].id)}</select></div>
     <div class="fgrp"><div class="flbl">Vers</div><select class="fsel" id="vi-vers" onchange="virPreview()">${opts(comptes[1].id)}</select></div>
     <div class="frow">
       <div class="fgrp"><div class="flbl">Montant</div><input class="finp" id="vi-amt" inputmode="numeric" placeholder="0" oninput="fmtAmtInput(this);virPreview()"></div>
-      <div class="fgrp"><div class="flbl">Frais (facultatif)</div><input class="finp" id="vi-frais" inputmode="numeric" placeholder="0" oninput="fmtAmtInput(this);virPreview()"></div>
+      <div class="fgrp"><div class="flbl">Frais</div><input class="finp" id="vi-frais" inputmode="numeric" placeholder="0" oninput="fmtAmtInput(this);virFraisTouche=this.value.trim()!=='';virPreview()"></div>
     </div>
+    <div id="vi-note" style="font-size:11px;color:var(--text2);line-height:1.5;margin:-4px 0 10px"></div>
     <div id="vi-prev" style="background:var(--surf2);border-radius:var(--rs);padding:11px 13px;font-size:12.5px;line-height:1.7;color:var(--text);margin-bottom:8px"></div>
     <div id="vi-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
     <button class="btn-p" id="vi-go" onclick="saveVirement()">Valider le virement</button>`);
   virPreview();
 }
+// ── Frais PI-SPI (BCEAO, depuis le 2 nov. 2026) : envois entre établissements différents
+// gratuits jusqu'à 8 000 F cumulés par jour depuis un compte, puis 0,8 % (règle publiée par Wave,
+// maximum autorisé par la BCEAO). Estimation hors taxes, toujours modifiable.
+const PISPI_TYPES=['wave','om','free','wizall','banque'],PISPI_SEUIL=8000,PISPI_TAUX=0.008;
+let virFraisTouche=false;
+function estPiSpi(cDe,cVers){return !!(cDe&&cVers&&PISPI_TYPES.includes(cDe.type)&&PISPI_TYPES.includes(cVers.type)&&cDe.type!==cVers.type);}
+function cumulPiSpiJour(de){const j=todayStr();return mouvs.filter(m=>m.type==='virement'&&m.pispi&&m.de===de&&m.date===j).reduce((s,m)=>s+(m.amt||0),0);}
+function fraisPiSpi(de,amt){const libre=Math.max(0,PISPI_SEUIL-cumulPiSpiJour(de));return Math.round(Math.max(0,amt-libre)*PISPI_TAUX);}
 function virLire(){
   const de=document.getElementById('vi-de').value,vers=document.getElementById('vi-vers').value;
   const a=parseAmt(document.getElementById('vi-amt').value),f=parseAmt(document.getElementById('vi-frais').value);
@@ -919,11 +929,23 @@ function virPreview(){
   const el=document.getElementById('vi-prev');if(!el)return;
   const{de,vers,amt,frais}=virLire();
   const cDe=comptes.find(c=>c.id===de),cVers=comptes.find(c=>c.id===vers);
-  if(de===vers){el.innerHTML='<span style="color:var(--text2)">Choisis deux comptes différents.</span>';return;}
+  const note=document.getElementById('vi-note');
+  if(de===vers){el.innerHTML='<span style="color:var(--text2)">Choisis deux comptes différents.</span>';note.textContent='';return;}
+  const pi=estPiSpi(cDe,cVers),fi=document.getElementById('vi-frais');
+  if(!virFraisTouche){
+    const est=pi?fraisPiSpi(de,amt):0;
+    fi.value=est>0?est.toLocaleString('fr-FR').replace(/\u202f/g,' '):'';
+  }
+  const deja=pi?cumulPiSpiJour(de):0,libre=Math.max(0,PISPI_SEUIL-deja);
+  note.innerHTML=pi
+    ?(virFraisTouche?'Frais saisis par toi. Efface le champ pour revenir à l\'estimation PI-SPI.'
+      :`<b style="color:var(--blue);font-weight:600">Estimation PI-SPI</b> · déjà envoyé aujourd'hui depuis ${esc(cDe.nom)} : ${fmt(deja)} F. `+(amt>libre?`Gratuit jusqu'à ${fmt(libre)} F, puis 0,8 % sur ${fmt(amt-libre)} F. Hors taxes, modifiable.`:`Encore ${fmt(libre-amt)} F gratuits aujourd'hui. Modifiable.`))
+    :(cVers.type==='especes'?'Retrait : hors PI-SPI. Saisis les frais réellement pris, s\'il y en a.':'Hors PI-SPI : saisis les frais réellement pris, s\'il y en a.');
+  const frais2=virLire().frais;
   const sDe=soldeCompte(cDe),sVers=soldeCompte(cVers);
-  el.innerHTML=`<div>${esc(cDe.nom)} : ${fmtSigne(sDe)} → <b>${fmtSigne(sDe-amt-frais)}</b></div>
+  el.innerHTML=`<div>${esc(cDe.nom)} : ${fmtSigne(sDe)} → <b>${fmtSigne(sDe-amt-frais2)}</b></div>
     <div>${esc(cVers.nom)} : ${fmtSigne(sVers)} → <b>${fmtSigne(sVers+amt)}</b></div>
-    <div style="font-size:11px;color:var(--text2);margin-top:4px;line-height:1.5">${frais>0?`Les ${fmt(frais)} F de frais sont comptés en dépense « Frais ». `:''}Le virement, lui, n'est ni un revenu ni une dépense.</div>`;
+    <div style="font-size:11px;color:var(--text2);margin-top:4px;line-height:1.5">${frais2>0?`Les ${fmt(frais2)} F de frais sont comptés en dépense « Frais ». `:''}Le virement, lui, n'est ni un revenu ni une dépense.</div>`;
 }
 async function saveVirement(){
   const err=document.getElementById('vi-err');
@@ -935,7 +957,8 @@ async function saveVirement(){
   const date=todayStr(),ts=new Date().toISOString();
   document.getElementById('vi-go').disabled=true;
   try{
-    await addDoc(collection(db,dataPath()+'/mouvements'),{type:'virement',de,vers,amt,date,ts});
+    const pispi=estPiSpi(comptes.find(c=>c.id===de),comptes.find(c=>c.id===vers));
+    await addDoc(collection(db,dataPath()+'/mouvements'),{type:'virement',de,vers,amt,date,ts,pispi});
     if(frais>0){
       if(!getAllPostes('Dépenses variables').includes('Frais')){(CATS['Dépenses variables']=CATS['Dépenses variables']||[]).push('Frais');await saveSettings();}
       await addDoc(collection(db,dataPath()+'/transactions'),{amt:frais,date,cat:'Dépenses variables',poste:'Frais',cmt:'Frais de virement '+nomCpt(de)+' → '+nomCpt(vers),compte:de,ts,createdBy:userName,createdById:uid});
