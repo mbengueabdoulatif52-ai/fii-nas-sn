@@ -1492,7 +1492,7 @@ function pctObj(o){return o.cible>0?Math.max(0,Math.round(progObj(o)/o.cible*100
 function renderObjDash(){
   const el=document.getElementById('obj-dash');if(!el)return;
   if(modules.objectifs){
-    if(!objectifs.length){el.innerHTML=`<div class="card" style="cursor:pointer;display:flex;align-items:center;gap:12px" onclick="goP('obj',null)"><div class="cpt-ic" style="background:${VIOLET}22;color:${VIOLET}">${ICO_OBJ}</div><div style="flex:1;font-size:14px;font-weight:600;color:var(--text)">Crée ton premier objectif</div><div style="color:var(--text3);font-size:18px">›</div></div>`;layoutTiles();return;}
+    if(!objectifs.length){el.innerHTML=`<div class="card" style="cursor:pointer;padding:12px 14px;margin:0 0 10px;height:calc(100% - 10px)" onclick="goP('obj',null)"><div class="hlbl" style="margin:0;font-size:12px">Objectifs ›</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-top:4px;line-height:1.35">Crée ton premier objectif</div></div>`;layoutTiles();return;}
     const tot=objectifs.reduce((s,o)=>s+progObj(o),0);
     const prochain=objectifs.filter(o=>progObj(o)<o.cible).sort((a,b)=>(a.echeance||'9999').localeCompare(b.echeance||'9999'))[0];
     el.innerHTML=`<div class="card" style="cursor:pointer;padding:12px 14px;margin:0 0 10px;height:calc(100% - 10px)" onclick="goP('obj',null)">
@@ -1709,7 +1709,7 @@ function avatar(d){const c=d.sens==='pret'?'var(--green)':'var(--red)',bg=d.sens
 function renderDetDash(){
   const el=document.getElementById('det-dash');if(!el)return;
   if(modules.dettes){
-    if(!dettes.length){el.innerHTML=`<div class="card" style="cursor:pointer;display:flex;align-items:center;gap:12px" onclick="goP('det',null)"><div class="cpt-ic" style="background:var(--surf2);color:var(--text2)">${ICO_DET}</div><div style="flex:1;font-size:14px;font-weight:600;color:var(--text)">Note ton premier prêt ou ta première dette</div><div style="color:var(--text3);font-size:18px">›</div></div>`;layoutTiles();return;}
+    if(!dettes.length){el.innerHTML=`<div class="card" style="cursor:pointer;padding:12px 14px;margin:0 0 10px;height:calc(100% - 10px)" onclick="goP('det',null)"><div class="hlbl" style="margin:0;font-size:12px">Dettes ›</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-top:4px;line-height:1.35">Note ton premier prêt ou ta première dette</div></div>`;layoutTiles();return;}
     const retard=dettes.filter(enRetard).length;
     el.innerHTML=`<div class="card" style="cursor:pointer;padding:12px 14px;margin:0 0 10px;height:calc(100% - 10px)" onclick="goP('det',null)">
       <div class="hlbl" style="margin:0;font-size:12px">Dettes ›</div>
