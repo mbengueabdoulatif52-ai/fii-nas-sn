@@ -335,6 +335,7 @@ select option{background:#1F2840;color:#F1F4FA}
   <div id="page-dash" class="page active">
     <div class="mnav"><button class="mnav-a" onclick="shiftMonth(-1)" aria-label="Mois précédent">‹</button><div class="mnav-slot"></div><button class="mnav-a" onclick="shiftMonth(1)" aria-label="Mois suivant">›</button></div>
     <div class="hero" id="hero"></div>
+    <div id="point-banner"></div>
     <div id="cpt-dash"></div>
     <div id="tiles" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div id="obj-dash"></div><div id="det-dash"></div></div>
     <div class="mgrid" id="dm"></div>
@@ -1118,6 +1119,212 @@ function calChoisir(iso){
   c.inp.dispatchEvent(new Event('input',{bubbles:true}));c.inp.dispatchEvent(new Event('change',{bubbles:true}));
 }
 
+// ═══════════════ POINTAGE DES COMPTES ═══════════════
+// L'utilisateur saisit le solde réel de chaque compte, puis explique chaque écart :
+// dépenses non notées / frais (comptés dans le budget), rentrée oubliée, erreur de compte (virement),
+// ou « je ne sais pas » (simple ajustement). Un document « pointage » garde l'historique des écarts.
+const PT_TYPES={
+  dep:{l:'Dépenses non notées',ic:'<path d="M6 7h12l-1 13H7L6 7z"/><path d="M9 7a3 3 0 016 0"/>',sens:-1},
+  frais:{l:'Frais',ic:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z"/><path d="M9 8h6M9 12h6"/>',sens:-1},
+  rev:{l:'Rentrée oubliée',ic:'<path d="M12 19V5M5 12l7-7 7 7"/>',sens:1},
+  compte:{l:'Erreur de compte',ic:'<path d="M7 7h11l-3-3M17 17H6l3 3"/>',sens:0},
+  aj:{l:'Je ne sais pas',ic:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 114 2c-.9.6-1.5 1-1.5 2"/><circle cx="12" cy="17" r=".5"/>',sens:0}
+};
+let PT=null;
+function ptIco(k){return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">${PT_TYPES[k].ic}</svg>`;}
+function pointages(){return mouvs.filter(m=>m.type==='pointage');}
+function pointageFait(ym){return pointages().some(m=>m.ym===ym);}
+function moisLong(ym){const[y,m]=ym.split('-');return MFR[+m-1]+' '+y;}
+
+// ── Étape 1 : soldes réels
+function openPointage(){
+  if(!comptes.length){toast('Ajoute d\'abord tes comptes');return;}
+  PT={ym:todayStr().slice(0,7),reels:{},lignes:{}};
+  comptes.forEach(c=>PT.app=Object.assign(PT.app||{},{[c.id]:soldeCompte(c)}));
+  ptEtape1();
+}
+function ptEtape1(){
+  const rows=comptes.map(c=>`<div style="padding:10px 0;border-bottom:0.5px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:10px">${icoCpt(c)}
+        <div style="flex:1;min-width:0"><div style="font-size:13.5px;color:var(--text)">${esc(c.nom)}</div><div style="font-size:11px;color:var(--text3)">Dans l'appli : ${fmtSigne(PT.app[c.id])}</div></div>
+        <input class="finp" id="pt-r-${esc(c.id)}" data-cid="${esc(c.id)}" inputmode="numeric" placeholder="Solde réel" value="${PT.reels[c.id]!=null?esc(fmt(PT.reels[c.id])):''}" oninput="fmtAmtInput(this);ptLire1()" style="width:118px;flex-shrink:0;text-align:right">
+      </div>
+      <div id="pt-e-${esc(c.id)}" style="font-size:11.5px;text-align:right;margin-top:4px;min-height:14px"></div></div>`).join('');
+  openSheet(sheetHead('Pointage de '+MFR[+PT.ym.slice(5)-1].toLowerCase())+`
+    <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:6px">Ouvre Wave, Orange Money, compte tes espèces, et saisis ce que tu vois. Laisse vide un compte que tu ne veux pas vérifier.</div>
+    ${rows}
+    <div id="pt-err" style="font-size:12px;color:var(--red);min-height:16px;margin:8px 0 6px"></div>
+    <button class="btn-p" id="pt-go" onclick="ptContinuer()">Continuer</button>`);
+  ptLire1();
+}
+function ptLire1(){
+  comptes.forEach(c=>{
+    const i=document.getElementById('pt-r-'+c.id),e=document.getElementById('pt-e-'+c.id);if(!i)return;
+    const v=parseAmt(i.value);
+    if(i.value.trim()===''||isNaN(v)){delete PT.reels[c.id];e.innerHTML='';return;}
+    PT.reels[c.id]=v;const d=v-PT.app[c.id];
+    e.innerHTML=d===0?'<span style="color:var(--green)">Juste</span>':`<span style="color:${d<0?'var(--red)':'var(--amber)'}">Écart ${d>0?'+':'−'}${fmt(d)} F</span>`;
+  });
+}
+function ptEcartBrut(cid){return PT.reels[cid]==null?0:PT.reels[cid]-PT.app[cid];}
+// Écart restant d'un compte, une fois comptés les virements « erreur de compte » choisis ailleurs
+function ptEcart(cid){
+  let d=ptEcartBrut(cid);
+  Object.entries(PT.lignes).forEach(([src,ls])=>{if(src===cid)return;const s=ptEcartBrut(src);
+    ls.forEach(l=>{if(l.type==='compte'&&l.vers===cid)d+=s<0?-l.amt:l.amt;});});
+  return d;
+}
+function ptContinuer(){
+  ptLire1();
+  if(!Object.keys(PT.reels).length){document.getElementById('pt-err').textContent='Saisis le solde réel d\'au moins un compte.';return;}
+  const avec=Object.keys(PT.reels).filter(id=>ptEcartBrut(id)!==0);
+  if(!avec.length){ptEnregistrer();return;}
+  avec.forEach(id=>{if(!PT.lignes[id])PT.lignes[id]=[{type:'aj',amt:Math.abs(ptEcartBrut(id))}];});
+  ptEtape2();
+}
+
+// ── Étape 2 : expliquer les écarts
+function ptPosteDefaut(type){
+  if(type==='dep')return 'Divers';
+  if(type==='rev'){const l=getAllPostes('Revenu');return l.includes('Autres revenus')?'Autres revenus':(l[0]||'Autres revenus');}
+  return '';
+}
+function ptOptsPostes(type,sel){
+  const cat=type==='rev'?'Revenu':'Dépenses variables';
+  const l=getAllPostes(cat).filter(p=>p!=='Frais');const d=ptPosteDefaut(type);if(!l.includes(d))l.unshift(d);
+  return l.map(p=>`<option value="${esc(p)}" ${p===sel?'selected':''}>${esc(p)}</option>`).join('');
+}
+function ptEtape2(){
+  const ids=Object.keys(PT.lignes);
+  const blocs=ids.map(cid=>{
+    const d=ptEcart(cid),c=comptes.find(x=>x.id===cid);
+    if(d===0)return `<div class="card" style="padding:12px 14px;margin-bottom:10px"><div style="font-size:13.5px;font-weight:600;color:var(--text)">${esc(c.nom)}</div><div style="font-size:12px;color:var(--green);margin-top:3px">Réglé par l'erreur de compte indiquée plus haut</div></div>`;
+    const types=Object.keys(PT_TYPES).filter(k=>PT_TYPES[k].sens===0||PT_TYPES[k].sens===Math.sign(d));
+    const autres=comptes.filter(x=>x.id!==cid);
+    const ls=PT.lignes[cid].map((l,i)=>`<div style="${i?'border-top:0.5px dashed var(--border2);padding-top:10px;margin-top:10px':''}">
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${types.filter(k=>k!=='compte'||autres.length).map(k=>`<button type="button" class="cpt-ch ${l.type===k?'on':''}" onclick="ptType(${jsa(cid)},${i},'${k}')">${ptIco(k)}${PT_TYPES[k].l}</button>`).join('')}</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          ${PT.lignes[cid].length>1?`<input class="finp" inputmode="numeric" value="${esc(fmt(l.amt))}" oninput="fmtAmtInput(this);ptAmt(${jsa(cid)},${i},this.value)" onchange="ptEtape2()" style="width:110px;flex-shrink:0;text-align:right">`:''}
+          ${l.type==='dep'||l.type==='rev'?`<select class="fsel" style="flex:1;min-width:0" onchange="PT.lignes[${jsa(cid)}][${i}].poste=this.value">${ptOptsPostes(l.type,l.poste)}</select>`:''}
+          ${l.type==='compte'?`<select class="fsel" style="flex:1;min-width:0" onchange="PT.lignes[${jsa(cid)}][${i}].vers=this.value;ptEtape2()">${autres.map(x=>`<option value="${esc(x.id)}" ${x.id===l.vers?'selected':''}>${d<0?'Réellement sur ':'Noté sur '}${esc(x.nom)}</option>`).join('')}</select>`:''}
+          ${l.type==='frais'?'<div style="flex:1;font-size:11.5px;color:var(--text3)">poste Frais</div>':''}
+          ${l.type==='aj'?'<div style="flex:1;font-size:11.5px;color:var(--text3)">Ajustement : remet le solde juste, sans toucher au budget</div>':''}
+          ${i?`<button type="button" aria-label="Retirer" onclick="ptRetirer(${jsa(cid)},${i})" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:4px">✕</button>`:''}
+        </div></div>`).join('');
+    const tot=PT.lignes[cid].reduce((s,l)=>s+(l.amt||0),0),reste=Math.abs(d)-tot;
+    return `<div class="card" style="padding:14px;margin-bottom:10px">
+      <div style="font-size:14px;font-weight:600;color:var(--text)">${esc(c.nom)} : ${d<0?'il manque':'il y a'} ${fmt(d)} F${d>0?' de plus':''}</div>
+      <div style="font-size:11.5px;color:var(--text2);margin:2px 0 10px">Dans l'appli ${fmtSigne(PT.app[cid])} · en vrai ${fmtSigne(PT.reels[cid])}. Qu'est-ce que c'est, à ton avis ?</div>
+      ${ls}
+      ${reste!==0?`<div style="font-size:11.5px;color:var(--red);margin-top:8px">${reste>0?'Encore '+fmt(reste)+' F à expliquer':'Tu dépasses l\'écart de '+fmt(reste)+' F'}</div>`:''}
+      ${reste>0?`<button type="button" onclick="ptAjouter(${jsa(cid)})" style="background:none;border:none;color:var(--blue);font-size:12px;cursor:pointer;padding:8px 0 0;font-family:var(--font)">+ Une autre cause pour ${fmt(reste)} F</button>`
+        :PT.lignes[cid].length===1&&Math.abs(d)>1?`<button type="button" onclick="ptAjouter(${jsa(cid)},true)" style="background:none;border:none;color:var(--blue);font-size:12px;cursor:pointer;padding:8px 0 0;font-family:var(--font)">+ Répartir entre plusieurs causes</button>`:''}
+    </div>`;
+  }).join('');
+  openSheet(sheetHead('Expliquer les écarts')+`
+    <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:12px">Les dépenses, frais et rentrées comptent dans ton budget du mois. L'ajustement ne fait que remettre le solde juste.</div>
+    ${blocs}
+    <div id="pt-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:8px">
+      <button type="button" onclick="ptEtape1()" style="padding:0 16px;border-radius:var(--rs);border:0.5px solid var(--border2);background:var(--surf2);color:var(--text);font-size:13px;cursor:pointer;font-family:var(--font)">Retour</button>
+      <button class="btn-p" id="pt-go" onclick="ptEnregistrer()">Enregistrer le pointage</button>
+    </div>`);
+}
+function ptType(cid,i,k){
+  const l=PT.lignes[cid][i];l.type=k;
+  if(k==='dep'||k==='rev')l.poste=l.poste&&getAllPostes(k==='rev'?'Revenu':'Dépenses variables').includes(l.poste)?l.poste:ptPosteDefaut(k);
+  if(k==='compte'&&!l.vers){
+    // propose d'abord le compte qui a l'écart inverse
+    const d=ptEcartBrut(cid),inv=comptes.find(x=>x.id!==cid&&Math.sign(ptEcartBrut(x.id))===-Math.sign(d));
+    l.vers=(inv||comptes.find(x=>x.id!==cid)).id;
+  }
+  ptEtape2();
+}
+function ptAmt(cid,i,v){const a=parseAmt(v);PT.lignes[cid][i].amt=isNaN(a)?0:a;}
+function ptAjouter(cid,diviser){
+  const ls=PT.lignes[cid],d=Math.abs(ptEcart(cid));
+  if(diviser){const moitie=Math.round(d/2);ls[0].amt=d-moitie;ls.push({type:'aj',amt:moitie});}
+  else ls.push({type:'aj',amt:Math.max(0,d-ls.reduce((s,l)=>s+(l.amt||0),0))});
+  ptEtape2();
+}
+function ptRetirer(cid,i){const ls=PT.lignes[cid];ls.splice(i,1);if(ls.length===1)ls[0].amt=Math.abs(ptEcart(cid));ptEtape2();}
+
+// ── Enregistrement
+async function ptEnregistrer(){
+  const err=document.getElementById('pt-err');
+  // contrôle : chaque écart est entièrement expliqué
+  for(const cid of Object.keys(PT.lignes)){
+    const d=ptEcart(cid);
+    if(d===0)continue;
+    const ls=PT.lignes[cid];if(ls.length===1)ls[0].amt=Math.abs(d);
+    const tot=ls.reduce((s,l)=>s+(l.amt||0),0);
+    if(tot!==Math.abs(d)){err.textContent=`${nomCpt(cid)} : les montants doivent faire ${fmt(d)} F (tu as ${fmt(tot)} F).`;ptEtape2();document.getElementById('pt-err').textContent=`${nomCpt(cid)} : les montants doivent faire ${fmt(d)} F (tu as ${fmt(tot)} F).`;return;}
+    if(ls.some(l=>!(l.amt>0))){ptEtape2();document.getElementById('pt-err').textContent='Chaque cause doit avoir un montant.';return;}
+  }
+  const{db,collection,addDoc}=window._fb;
+  const date=todayStr(),ts=()=>new Date().toISOString(),cmt='Pointage de '+MFR[+PT.ym.slice(5)-1].toLowerCase();
+  const btn=document.getElementById('pt-go');if(btn)btn.disabled=true;
+  try{
+    // postes manquants
+    let modif=false;
+    const assure=(cat,p)=>{if(!getAllPostes(cat).includes(p)){(CATS[cat]=CATS[cat]||[]).push(p);modif=true;}};
+    Object.values(PT.lignes).flat().forEach(l=>{
+      if(l.type==='dep')assure('Dépenses variables',l.poste||'Divers');
+      if(l.type==='frais')assure('Dépenses variables','Frais');
+      if(l.type==='rev')assure('Revenu',l.poste||'Autres revenus');
+    });
+    if(modif)await saveSettings();
+    const details=Object.keys(PT.reels).map(cid=>({compte:cid,appli:PT.app[cid],reel:PT.reels[cid],causes:(PT.lignes[cid]||[]).filter(()=>ptEcart(cid)!==0).map(l=>({type:l.type,amt:l.amt}))}));
+    for(const cid of Object.keys(PT.lignes)){
+      const d=ptEcart(cid);if(d===0)continue;
+      for(const l of PT.lignes[cid]){
+        const base={date,ts:ts(),pointage:PT.ym};
+        if(l.type==='dep'||l.type==='frais')await addDoc(collection(db,dataPath()+'/transactions'),{...base,amt:l.amt,cat:'Dépenses variables',poste:l.type==='frais'?'Frais':(l.poste||'Divers'),cmt:cmt+' — non noté',compte:cid,createdBy:userName,createdById:uid});
+        else if(l.type==='rev')await addDoc(collection(db,dataPath()+'/transactions'),{...base,amt:l.amt,cat:'Revenu',poste:l.poste||'Autres revenus',cmt:cmt+' — rentrée oubliée',compte:cid,createdBy:userName,createdById:uid});
+        else if(l.type==='compte')await addDoc(collection(db,dataPath()+'/mouvements'),{...base,type:'virement',de:d<0?cid:l.vers,vers:d<0?l.vers:cid,amt:l.amt,correction:true});
+        else await addDoc(collection(db,dataPath()+'/mouvements'),{...base,type:'ajustement',compte:cid,amt:d<0?-l.amt:l.amt});
+      }
+    }
+    await addDoc(collection(db,dataPath()+'/mouvements'),{type:'pointage',ym:PT.ym,date,ts:ts(),details});
+  }catch(e){if(btn)btn.disabled=false;const er=document.getElementById('pt-err');if(er)er.textContent='Non enregistré : '+e.message;return;}
+  const tot=Object.keys(PT.reels).reduce((s,id)=>s+Math.abs(ptEcartBrut(id)),0);
+  PT=null;closeSheet();renderCurrent();
+  toast(tot===0?'Tout est juste, bravo':'Pointage enregistré, tes soldes sont justes');
+}
+
+// ── Historique des écarts (page Mes comptes)
+function htmlHistoPointage(){
+  const ps=pointages();if(!ps.length)return'';
+  const parMois={},parCpt={};
+  ps.forEach(p=>(p.details||[]).forEach(x=>{const e=(x.reel||0)-(x.appli||0);parMois[p.ym]=(parMois[p.ym]||0)+e;parCpt[x.compte]=(parCpt[x.compte]||0)+Math.abs(e);}));
+  const mois=Object.keys(parMois).sort().slice(-6);
+  const max=Math.max(1,...mois.map(m=>Math.abs(parMois[m])));
+  const barres=mois.map(m=>{const v=parMois[m],w=Math.max(v?4:0,Math.round(Math.abs(v)/max*100));
+    return `<div style="display:grid;grid-template-columns:76px 1fr 78px;gap:8px;align-items:center;font-size:12px;color:var(--text2)">
+      <span>${MFR[+m.slice(5)-1]}</span><div style="height:8px;background:var(--surf2);border-radius:4px"><div style="width:${w}%;height:100%;border-radius:4px;background:${v===0?'var(--green)':v<0?'var(--red)':'var(--amber)'}"></div></div>
+      <span style="text-align:right;color:${v===0?'var(--green)':'var(--text)'}">${v===0?'juste':(v>0?'+':'−')+fmt(v)}</span></div>`;}).join('');
+  const totAbs=Object.values(parCpt).reduce((s,v)=>s+v,0);
+  let conseil='';
+  if(totAbs>0&&mois.length>=2){
+    const[cid,v]=Object.entries(parCpt).sort((a,b)=>b[1]-a[1])[0],pc=Math.round(v/totAbs*100),c=comptes.find(x=>x.id===cid);
+    if(c&&pc>=60)conseil=`<div style="background:var(--surf2);border-radius:var(--rs);padding:9px 11px;font-size:11.5px;color:var(--text2);line-height:1.5;margin-top:12px">${pc} % des écarts viennent ${c.type==='especes'?'des espèces':deNom(c.nom)}. ${c.type==='especes'?'Pense à noter tes petites dépenses dès que tu paies.':'Vérifie les frais et les paiements faits avec ce compte.'}</div>`;
+  }
+  return `<div class="card" style="margin-top:12px"><div style="font-size:13.5px;font-weight:600;color:var(--text);margin-bottom:12px">Écarts des derniers mois</div>
+    <div style="display:flex;flex-direction:column;gap:9px">${barres}</div>${conseil}</div>`;
+}
+
+// ── Rappel sur l'accueil : trois derniers jours du mois
+function renderPointBanner(){
+  const el=document.getElementById('point-banner');if(!el)return;
+  const d=new Date(),fin=new Date(d.getFullYear(),d.getMonth()+1,0).getDate(),ym=todayStr().slice(0,7);
+  if(!modules.comptes||!comptes.length||d.getDate()<fin-2||pointageFait(ym)||sharedSpaceId){el.innerHTML='';return;}
+  el.innerHTML=`<div class="card" style="display:flex;gap:12px;align-items:center;border-color:rgba(52,113,255,.35)">
+    <div class="cpt-ic" style="background:var(--bd);color:var(--blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h11"/></svg></div>
+    <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--text)">Fin du mois : pointe tes comptes</div>
+    <div style="font-size:11.5px;color:var(--text2)">Compare tes soldes réels avec l'appli</div></div>
+    <button onclick="openPointage()" style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font);flex-shrink:0">Pointer</button></div>`;
+}
+
 // ═══════════════ CLAVIER ═══════════════
 // Clavier ouvert : la barre de navigation se cache et le bouton Enregistrer se pose juste au-dessus.
 (function(){
@@ -1427,15 +1634,17 @@ function renderComptesPage(){
   const rows=comptes.map(c=>{const s=soldeCompte(c);return `<div class="cpt-row" onclick="openCompteDetail(${jsa(c.id)})">${icoCpt(c)}
     <div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text)">${esc(c.nom)}</div><div style="font-size:11px;color:var(--text3)">${typeCpt(c).g}</div></div>
     <div style="font-size:14px;font-weight:600;color:${s<0?'var(--red)':'var(--text)'}">${fmtSigne(s)}</div></div>`;}).join('');
-  el.innerHTML=`<div class="card"><div style="font-size:11px;color:var(--text2)">Total disponible</div>
+  const dernier=pointages().map(p=>p.date).sort().pop();
+  el.innerHTML=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><div style="font-size:11px;color:var(--text2)">Total disponible</div>
       <div style="font-size:26px;font-weight:600;color:var(--text);margin-top:2px">${fmtSigne(totalComptes())}</div>
-      <div style="font-size:11px;color:var(--text3)">${comptes.length} compte${comptes.length>1?'s':''}</div></div>
+      <div style="font-size:11px;color:var(--text3)">${comptes.length} compte${comptes.length>1?'s':''}${dernier?' · pointé le '+new Date(dernier+'T12:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):''}</div></div>
+      <button onclick="openPointage()" style="display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:999px;border:0.5px solid var(--border2);background:var(--surf2);color:var(--text);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font);flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h11"/></svg>Pointer</button></div></div>
     <div class="card" style="padding:4px 18px">${rows}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <button onclick="openVirement()" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px;border-radius:var(--r);border:0.5px solid var(--border2);background:var(--surf2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font)">${ICO_CPT.swap} Virement</button>
       <button onclick="openAddCompte()" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px;border-radius:var(--r);border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font)">${ICO_CPT.plus} Compte</button>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.5;text-align:center">Touche un compte pour voir ses mouvements ou corriger son solde.</div>`;
+    <div style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.5;text-align:center">Touche un compte pour voir ses mouvements ou corriger son solde.</div>${htmlHistoPointage()}`;
 }
 
 // ── Ajouter ou renommer un compte
@@ -1489,8 +1698,9 @@ function openCompteDetail(id){
   const part=(o,amt)=>{const x=partsOf(o,amt).find(y=>y.compte===id);return x?x.amt||0:null;};
   txs.forEach(t=>{const a=part(t,t.amt||0);if(a!==null)lignes.push({date:t.date||'',lib:t.poste||t.cat,sub:(t.parts?'partagé · ':'')+(t.cmt||''),v:signeTx(t)*a});});
   mouvs.forEach(m=>{
-    if(m.type==='virement'&&m.de===id)lignes.push({date:m.date,lib:'Virement vers '+nomCpt(m.vers),sub:'',v:-(m.amt||0)});
-    if(m.type==='virement'&&m.vers===id)lignes.push({date:m.date,lib:'Virement de '+nomCpt(m.de),sub:'',v:m.amt||0});
+    if(m.type==='virement'&&m.de===id)lignes.push({date:m.date,lib:(m.correction?'Correction vers ':'Virement vers ')+nomCpt(m.vers),sub:m.correction?'pointage':'',v:-(m.amt||0)});
+    if(m.type==='virement'&&m.vers===id)lignes.push({date:m.date,lib:(m.correction?'Correction depuis ':'Virement de ')+nomCpt(m.de),sub:m.correction?'pointage':'',v:m.amt||0});
+    if(m.type==='ajustement'&&m.compte===id&&m.pointage){lignes.push({date:m.date,lib:'Ajustement (pointage)',sub:'',v:m.amt||0});return;}
     if(m.type==='ajustement'&&m.compte===id)lignes.push({date:m.date,lib:'Ajustement du solde',sub:'',v:m.amt||0});
     if(m.type==='remb'){const d=dettes.find(x=>x.id===m.dette),a=part(m,m.amt||0);if(d&&a!==null)lignes.push({date:m.date,lib:(d.sens==='pret'?'Remboursé par ':'Remboursé à ')+d.personne,sub:'',v:d.sens==='pret'?a:-a});}
     if(m.type==='retrait_obj'&&m.compte===id)lignes.push({date:m.date,lib:'Retrait objectif '+nomObj(m.objectif),sub:'',v:m.amt||0});
@@ -2557,8 +2767,8 @@ function computePatrimoineToday(){
 
 async function renderDash(){
   renderBackupBanner();
-  renderCptDash();renderObjDash();renderDetDash();
-  if(isAnnual()){const h=document.getElementById('hero');h.className='hero';h.onclick=null;h.style.cursor='';['watch','cpt-dash','obj-dash','det-dash'].forEach(i=>{const e=document.getElementById(i);if(e)e.innerHTML='';});document.getElementById('detail-wrap').style.display='block';renderDashAnnual();return;}
+  renderCptDash();renderObjDash();renderDetDash();renderPointBanner();
+  if(isAnnual()){const h=document.getElementById('hero');h.className='hero';h.onclick=null;h.style.cursor='';['watch','cpt-dash','obj-dash','det-dash','point-banner'].forEach(i=>{const e=document.getElementById(i);if(e)e.innerHTML='';});document.getElementById('detail-wrap').style.display='block';renderDashAnnual();return;}
   const ym=curYM();const t=txYM(ym);
   const rev=sumC(t,'Revenu');const fix=sumC(t,'Dépenses fixes');
   const vr=sumC(t,'Dépenses variables');const ep=sumC(t,'Epargne');
