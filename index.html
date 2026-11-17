@@ -77,6 +77,7 @@ window._fb = { db, auth, doc, setDoc, getDoc, getDocs, onSnapshot, collection, a
 }
 *{box-sizing:border-box;margin:0;padding:0}
 select{pointer-events:none}
+input[data-kind]{cursor:pointer;caret-color:transparent}
 select{color-scheme:dark}
 :root.light select{color-scheme:light}
 .bc-lbl{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin:14px 0 6px}
@@ -1019,6 +1020,96 @@ function ouvrirListe(s){
   });
 }
 function fermerListe(){document.getElementById('picker')?.remove();}
+
+// ═══════════════ DATES ET MOIS ═══════════════
+// Les champs date/mois d'Android (format américain, fenêtre blanche) deviennent des champs de l'appli :
+// affichage en français, calendrier sombre. « .value » reste au format AAAA-MM-JJ / AAAA-MM.
+const _valDesc=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');
+const JOURS=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+const MOIS_C=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+function isoJour(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function libDate(iso,kind,court2){
+  if(!iso)return'';
+  if(kind==='month'){const[y,m]=iso.split('-');return MFR[+m-1]+' '+y;}
+  const d=new Date(iso+'T12:00'),t=new Date(),h=new Date();h.setDate(t.getDate()-1);
+  const court=d.getDate()+' '+MOIS_C[d.getMonth()]+(d.getFullYear()!==t.getFullYear()?' '+d.getFullYear():'');
+  // Champ étroit (deux colonnes) : version courte
+  if(court2)return iso===isoJour(t)?"Aujourd'hui":iso===isoJour(h)?'Hier':court;
+  if(iso===isoJour(t))return"Aujourd'hui, "+court;
+  if(iso===isoJour(h))return'Hier, '+court;
+  const j=JOURS[d.getDay()];return j[0].toUpperCase()+j.slice(1)+' '+court;
+}
+function ameliorerDates(root){
+  (root.querySelectorAll?root:document).querySelectorAll('input[type=date],input[type=month]').forEach(inp=>{
+    if(inp.dataset.kind)return;
+    const kind=inp.type==='month'?'month':'date',iso=_valDesc.get.call(inp);
+    inp.dataset.kind=kind;inp.type='text';inp.readOnly=true;inp.setAttribute('inputmode','none');
+    if(!inp.placeholder)inp.placeholder=kind==='month'?'Choisir un mois':'Choisir une date';
+    Object.defineProperty(inp,'value',{configurable:true,
+      get(){return inp.dataset.iso||'';},
+      set(v){inp.dataset.iso=v||'';_valDesc.set.call(inp,libDate(v,kind,!!inp.closest('.frow')));}});
+    inp.value=iso;
+  });
+}
+(function initDates(){
+  const go=()=>{ameliorerDates(document);new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1)ameliorerDates(n);}))).observe(document.body,{childList:true,subtree:true});};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go();
+})();
+document.addEventListener('click',e=>{
+  const inp=e.target.closest&&e.target.closest('input[data-kind]');
+  if(inp&&!inp.disabled){e.preventDefault();inp.blur();ouvrirCalendrier(inp);}
+},true);
+
+let _cal=null;
+function ouvrirCalendrier(inp){
+  fermerListe();
+  const kind=inp.dataset.kind,v=inp.value,auj=new Date();
+  const base=v?new Date((kind==='month'?v+'-01':v)+'T12:00'):auj;
+  _cal={inp,kind,y:base.getFullYear(),m:base.getMonth()};
+  const lbl=inp.closest('.fgrp')?.querySelector('.flbl')?.textContent?.trim()||(kind==='month'?'Mois':'Date');
+  const facultatif=/facultatif/i.test(lbl);
+  const ov=document.createElement('div');ov.id='picker';
+  ov.style.cssText='position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML=`<div role="dialog" aria-label="${esc(lbl)}" style="background:var(--surf);border-radius:18px 18px 0 0;width:100%;max-width:480px;padding:8px 14px calc(14px + env(safe-area-inset-bottom))">
+    <div style="width:36px;height:4px;border-radius:2px;background:var(--border2);margin:2px auto 10px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-size:15px;font-weight:600;color:var(--text)">${esc(lbl.replace(/\s*\(facultatif\)/i,''))}</span><button type="button" aria-label="Fermer" onclick="fermerListe()" style="background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer;padding:4px 6px">✕</button></div>
+    <div id="cal-quick" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    <div id="cal-body"></div>
+  </div>`;
+  ov.addEventListener('click',e=>{if(e.target===ov)fermerListe();});
+  document.body.appendChild(ov);
+  const q=document.getElementById('cal-quick');
+  const chip=(t,on,fn)=>`<button type="button" class="cpt-ch ${on?'on':''}" onclick="${fn}">${t}</button>`;
+  if(kind==='date'){const h=new Date();h.setDate(h.getDate()-1);const ah=new Date();ah.setDate(ah.getDate()-2);
+    q.innerHTML=chip("Aujourd'hui",v===isoJour(auj),`calChoisir('${isoJour(auj)}')`)+chip('Hier',v===isoJour(h),`calChoisir('${isoJour(h)}')`)+chip('Avant-hier',v===isoJour(ah),`calChoisir('${isoJour(ah)}')`)+(facultatif?chip('Aucune date',!v,`calChoisir('')`):'');}
+  else q.innerHTML=facultatif?chip('Pas d\'échéance',!v,`calChoisir('')`):'';
+  if(!q.innerHTML)q.style.display='none';
+  calDessiner();
+}
+function calDessiner(){
+  const c=_cal,b=document.getElementById('cal-body');if(!c||!b)return;
+  const v=c.inp.value,min=c.inp.getAttribute('min')||'',auj=new Date();
+  const ar=(t,fn,lab)=>`<button type="button" aria-label="${lab}" onclick="${fn}" style="width:34px;height:34px;border-radius:50%;border:none;background:var(--surf2);color:var(--text2);font-size:18px;cursor:pointer">${t}</button>`;
+  if(c.kind==='month'){
+    b.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 2px 10px">${ar('‹','calNav(-12)','Année précédente')}<span style="font-weight:600;color:var(--text)">${c.y}</span>${ar('›','calNav(12)','Année suivante')}</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">${MS.map((n,i)=>{const iso=c.y+'-'+String(i+1).padStart(2,'0'),off=min&&iso<min,on=iso===v,td=iso===isoJour(auj).slice(0,7);
+        return `<button type="button" ${off?'disabled':''} onclick="calChoisir('${iso}')" style="padding:12px 0;border-radius:10px;border:none;font-size:13.5px;font-family:var(--font);cursor:${off?'default':'pointer'};background:${on?'var(--blue)':'var(--surf2)'};color:${on?'#fff':off?'var(--text3)':'var(--text)'};${td&&!on?'box-shadow:inset 0 0 0 1px var(--blue)':''};font-weight:${on?600:400}">${n}</button>`;}).join('')}</div>`;
+    return;
+  }
+  const premier=new Date(c.y,c.m,1),dec=(premier.getDay()+6)%7,nbj=new Date(c.y,c.m+1,0).getDate();
+  let g=['L','M','M','J','V','S','D'].map(x=>`<div style="font-size:11px;color:var(--text3);padding:4px 0">${x}</div>`).join('');
+  for(let i=0;i<dec;i++)g+='<div></div>';
+  for(let d=1;d<=nbj;d++){const iso=c.y+'-'+String(c.m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'),on=iso===v,td=iso===isoJour(auj),off=min&&iso<min;
+    g+=`<button type="button" ${off?'disabled':''} onclick="calChoisir('${iso}')" style="height:38px;width:38px;margin:0 auto;border-radius:50%;border:none;font-size:13.5px;font-family:var(--font);cursor:${off?'default':'pointer'};background:${on?'var(--blue)':'transparent'};color:${on?'#fff':off?'var(--text3)':'var(--text)'};font-weight:${on?600:400};${td&&!on?'box-shadow:inset 0 0 0 1px var(--blue)':''}">${d}</button>`;}
+  b.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 2px 8px">${ar('‹','calNav(-1)','Mois précédent')}<span style="font-weight:600;color:var(--text)">${MFR[c.m]} ${c.y}</span>${ar('›','calNav(1)','Mois suivant')}</div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center">${g}</div>`;
+}
+function calNav(n){const c=_cal;if(!c)return;const d=new Date(c.y,c.m+n,1);c.y=d.getFullYear();c.m=d.getMonth();calDessiner();}
+function calChoisir(iso){
+  const c=_cal;if(!c)return;
+  c.inp.value=iso;fermerListe();
+  c.inp.dispatchEvent(new Event('input',{bubbles:true}));c.inp.dispatchEvent(new Event('change',{bubbles:true}));
+}
 
 // ═══════════════ CHOIX DU OU DES COMPTES (paiement simple ou réparti) ═══════════════
 // Composant commun : formulaire d'ajout, modification, prêts/emprunts, remboursements.
