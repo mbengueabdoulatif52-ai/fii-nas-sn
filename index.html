@@ -6,44 +6,54 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="FII'NAS">
+<meta name="apple-mobile-web-app-title" content="FII'NAS SN">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#1d3461">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f0f0f" id="theme-color-meta">
-<title>FII'NAS</title>
+<title>FII'NAS SN</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js" crossorigin="anonymous"></script>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, enableIndexedDbPersistence, doc, setDoc, getDoc, getDocs, onSnapshot, collection, addDoc, deleteDoc, query, orderBy, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, setDoc as _setDoc, getDoc, getDocs, onSnapshot, collection, deleteDoc as _deleteDoc, query, orderBy, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
-  apiKey:            "AIzaSyC5KhJwhBx9oHFHIGnVsexT1pA5nRw1OkQ",
-  authDomain:        "fii-nas.firebaseapp.com",
-  projectId:         "fii-nas",
-  storageBucket:     "fii-nas.firebasestorage.app",
-  messagingSenderId: "702473958247",
-  appId:             "1:702473958247:web:eab92d357a584cc42035c2"
+  apiKey:            "AIzaSyDNb0ei06G6_zyC0IFHLry2fd84N0d6dGI",
+  authDomain:        "fii-nas-sn.firebaseapp.com",
+  projectId:         "fii-nas-sn",
+  storageBucket:     "fii-nas-sn.firebasestorage.app",
+  messagingSenderId: "681237565391",
+  appId:             "1:681237565391:web:e258ab568b74cb9983ccba"
 };
 
 const app  = initializeApp(firebaseConfig);
-const db   = getFirestore(app);
+// Cache local (mode hors ligne) — nouvelle méthode, gère plusieurs onglets
+let db;
+try{ db = initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})}); }
+catch(e){ db = getFirestore(app); }
 const auth = getAuth(app);
 
-// Activer le mode hors ligne
-enableIndexedDbPersistence(db).catch(err=>{
-  if(err.code==='failed-precondition'){
-    console.warn('Persistence désactivée : plusieurs onglets ouverts');
-  } else if(err.code==='unimplemented'){
-    console.warn('Persistence non supportée sur ce navigateur');
-  }
-});
+// ÉCRITURES : Firestore applique l'écriture sur le téléphone tout de suite, mais la promesse
+// n'aboutit qu'au contact du serveur. Hors ligne ou réseau lent, l'écran restait bloqué.
+// Désormais : une erreur immédiate (accès refusé…) est signalée ; au-delà de 2,5 s on considère
+// l'écriture enregistrée localement (elle se synchronisera seule) ; une erreur tardive est signalée.
+function soft(pr,ret){
+  return new Promise((res,rej)=>{
+    let done=false;
+    pr.then(()=>{if(!done){done=true;res(ret);}})
+      .catch(e=>{if(!done){done=true;rej(e);}else if(window.toast)window.toast('⚠ Synchronisation refusée : '+e.message);});
+    setTimeout(()=>{if(!done){done=true;res(ret);}},2500);
+  });
+}
+const setDoc=(r,d,o)=>soft(o?_setDoc(r,d,o):_setDoc(r,d));
+const deleteDoc=r=>soft(_deleteDoc(r));
+const addDoc=(c,d)=>{const r=doc(c);return soft(_setDoc(r,d),r);};
 
 window._fb = { db, auth, doc, setDoc, getDoc, getDocs, onSnapshot, collection, addDoc, deleteDoc, query, orderBy, where, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut };
 </script>
@@ -68,6 +78,12 @@ window._fb = { db, auth, doc, setDoc, getDoc, getDocs, onSnapshot, collection, a
 *{box-sizing:border-box;margin:0;padding:0}
 select{color-scheme:dark}
 :root.light select{color-scheme:light}
+.bc-lbl{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin:14px 0 6px}
+.bc-opt{display:flex;gap:10px;align-items:flex-start;border:0.5px solid var(--border);border-radius:12px;padding:10px;margin-bottom:6px;font-size:12px;color:var(--text);cursor:pointer}
+.bc-opt.on{border-color:var(--blue);background:var(--bd)}
+.bc-rd{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--text3);flex-shrink:0;margin-top:1px;box-sizing:border-box}
+.bc-opt.on .bc-rd{border:5px solid var(--blue)}
+.bc-sm{color:var(--text2);font-size:11px;margin-top:3px;line-height:1.45}
 body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
 html,body{background:var(--bg);min-height:100vh;overflow-x:hidden;max-width:100vw}
 body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin:0 auto;padding-top:57px;padding-bottom:88px;overflow-x:hidden}
@@ -78,16 +94,7 @@ body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin
 #auth h1{font-size:26px;font-weight:600;margin-bottom:8px}
 #auth p{font-size:14px;color:var(--text2);margin-bottom:2rem;line-height:1.6;max-width:280px}
 .btn-g{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;padding:14px;background:var(--surf);border:1px solid var(--border2);border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:14px;font-weight:500;cursor:pointer;transition:.15s}
-.btn-g:hover{opacity:.9}
-.btn-g:disabled{opacity:.6;cursor:default}
-.btn-g{background:var(--text)!important;color:var(--bg)!important;border-color:transparent!important;min-height:52px}
-#auth-msg{min-height:20px;margin:12px 0 0;font-size:13px;color:var(--text2);max-width:280px}
-#auth-msg.err{color:var(--red)}
-.auth-trust{display:flex;gap:10px;align-items:flex-start;text-align:left;max-width:300px;margin-top:2rem;padding:12px 14px;border:0.5px solid var(--border2);border-radius:var(--r);background:var(--surf);font-size:12.5px;line-height:1.5;color:var(--text2)}
-.auth-trust svg{flex:none;margin-top:1px;color:var(--green)}
-#load-slow{display:none;margin-top:14px;text-align:center}
-#load-slow p{font-size:13px;color:var(--text2);margin:0 0 10px}
-#load-slow button{padding:10px 18px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--surf);color:var(--text);font-family:var(--font);font-size:13px;cursor:pointer}
+.btn-g:hover{background:var(--surf2)}
 
 /* TOPBAR */
 #topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;z-index:100;background:rgba(17,17,17,.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:0.5px solid var(--border)}
@@ -95,20 +102,43 @@ body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin
 .av img{width:100%;height:100%;object-fit:cover}
 .topbar-l{display:flex;align-items:center;gap:10px}
 .uname{font-size:13px;font-weight:500}
-.usync{font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px}
+.usync{font-size:11px;color:var(--text3);display:flex;align-items:center;gap:4px}
 .sdot{width:5px;height:5px;border-radius:50%;background:var(--green);display:inline-block;animation:pulse 2s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.mnav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 12px}
+.mnav-a{width:34px;height:34px;border-radius:50%;border:none;background:var(--surf2);color:var(--text2);font-size:20px;line-height:1;cursor:pointer;font-family:var(--font);flex-shrink:0}
+.mnav .msel-wrap{background:transparent;border:none;padding:0;justify-content:center;flex:1}
+.mnav #gm{font-size:15px;font-weight:600;text-align:center;text-align-last:center}
+.mnav .msel-arr{display:none}
+#gm-park{display:none}
+.hcmp{font-size:12px;color:var(--text2);margin:-4px 0 12px}
+.pat-v{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.pat-s{font-size:12px;color:var(--text2);margin-top:3px}
+.bd-row{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-top:12px}
+.bd-row:first-of-type{margin-top:0}
+.bd-of{font-size:12px;color:var(--text3)}
+.bd-leg{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--text3);margin-top:12px}
+.bd-leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.dayh{display:flex;justify-content:space-between;font-size:12px;font-weight:600;color:var(--text2);padding:12px 4px 6px}
+.dayh .n{font-variant-numeric:tabular-nums}
+.txg{background:var(--surf);border:0.5px solid var(--border);border-radius:var(--r);padding:2px 14px}
+.txg .txi{cursor:pointer}
+.txic svg{display:block}
+.bmonths{display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;margin-bottom:6px;scrollbar-width:none}
+.bmonths::-webkit-scrollbar{display:none}
+.bmc{flex-shrink:0;padding:8px 13px;border-radius:20px;border:0.5px solid var(--border);background:var(--surf);color:var(--text2);font-size:12px;font-family:var(--font);cursor:pointer;white-space:nowrap}
+.bmc.active{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
 .msel-wrap{display:flex;align-items:center;gap:6px;background:var(--surf);border:1px solid var(--border);border-radius:var(--rs);padding:7px 10px}
 .msel-wrap select{background:transparent;border:none;color:var(--text);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;outline:none;appearance:none;padding-right:12px;color-scheme:dark}
 .light .msel-wrap select{color-scheme:light}
-.msel-arr{color:var(--text3);font-size:10px;pointer-events:none;margin-left:-10px}
+.msel-arr{color:var(--text3);font-size:11px;pointer-events:none;margin-left:-10px}
 
 /* NAVBAR */
 #nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:rgba(15,15,30,.97);backdrop-filter:blur(24px);border-top:1px solid rgba(99,102,241,.15);display:flex;padding:6px 4px 14px;z-index:100}
 .ni{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;border:none;background:transparent;cursor:pointer;border-radius:var(--rs);color:var(--text3);font-family:var(--font);transition:.15s}
 .ni.active{color:var(--blue)}
 .ni svg{width:20px;height:20px}
-.ni span{font-size:10px;font-weight:500;font-family:var(--font)}
+.ni span{font-size:11px;font-weight:500;font-family:var(--font)}
 .ni-add-ring{width:48px;height:48px;background:var(--blue);border-radius:14px;display:flex;align-items:center;justify-content:center;margin-bottom:1px}
 
 /* PAGES */
@@ -123,11 +153,11 @@ body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin
 .sk-h{height:28px;margin:8px 0;border-radius:6px}
 .sk-card{background:var(--surf);border:0.5px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:10px}
 .card{background:var(--surf);border:0.5px solid var(--border);border-radius:var(--r);padding:16px 18px;margin-bottom:10px}
-.ct{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px}
+.ct{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px}
 
 /* HERO */
 .hero{background:var(--surf);border:0.5px solid var(--border);border-left:3px solid var(--green);border-radius:0 var(--r) var(--r) 0;padding:20px 18px;margin-bottom:10px}
-.hlbl{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;font-weight:600}
+.hlbl{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;font-weight:600}
 .hamt{font-size:34px;font-weight:600;font-family:var(--font);letter-spacing:-.01em}
 .hamt.pos{color:var(--green)}.hamt.neg{color:var(--red)}
 .hmeta{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;margin-top:14px;border-top:0.5px solid var(--border);padding-top:12px}
@@ -153,7 +183,7 @@ body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin
 
 /* TABLE */
 .rtbl{width:100%;border-collapse:collapse}
-.rtbl th{font-size:10px;color:var(--text3);font-weight:500;padding:4px 5px;border-bottom:1px solid var(--border);text-align:right}
+.rtbl th{font-size:11px;color:var(--text3);font-weight:500;padding:4px 5px;border-bottom:1px solid var(--border);text-align:right}
 .rtbl th:first-child{text-align:left}
 .rtbl td{padding:8px 5px;border-bottom:0.5px solid var(--border);font-size:12px;text-align:right;font-family:var(--font);font-weight:500;color:var(--text2)}
 .rtbl td:first-child{text-align:left;color:var(--text);font-family:var(--font);font-size:12px}
@@ -182,7 +212,7 @@ select option{background:#2c2c2e;color:#f5f5f7}
 .chip.r{background:var(--gd);border-color:rgba(48,209,88,.35);color:var(--green)}
 .chip.f{background:var(--bd);border-color:rgba(10,132,255,.35);color:var(--blue)}
 .chip.v{background:var(--rd);border-color:rgba(255,69,58,.35);color:var(--red)}
-.chip.e{background:var(--pd);border-color:rgba(191,90,242,.35);color:var(--purple)}
+.chip.e{background:var(--bd);border-color:rgba(10,132,255,.35);color:var(--blue)}
 
 /* BTN */
 .btn-p{width:100%;padding:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);font-family:var(--font);font-size:14px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:.15s}
@@ -195,19 +225,19 @@ select option{background:#2c2c2e;color:#f5f5f7}
 .txi{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border)}
 .txi:last-child{border-bottom:none}
 .txic{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
-.txic.r{background:var(--gd)}.txic.f{background:var(--bd)}.txic.v{background:var(--rd)}.txic.e{background:var(--pd)}
+.txic.r{background:var(--gd);color:var(--green)}.txic.f{background:var(--rd);color:var(--red)}.txic.v{background:var(--rd);color:var(--red)}.txic.e{background:var(--bd);color:var(--blue)}
 .txin{flex:1;min-width:0}
 .txp{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .txm{font-size:11px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .txr{text-align:right;flex-shrink:0}
 .txa{font-size:14px;font-weight:600;font-family:var(--font)}
-.txa.g{color:var(--green)}.txa.r{color:var(--red)}.txa.p{color:var(--purple)}
+.txa.g{color:var(--green)}.txa.r{color:var(--red)}.txa.p{color:var(--blue)}
 .txd{background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:3px;display:block;margin-left:auto;margin-top:2px}
 .txd:hover{color:var(--red)}
 
 /* BADGES */
-.bdg{display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:500}
-.bdg.r{background:var(--gd);color:var(--green)}.bdg.f{background:var(--bd);color:var(--blue)}.bdg.v{background:var(--rd);color:var(--red)}.bdg.e{background:var(--pd);color:var(--purple)}
+.bdg{display:inline-block;padding:2px 7px;border-radius:20px;font-size:11px;font-weight:500}
+.bdg.r{background:var(--gd);color:var(--green)}.bdg.f{background:var(--rd);color:var(--red)}.bdg.v{background:var(--rd);color:var(--red)}.bdg.e{background:var(--bd);color:var(--blue)}
 
 /* BUDGET */
 .ytabs{display:flex;gap:6px;margin-bottom:10px}
@@ -254,22 +284,20 @@ select option{background:#2c2c2e;color:#f5f5f7}
 </head>
 <body>
 
-<div id="loading"><div class="spin"></div><p style="font-size:13px;color:var(--text2)">Chargement...</p>
-  <div id="load-slow"><p>La connexion est lente. Patientez encore un peu.</p><button type="button" onclick="location.reload()">Réessayer</button></div></div>
+<div id="loading"><div class="spin"></div><p style="font-size:13px;color:var(--text3)">Chargement...</p></div>
 
 <div id="auth" style="display:none">
   <div class="logo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v2m0 8v2M9.5 9h3a1.5 1.5 0 0 1 0 3h-3m0 0h3.5a1.5 1.5 0 0 1 0 3H9.5"/></svg></div>
   <h1 style="color:var(--text);font-weight:500">FII'NAS</h1>
   <p>Suivez revenus, dépenses et épargne. Synchronisé sur tous vos appareils en temps réel.</p>
-  <button class="btn-g" id="btn-google" type="button" onclick="doSignIn()">
+  <button class="btn-g" onclick="doSignIn()">
     <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-    <span id="btn-google-label">Continuer avec Google</span>
+    Continuer avec Google
   </button>
-  <p id="auth-msg" role="status" aria-live="polite"></p>
-  <div class="auth-trust"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span>Vos données restent privées : seules les personnes que vous invitez y ont accès.</span></div>
 </div>
 
 <div id="app" style="display:none">
+  <div id="gm-park"></div>
 
   <div id="topbar">
     <div class="topbar-l">
@@ -282,22 +310,17 @@ select option{background:#2c2c2e;color:#f5f5f7}
     <div style="display:flex;align-items:center;gap:6px">
       <button id="hide-btn" onclick="toggleHide()" style="width:32px;height:32px;border-radius:10px;border:0.5px solid var(--border);background:var(--surf2);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2);transition:.2s"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
       <button id="theme-btn" onclick="toggleTheme()" style="width:32px;height:32px;border-radius:10px;border:0.5px solid var(--border);background:var(--surf2);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2);transition:.2s"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
-      <button id="space-btn" onclick="toggleSpaceMenu()" style="display:flex;align-items:center;gap:4px;padding:5px 9px;background:var(--surf2);border:0.5px solid var(--border);border-radius:var(--rs);cursor:pointer;font-family:var(--font);font-size:11px;font-weight:500;color:var(--text2);max-width:90px">
-        <span id="space-icon" style="display:flex;align-items:center;color:var(--text2)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
-        <span id="space-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Perso</span>
-      </button>
-      <div class="msel-wrap">
+      <div class="msel-wrap" id="gm-wrap">
         <select id="gm" onchange="onMChange()"></select>
         <span class="msel-arr">▾</span>
       </div>
-    </div>
-    <div id="space-menu" style="display:none;position:fixed;top:54px;right:16px;background:var(--surf);border:0.5px solid var(--border2);border-radius:var(--r);padding:8px;z-index:200;min-width:210px;box-shadow:0 8px 24px rgba(0,0,0,.3)">
-      <div id="space-menu-list"></div>
     </div>
   </div>
 
   <!-- PAGE DASHBOARD -->
   <div id="page-dash" class="page active">
+    <div id="backup-banner"></div>
+    <div class="mnav"><button class="mnav-a" onclick="shiftMonth(-1)" aria-label="Mois précédent">‹</button><div class="mnav-slot"></div><button class="mnav-a" onclick="shiftMonth(1)" aria-label="Mois suivant">›</button></div>
     <div class="hero" id="hero"></div>
     <div class="mgrid" id="dm"></div>
     <div class="tabs" id="dtabs">
@@ -357,6 +380,7 @@ select option{background:#2c2c2e;color:#f5f5f7}
 
   <!-- PAGE HISTORIQUE -->
   <div id="page-tx" class="page">
+    <div class="mnav"><button class="mnav-a" onclick="shiftMonth(-1)" aria-label="Mois précédent">‹</button><div class="mnav-slot"></div><button class="mnav-a" onclick="shiftMonth(1)" aria-label="Mois suivant">›</button></div>
     <div style="position:relative;margin-bottom:10px">
       <svg style="position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:.4;pointer-events:none" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
       <input id="tx-search" class="finp" type="text" placeholder="Rechercher poste, commentaire, montant..." style="padding-left:36px;font-size:13px" oninput="renderTX()">
@@ -383,17 +407,14 @@ select option{background:#2c2c2e;color:#f5f5f7}
 
   <!-- PAGE BUDGET -->
   <div id="page-bud" class="page">
-    <div class="ytabs" id="ytabs"></div>
-    <div class="mtabs" id="mtabs"></div>
+    <div class="ytabs" id="ytabs" style="display:none"></div>
+    <div class="mtabs" id="mtabs" style="display:none"></div>
+    <div class="bmonths" id="bmonths"></div>
     <div id="bud-solde"></div>
-    <div style="display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-bottom:6px">
-      <button id="bud-plan-btn" onclick="openPlanSheet()" style="background:var(--bd);border:0.5px solid var(--blue);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--blue);cursor:pointer;font-family:var(--font);display:flex;align-items:center;gap:5px">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-        Plan 2026–2031
-      </button>
-      <button id="bud-copy-btn" onclick="openCopyBudget()" style="background:none;border:0.5px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);cursor:pointer;font-family:var(--font);display:flex;align-items:center;gap:5px">
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button id="bud-copy-btn" onclick="openCopyBudget()" style="flex:1;justify-content:center;background:none;border:0.5px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);cursor:pointer;font-family:var(--font);display:flex;align-items:center;gap:5px">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-        Copier depuis un autre mois
+        Copier un mois
       </button>
     </div>
     <div id="bform"></div>
@@ -424,7 +445,7 @@ select option{background:#2c2c2e;color:#f5f5f7}
         </div>
         <div>
           <div style="font-size:14px;font-weight:500;color:#f0f0f0">Importer des relevés</div>
-          <div style="font-size:11px;color:#888;margin-top:2px">Wave, Orange Money ou fichier Excel</div>
+          <div style="font-size:11px;color:#888;margin-top:2px">Depuis un fichier Excel</div>
         </div>
         <div style="margin-left:auto;color:#555;font-size:18px">›</div>
       </div>
@@ -440,12 +461,6 @@ select option{background:#2c2c2e;color:#f5f5f7}
       </div>
       <div class="srow">
         <div>
-          <div class="slbl">Rôle actuel</div>
-          <div class="ssub" id="role-display">Admin · Espace personnel</div>
-        </div>
-      </div>
-      <div class="srow">
-        <div>
           <div class="slbl">Déconnexion</div>
           <div class="ssub">Retour à l'écran de connexion</div>
         </div>
@@ -457,8 +472,8 @@ select option{background:#2c2c2e;color:#f5f5f7}
       <div id="security-ui"></div>
     </div>
     <div class="card">
-      <div class="ct">Mes espaces</div>
-      <div id="spaces-ui"></div>
+      <div class="ct">Sauvegarde</div>
+      <div id="backup-ui"></div>
     </div>
     <div class="card">
       <div class="ct">Postes personnalisés</div>
@@ -480,52 +495,6 @@ select option{background:#2c2c2e;color:#f5f5f7}
       Retour
     </button>
 
-    <!-- IMPORT WAVE / ORANGE MONEY -->
-    <div class="card">
-      <div class="ct">Import Wave / Orange Money</div>
-      <p style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6">Fais une capture d'écran de ton historique Wave ou Orange Money et uploade-la. L'IA va lire les transactions automatiquement.</p>
-
-      <!-- Upload zone -->
-      <div id="img-drop-zone" onclick="document.getElementById('img-input').click()"
-        style="border:1.5px dashed var(--border2);border-radius:var(--r);padding:28px 20px;text-align:center;cursor:pointer;transition:.15s;margin-bottom:12px">
-        <div style="font-size:24px;margin-bottom:8px">📸</div>
-        <div style="font-size:13px;font-weight:500;color:var(--text)">Appuie pour choisir une image</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:4px">Wave ou Orange Money · JPG, PNG</div>
-      </div>
-      <input type="file" id="img-input" accept="image/*" style="display:none" onchange="onImgSelected(this)">
-
-      <!-- Preview -->
-      <div id="img-preview" style="display:none;margin-bottom:12px">
-        <img id="img-thumb" style="width:100%;border-radius:var(--rs);max-height:200px;object-fit:contain;background:var(--surf2)" alt="Preview">
-        <div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center" id="img-name"></div>
-      </div>
-
-      <!-- Analyse btn -->
-      <button class="btn-p" id="analyse-img-btn" onclick="analyseImage()" style="display:none">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        Analyser avec l'IA
-      </button>
-
-      <!-- Loading -->
-      <div id="img-loading" style="display:none;text-align:center;padding:20px">
-        <div class="spin" style="margin:0 auto 10px"></div>
-        <div style="font-size:12px;color:var(--text2)">L'IA analyse votre historique...</div>
-      </div>
-
-      <!-- Résultats détectés -->
-      <div id="img-results" style="display:none">
-        <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin:14px 0 10px">Transactions détectées</div>
-        <div id="img-tx-list"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 0" id="img-stats"></div>
-        <div style="background:var(--surf2);border-radius:var(--rs);overflow:hidden;height:4px;margin-bottom:6px"><div id="img-pb" style="height:4px;background:var(--green);border-radius:var(--rs);width:0%;transition:width .3s"></div></div>
-        <div id="img-pt" style="font-size:11px;color:var(--text3);text-align:center;margin-bottom:10px"></div>
-        <button class="btn-p" id="img-import-btn" onclick="importDetectedTx()">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12l5 5L20 7"/></svg>
-          Importer les transactions sélectionnées
-        </button>
-      </div>
-    </div>
-
     <!-- IMPORT EXCEL (gardé) -->
     <div class="card">
       <div class="ct">Import Excel</div>
@@ -540,24 +509,23 @@ select option{background:#2c2c2e;color:#f5f5f7}
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         Importer
       </button>
-      <div id="imp-log" style="margin-top:10px;background:var(--surf2);border-radius:var(--rs);padding:10px;max-height:150px;overflow-y:auto;font-size:10px;color:var(--text3);display:none"></div>
+      <div id="imp-log" style="margin-top:10px;background:var(--surf2);border-radius:var(--rs);padding:10px;max-height:150px;overflow-y:auto;font-size:11px;color:var(--text3);display:none"></div>
     </div>
   </div>
   <!-- NAVBAR -->
   <nav id="nav">
     <button class="ni active" onclick="goP('dash',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-      <span>Dashboard</span>
+      <span>Accueil</span>
     </button>
     <button class="ni" onclick="goP('tx',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
       <span>Historique</span>
     </button>
-    <button class="ni" onclick="goP('add',this)">
+    <button class="ni" onclick="goP('add',this)" aria-label="Ajouter une transaction" style="justify-content:center">
       <div class="ni-add-ring">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
       </div>
-      <span>Ajouter</span>
     </button>
     <button class="ni" onclick="goP('bud',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
@@ -604,15 +572,16 @@ select option{background:#2c2c2e;color:#f5f5f7}
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12l5 5L20 7"/></svg>
       Enregistrer les modifications
     </button>
+    <button onclick="const _id=editingId;closeEditTx();delTx(_id)" style="width:100%;margin-top:8px;padding:12px;border-radius:var(--rs);border:0.5px solid rgba(255,69,58,.4);background:transparent;color:var(--red);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">Supprimer cette transaction</button>
   </div>
 </div>
 
 <script>
 const DEFAULT_CATS={
-  'Revenu':['Salaire net','Revenus investissements','Extras professionnels','Entrée exceptionnelles','Autres'],
-  'Dépenses fixes':['Frais bancaires','Assurances','Mensualité de prêt','Aides versées','Frais de scolarité','Gardien','Electricité','Eau','Location','Abonnements','Téléphone'],
-  'Dépenses variables':['Achats divers','Alimentation','Entretien auto','Santé','Dons','Loisir','Prêts','Remboursement','Imprévus','Transport','Voiture','Sport','Investissements'],
-  'Epargne':['Epargne projet','Epargne de précaution']
+  'Revenu':['Salaire','Autres revenus'],
+  'Dépenses fixes':['Loyer','Electricité','Eau','Téléphone et internet'],
+  'Dépenses variables':['Alimentation','Transport','Santé','Famille et dons','Loisirs','Imprévus'],
+  'Epargne':['Epargne']
 };
 // CATS est maintenant dynamique — initialisé depuis Firebase ou DEFAULT_CATS au premier login
 let CATS={...DEFAULT_CATS};
@@ -648,7 +617,59 @@ function loadCatsFromSettings(settings){
   }
 }
 
-const CICO={'Revenu':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#30d158"/></svg>','Dépenses fixes':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#3b82f6"/></svg>','Dépenses variables':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#ef4444"/></svg>','Epargne':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#a855f7"/></svg>'};
+// ═══════════════ ACCUEIL (premier lancement) ═══════════════
+// Une seule question : d'où viennent les revenus. Elle crée les postes de revenus ;
+// les dépenses courantes sont les mêmes pour tous et restent modifiables.
+const SOURCES_REVENUS=[
+  ['salaire','Salaire','Salaire'],
+  ['ventes','Ventes, commerce','Ventes'],
+  ['bourse','Bourse','Bourse'],
+  ['famille','Aide de la famille','Aide de la famille'],
+  ['loyers','Loyers perçus','Loyers perçus'],
+  ['presta','Prestations, freelance','Prestations'],
+  ['autre','Autre','Autres revenus']
+];
+let onbSel=new Set(['salaire']);
+function onbPostesRevenu(){
+  const l=SOURCES_REVENUS.filter(x=>onbSel.has(x[0])).map(x=>x[2]);
+  return l.length?l:['Autres revenus'];
+}
+function openOnboarding(){
+  if(document.getElementById('onb'))return;
+  const bg=document.createElement('div');bg.id='onb';
+  bg.style.cssText='position:fixed;inset:0;background:var(--bg);z-index:1000;overflow-y:auto;display:flex;justify-content:center';
+  document.body.appendChild(bg);renderOnboarding();
+}
+function renderOnboarding(){
+  const bg=document.getElementById('onb');if(!bg)return;
+  const dep=[...DEFAULT_CATS['Dépenses fixes'],...DEFAULT_CATS['Dépenses variables']];
+  bg.innerHTML=`<div style="width:100%;max-width:440px;padding:36px 20px 28px">
+    <div style="font-size:22px;font-weight:600;color:var(--text);margin-bottom:6px">Bienvenue sur FII'NAS</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.5">D'où viennent tes revenus ? Choisis tout ce qui te concerne.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">${SOURCES_REVENUS.map(([k,l])=>{const on=onbSel.has(k);
+      return `<button onclick="onbToggle('${k}')" aria-pressed="${on}" style="display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:999px;font-size:13px;font-family:var(--font);cursor:pointer;border:1px solid ${on?'var(--green)':'var(--border2)'};background:${on?'var(--gd)':'var(--surf)'};color:${on?'var(--green)':'var(--text)'}">${on?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>':''}${l}</button>`;}).join('')}</div>
+    <div style="background:var(--surf);border:0.5px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:18px">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-bottom:8px">Tes postes de départ</div>
+      <div style="font-size:13px;line-height:1.7;color:var(--text)"><span style="color:var(--green);font-weight:500">Revenus :</span> ${esc(onbPostesRevenu().join(', '))}</div>
+      <div style="font-size:13px;line-height:1.7;color:var(--text2)"><span style="color:var(--red);font-weight:500">Dépenses :</span> ${esc(dep.join(', '))}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px">Modifiable à tout moment dans Profil.</div>
+    </div>
+    <button id="onb-go" onclick="finishOnboarding(false)" style="width:100%;height:48px;border:none;border-radius:var(--r);background:var(--green);color:#0b2a1a;font-size:15px;font-weight:600;font-family:var(--font);cursor:pointer">Commencer</button>
+    <button onclick="finishOnboarding(true)" style="width:100%;margin-top:10px;padding:10px;border:none;background:none;color:var(--text2);font-size:13px;font-family:var(--font);cursor:pointer">Passer cette étape</button>
+  </div>`;
+}
+function onbToggle(k){onbSel.has(k)?onbSel.delete(k):onbSel.add(k);renderOnboarding();}
+async function finishOnboarding(passer){
+  const btn=document.getElementById('onb-go');if(btn){btn.disabled=true;btn.textContent='Préparation…';}
+  CATS=JSON.parse(JSON.stringify(DEFAULT_CATS));
+  if(!passer)CATS['Revenu']=onbPostesRevenu();
+  try{await saveSettings();}
+  catch(e){if(btn){btn.disabled=false;btn.textContent='Commencer';}toast('Erreur : '+e.message);return;}
+  document.getElementById('onb')?.remove();
+  syncPostes();renderCPUI();renderCurrent();
+}
+
+const CICO={'Revenu':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#30d158"/></svg>','Dépenses fixes':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#ff453a"/></svg>','Dépenses variables':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#ff453a"/></svg>','Epargne':'<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#0a84ff"/></svg>'};
 const CCLS={'Revenu':'r','Dépenses fixes':'f','Dépenses variables':'v','Epargne':'e'};
 const PC=['#3b82f6','#ef4444','#f59e0b','#a855f7','#22c55e','#ec4899','#06b6d4','#f97316','#84cc16'];
 const MFR=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
@@ -657,8 +678,12 @@ const MS=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','D
 let pendingSaves=0,lastSettingsHash='';
 let uid=null,txs=[],budget={},custom={},unsub1=null,unsub2=null;
 let formDirty=false;
+let budDirty=false; // montants du budget saisis mais pas encore enregistrés
+function budLeaveOk(){return !budDirty||confirm('Tu as modifié le budget sans l\'enregistrer. Abandonner ces changements ?');}
 function setFormDirty(v){formDirty=v;}
 let sharedSpaceId=null; // ID de l'espace partagé (null = espace perso)
+// Partage désactivé : les règles Firestore n'autorisent que l'accès à ses propres données
+const SHARING_ENABLED=false;
 let userRole='admin';   // 'admin' ou 'reader'
 let userName='';        // Nom affiché sur les transactions
 let txFilt='all',txPosteFilter='',dTab='all',bYear=new Date().getFullYear().toString(),bMonth=new Date().getMonth()+1;
@@ -669,6 +694,10 @@ const _fmt=v=>new Intl.NumberFormat('fr-FR').format(Math.round(Math.abs(v)));
 const _fmtS=v=>(v<0?'-':v>0?'+':'')+new Intl.NumberFormat('fr-FR').format(Math.round(Math.abs(v)));
 let hideAmounts=localStorage.getItem('fiinas-hide')==='1';
 const fmt=v=>hideAmounts?'••••••':_fmt(v);
+// Échappement du texte saisi ou importé avant insertion dans la page
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+// Argument texte sûr dans un onclick="..." (gère les apostrophes : « Frais d'école »)
+function jsa(v){return esc(JSON.stringify(String(v==null?'':v)));}
 const fmtS=v=>hideAmounts?'••••••':_fmtS(v);
 function toggleHide(){
   hideAmounts=!hideAmounts;
@@ -683,23 +712,7 @@ function yml(ym){const[y,m]=ym.split('-');return MFR[parseInt(m)-1]+' '+y;}
 
 function waitFB(cb){const t=()=>window._fb?cb():setTimeout(t,50);t();}
 
-function authState(busy,msg,isErr){
-  const b=document.getElementById('btn-google'),l=document.getElementById('btn-google-label'),m=document.getElementById('auth-msg');
-  if(b)b.disabled=busy;
-  if(l)l.textContent=busy?'Connexion en cours...':'Continuer avec Google';
-  if(m){m.textContent=msg||'';m.className=isErr?'err':'';}
-}
-function doSignIn(){
-  authState(true,'Ouverture de la fenêtre Google...',false);
-  waitFB(()=>{
-    const{auth,signInWithPopup,GoogleAuthProvider}=window._fb;
-    signInWithPopup(auth,new GoogleAuthProvider()).catch(e=>{
-      const closed=e&&(e.code==='auth/popup-closed-by-user'||e.code==='auth/cancelled-popup-request');
-      authState(false,closed?'Connexion annulée. Vous pouvez réessayer.':'Connexion impossible. Vérifiez votre connexion internet et réessayez.',!closed);
-    });
-  });
-}
-setTimeout(()=>{const ld=document.getElementById('loading');const sl=document.getElementById('load-slow');if(ld&&ld.style.display!=='none'&&sl)sl.style.display='block';},8000);
+function doSignIn(){waitFB(()=>{const{auth,signInWithPopup,GoogleAuthProvider}=window._fb;signInWithPopup(auth,new GoogleAuthProvider()).catch(e=>toast('Erreur: '+e.message));});}
 function doSignOut(){waitFB(()=>{window._fb.signOut(window._fb.auth);});}
 
 waitFB(()=>{
@@ -712,14 +725,15 @@ waitFB(()=>{
       setUserUI(user);
       renderSkeleton();
       buildMonthSel();
+      placeMonthSel('dash');
       loadUserSpaces();
+      syncDerniereSauvegarde();
   
   checkLockOnStart();
       document.getElementById('f-date').value=new Date().toISOString().split('T')[0];
       syncPostes();
     } else {
       uid=null;
-      authState(false,'',false);
       document.getElementById('auth').style.display='flex';
       document.getElementById('app').style.display='none';
       if(unsub1)unsub1();if(unsub2)unsub2();
@@ -759,37 +773,52 @@ function subscribe(){
     const firstLoad=txs.length===0;
     const newTxs=snap.docs.map(d=>({id:d.id,...d.data()}));
     // Ne re-rendre que si les données ont changé
-    const newHash=newTxs.map(t=>t.id+'|'+t.amt+'|'+t.ts).join(',');
-    const oldHash=txs.map(t=>t.id+'|'+t.amt+'|'+t.ts).join(',');
+    // Empreinte complète : une modification de poste, date ou commentaire est aussi prise en compte
+    const h=l=>l.map(t=>[t.id,t.amt,t.ts,t.date,t.cat,t.poste,t.cmt].join('|')).join(',');
+    const newHash=h(newTxs),oldHash=h(txs);
     txs=newTxs;
     if(firstLoad||newHash!==oldHash)renderCurrent();
-    
-  });
+  },err=>loadError('transactions',err));
   if(unsub2)unsub2();
   unsub2=onSnapshot(doc(db,dataPath()+'/data/settings'),snap=>{
-    if(pendingSaves>0){pendingSaves--;return;}
+    // Écho de nos propres enregistrements : les données sont déjà à jour sur cet appareil
+    if(snap.metadata.hasPendingWrites&&lastSettingsHash)return; // sauf au premier chargement
     if(snap.exists()){
       const d=snap.data();
-      const newHash=JSON.stringify(d.budget||{});
+      // Empreinte de tous les réglages (budgets, détails, postes) : un changement fait sur
+      // un autre appareil est toujours appliqué
+      const newHash=JSON.stringify([d.budget||{},d.budgetDetails||{},d.custom||{},d.cats||null]);
       if(newHash!==lastSettingsHash){
+        lastSettingsHash=newHash;
         budget=d.budget||{};
         budgetDetails=d.budgetDetails||{};
         custom=d.custom||{};
         loadCatsFromSettings(d);
       }
     } else {
+      // Pas encore de réglages. Au premier chargement, la réponse peut venir du cache
+      // local (vide) : on attend la réponse du serveur avant de conclure à un nouveau compte.
+      if(snap.metadata.fromCache)return;
       CATS=JSON.parse(JSON.stringify(DEFAULT_CATS));
-      saveSettings();
+      openOnboarding();
     }
     renderCurrent();renderCPUI();
-  });
+  },err=>loadError('réglages',err));
+}
+let _loadErrShown=false;
+function loadError(what,err){
+  console.error(what,err);
+  if(_loadErrShown)return;_loadErrShown=true;
+  toast(err&&err.code==='permission-denied'?'⚠ Accès refusé ('+what+')':'⚠ Chargement impossible ('+what+') : '+((err&&err.message)||err));
 }
 
 async function saveSettings(){
   const{db,doc,setDoc}=window._fb;
-  lastSettingsHash=JSON.stringify(budget);
-  pendingSaves+=2;
-  await setDoc(doc(db,dataPath()+'/data/settings'),{budget,budgetDetails,custom,cats:CATS},{merge:true});
+  lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,CATS]);
+  // mergeFields : ces 4 champs sont remplacés en entier. Avec {merge:true}, Firestore fusionnait
+  // les sous-niveaux et ne supprimait jamais un poste ramené à 0 : l'ancien montant revenait.
+  await setDoc(doc(db,dataPath()+'/data/settings'),{budget,budgetDetails,custom,cats:CATS},{mergeFields:['budget','budgetDetails','custom','cats']});
+  budDirty=false;
 }
 
 function buildMonthSel(){
@@ -807,6 +836,26 @@ function annualYear(){return parseInt(curYM().split('-')[1]);}
 function txYear(y){return txs.filter(t=>t.date&&t.date.startsWith(String(y)));}
 
 function onMChange(){renderCurrent();}
+// Place le sélecteur de mois dans la page affichée (Accueil, Historique), sinon le range
+function placeMonthSel(p){
+  const w=document.getElementById('gm-wrap');if(!w)return;
+  const slot=document.querySelector('#page-'+p+' .mnav-slot');
+  (slot||document.getElementById('gm-park')).appendChild(w);
+}
+// Flèches ‹ › : mois précédent / suivant (ou année précédente / suivante en vue annuelle)
+function shiftMonth(d){
+  const sel=document.getElementById('gm');if(!sel)return;
+  let v;
+  if(isAnnual())v='annual-'+(annualYear()+d);
+  else{const[y,m]=curYM().split('-').map(Number);const dt=new Date(y,m-1+d,1);v=ymk(dt.getFullYear(),dt.getMonth()+1);}
+  if(![...sel.options].some(o=>o.value===v)){
+    const o=document.createElement('option');o.value=v;
+    o.textContent=v.startsWith('annual-')?'Toute l’année '+v.slice(7):yml(v);
+    const after=[...sel.options].find(x=>!x.disabled&&!x.value.startsWith('annual-')&&x.value>v);
+    if(v.startsWith('annual-'))sel.insertBefore(o,sel.options[0]);else sel.insertBefore(o,after||null);
+  }
+  sel.value=v;renderCurrent();
+}
 
 function renderSkeleton(){
   // Dashboard skeleton
@@ -874,14 +923,19 @@ function goP(p,btn){
     }
   }
   if(p!=='add') setFormDirty(false);
+  if(p!=='bud'&&document.getElementById('page-bud')?.classList.contains('active')){if(!budLeaveOk())return;budDirty=false;}
   document.querySelectorAll('.page').forEach(e=>e.classList.remove('active'));
   document.querySelectorAll('.ni').forEach(e=>e.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   if(btn)btn.classList.add('active');
+  placeMonthSel(p);
+  // Bandeau : ton nom sur l'accueil, le nom de l'écran ailleurs
+  const TITRES={tx:'Historique',add:'Ajouter',bud:'Budget',pro:'Profil',imp:'Importer'};
+  const un=document.getElementById('uname');if(un)un.textContent=p==='dash'?(userName||'—'):(TITRES[p]||'');
   if(p==='dash')renderDash();
   else if(p==='tx')renderTX();
   else if(p==='bud')renderBudPage();
-  else if(p==='pro'){renderCPUI();renderTrash();renderSecurityUI();renderSpacesUI();}
+  else if(p==='pro'){renderCPUI();renderTrash();renderSecurityUI();renderSpacesUI();renderBackupUI();}
   else if(p==='add'){syncPostes();document.getElementById('fmsg').textContent='';}
   else if(p==='imp'){document.getElementById('imp-log').style.display='none';document.getElementById('imp-pb').style.width='0%';document.getElementById('imp-pt').textContent='En attente';}
 }
@@ -899,7 +953,8 @@ function setDTab(el,k){
 function computePatrimoineToday(){
   let epaCumul=0;
   let solCumul=0;
-  txs.forEach(t=>{
+  const d=new Date(),today=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  txs.filter(t=>!t.date||t.date<=today).forEach(t=>{
     if(t.cat==='Epargne'){
       epaCumul+=t.amt;
       solCumul-=t.amt;
@@ -914,6 +969,7 @@ function computePatrimoineToday(){
 
 
 async function renderDash(){
+  renderBackupBanner();
   if(isAnnual()){renderDashAnnual();return;}
   const ym=curYM();const t=txYM(ym);
   const rev=sumC(t,'Revenu');const fix=sumC(t,'Dépenses fixes');
@@ -931,43 +987,44 @@ async function renderDash(){
     if(val===null)return'';
     const good=inv?(val>=0):(val<=0);
     const sign=val>=0?'↑':'↓';
-    return ' <span style="font-size:10px;color:'+(good?'var(--green)':'var(--red)')+'">'+sign+Math.abs(val)+'%</span>';
+    return ' <span style="font-size:11px;color:'+(good?'var(--green)':'var(--red)')+'">'+sign+Math.abs(val)+'%</span>';
   };
 
   // Patrimoine temps réel
   const{epaCumul,solCumul,patrimoine}=computePatrimoineToday();
 
+  // Comparaison avec le mois précédent, en phrase
+  const prevLbl=yml(prevYm).split(' ')[0].toLowerCase();
+  const cmp=diffSol===null?'':diffSol===0?`Comme en ${prevLbl}`:`${Math.abs(diffSol)} % de ${diffSol>0?'plus':'moins'} qu'en ${prevLbl}`;
   document.getElementById('hero').innerHTML=`
-    <div class="hlbl">SOLDE NET · ${yml(ym).toUpperCase()}</div>
+    <div class="hlbl">Solde net du mois</div>
     <div class="hamt ${sol>=0?'pos':'neg'}">${fmtS(sol)} <span style="font-size:15px;opacity:.55">FCFA</span></div>
+    ${cmp?`<div class="hcmp">${cmp}</div>`:''}
     <div class="hmeta">
       <div class="hmi">Revenus<span style="color:var(--green)">${fmt(rev)} F</span></div>
       <div class="hmi">Dépenses<span style="color:var(--red)">${fmt(dep)} F</span></div>
       <div class="hmi">Épargne<span style="color:var(--blue)">${fmt(ep)} F</span></div>
-    </div>
-    ${prevSol!==0?`<div style="font-size:10px;color:var(--text3);margin-top:4px">vs ${yml(prevYm)} ${diffTag(diffSol,false)}</div>`:''}
-    <div style="margin-top:10px;padding-top:10px;border-top:0.5px solid rgba(255,255,255,.1)">
-      <div class="hlbl" style="margin-bottom:6px">PATRIMOINE NET · À AUJOURD'HUI</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
-        <div style="text-align:center">
-          <div style="font-size:9px;color:var(--text3);margin-bottom:2px">Épargne cumulée</div>
-          <div style="font-size:12px;font-weight:600;color:var(--green)">${fmt(epaCumul)} F</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:9px;color:var(--text3);margin-bottom:2px">Solde net cumulé</div>
-          <div style="font-size:12px;font-weight:600;color:${solCumul>=0?'var(--green)':'var(--red)'}">${solCumul>=0?'+':''}${fmt(solCumul)} F</div>
-        </div>
-        <div style="text-align:center;background:var(--surf2);border-radius:8px;padding:4px">
-          <div style="font-size:9px;color:var(--text3);margin-bottom:2px">Patrimoine net</div>
-          <div style="font-size:13px;font-weight:700;color:${patrimoine>=0?'var(--green)':'var(--red)'}">${patrimoine>=0?'+':''}${fmt(patrimoine)} F</div>
-        </div>
-      </div>
     </div>`;
-  document.getElementById('dm').innerHTML=
-    mc('Fixes',fix,budTot(ym,'Dépenses fixes'))+
-    mc('Variables',vr,budTot(ym,'Dépenses variables'))+
-    mc('Épargne',ep,budTot(ym,'Epargne'))+
-    mc('Transactions',t.length,0,true);
+  // Patrimoine + budget du mois
+  const ligne=(lbl,val,bud,kind,col)=>{
+    const st=budState(kind,val,bud);
+    return `<div class="bd-row"><span>${lbl}</span><span><b style="color:${col};font-weight:600">${fmt(val)}</b>${bud>0?` <span class="bd-of">/ ${fmt(bud)}</span>`:' <span class="bd-of">· pas de budget</span>'}</span></div>
+      <div class="pb"><div class="pbr" style="width:${budBar(val,bud)}%;background:${st||'var(--surf2)'}"></div></div>`;
+  };
+  const dm=document.getElementById('dm');dm.className='';
+  dm.innerHTML=`
+    <div class="card">
+      <div class="ct">Patrimoine net · à aujourd'hui</div>
+      <div class="pat-v" style="color:${patrimoine>=0?'var(--green)':'var(--red)'}">${patrimoine>=0?'+':''}${fmt(patrimoine)} F</div>
+      <div class="pat-s">dont épargne ${fmt(epaCumul)} F · disponible ${solCumul>=0?'':'−'}${fmt(Math.abs(solCumul))} F</div>
+    </div>
+    <div class="card">
+      <div class="ct">Budget du mois</div>
+      ${ligne('Dépenses fixes',fix,budTot(ym,'Dépenses fixes'),'exp','var(--red)')}
+      ${ligne('Dépenses variables',vr,budTot(ym,'Dépenses variables'),'exp','var(--red)')}
+      ${ligne('Épargne',ep,budTot(ym,'Epargne'),'pos','var(--blue)')}
+      <div class="bd-leg"><span><i style="background:var(--green)"></i>dans les clous</span><span><i style="background:var(--amber)"></i>à surveiller</span><span><i style="background:var(--red)"></i>hors budget</span></div>
+    </div>`;
   document.getElementById('dtabs').style.display='flex';
   renderAlerts(ym);
   renderDC();
@@ -996,13 +1053,13 @@ function renderAlerts(ym){
   if(overBudget.length){
     html+=`<div style="background:var(--surf);border:0.5px solid var(--border);border-left:2px solid var(--red);border-radius:0 var(--r) var(--r) 0;padding:14px 16px;margin-bottom:8px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><span style="font-size:12px;font-weight:500;color:var(--text)">Postes dépassés</span><span style="font-size:11px;color:var(--text3)">${overBudget.length} poste${overBudget.length>1?'s':''}</span></div>
-      ${overBudget.map(a=>`<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="color:var(--text)">${a.p}</span><span style="color:var(--red);font-family:var(--mono);font-size:11px">${fmt(a.r)} / ${fmt(a.b)} F</span></div><div style="height:2px;background:var(--border);border-radius:1px"><div style="width:100%;height:2px;background:var(--red);border-radius:1px"></div></div></div>`).join('')}
+      ${overBudget.map(a=>`<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="color:var(--text)">${esc(a.p)}</span><span style="color:var(--red);font-family:var(--mono);font-size:11px">${fmt(a.r)} / ${fmt(a.b)} F</span></div><div style="height:2px;background:var(--border);border-radius:1px"><div style="width:100%;height:2px;background:var(--red);border-radius:1px"></div></div></div>`).join('')}
     </div>`;
   }
   if(nearBudget.length){
     html+=`<div style="background:var(--surf);border:0.5px solid var(--border);border-left:2px solid var(--amber);border-radius:0 var(--r) var(--r) 0;padding:14px 16px;margin-bottom:8px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><span style="font-size:12px;font-weight:500;color:var(--text)">Proches du budget</span><span style="font-size:11px;color:var(--text3)">${nearBudget.length} poste${nearBudget.length>1?'s':''}</span></div>
-      ${nearBudget.map(a=>`<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="color:var(--text)">${a.p}</span><span style="color:var(--amber);font-family:var(--mono);font-size:11px">${fmt(a.r)} / ${fmt(a.b)} F (${a.pct}%)</span></div><div style="height:2px;background:var(--border);border-radius:1px"><div style="width:${a.pct}%;height:2px;background:var(--amber);border-radius:1px"></div></div></div>`).join('')}
+      ${nearBudget.map(a=>`<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="color:var(--text)">${esc(a.p)}</span><span style="color:var(--amber);font-family:var(--mono);font-size:11px">${fmt(a.r)} / ${fmt(a.b)} F (${a.pct}%)</span></div><div style="height:2px;background:var(--border);border-radius:1px"><div style="width:${a.pct}%;height:2px;background:var(--amber);border-radius:1px"></div></div></div>`).join('')}
     </div>`;
   }
   el.innerHTML=html;
@@ -1032,6 +1089,7 @@ function renderDashAnnual(){
     </div>`;
   document.getElementById('dm').innerHTML=
     mc('Fixes',fix,0)+mc('Variables',vr,0)+mc('Épargne',ep,0)+mc('Transactions',t.length,0,true);
+  document.getElementById('dm').className='mgrid';
   document.getElementById('dtabs').style.display='none';
   // Annual breakdown by month
   const monthRows=Array.from({length:12},(_,i)=>{
@@ -1044,7 +1102,7 @@ function renderDashAnnual(){
   // Top postes
   const posteMap={};t.filter(x=>x.cat!=='Revenu').forEach(x=>{posteMap[x.poste]=(posteMap[x.poste]||0)+x.amt;});
   const topPostes=Object.entries(posteMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  const topRows=topPostes.map(([p,v])=>`<tr><td>${p}</td><td colspan="2" style="color:var(--red)">${fmt(v)} F</td><td style="color:var(--text3)">${dep>0?Math.round(v/dep*100)+'%':'—'}</td></tr>`).join('');
+  const topRows=topPostes.map(([p,v])=>`<tr><td>${esc(p)}</td><td colspan="2" style="color:var(--red)">${fmt(v)} F</td><td style="color:var(--text3)">${dep>0?Math.round(v/dep*100)+'%':'—'}</td></tr>`).join('');
   // Tableau par poste : réel annuel vs budget annuel
   const cats=['Revenu','Dépenses fixes','Dépenses variables','Epargne'];
   const catColors={'Revenu':'var(--green)','Dépenses fixes':'var(--red)','Dépenses variables':'var(--red)','Epargne':'var(--blue)'};
@@ -1067,10 +1125,10 @@ function renderDashAnnual(){
       const over=b>0&&r>b;
       const isRev=cat==='Revenu';
       return`<tr>
-        <td style="padding:7px 4px;color:var(--text2)">${p}</td>
+        <td style="padding:7px 4px;color:var(--text2)">${esc(p)}</td>
         <td style="text-align:right;font-family:var(--mono);padding:7px 4px;color:${over?'var(--red)':isRev?'var(--green)':'var(--text)'}">${fmt(r)} F</td>
         <td style="text-align:right;font-family:var(--mono);padding:7px 4px;color:var(--text3)">${b?fmt(b)+' F':'—'}</td>
-        <td style="text-align:right;padding:7px 4px;font-size:10px;color:${over?'var(--red)':'var(--text3)'}">${b?Math.round(r/b*100)+'%':'—'}</td>
+        <td style="text-align:right;padding:7px 4px;font-size:11px;color:${over?'var(--red)':'var(--text3)'}">${b?Math.round(r/b*100)+'%':'—'}</td>
       </tr>`;
     }).join('');
     if(!rows)return;
@@ -1091,14 +1149,23 @@ function renderDashAnnual(){
 }
 
 
+// État d'un budget : dépenses → vert ≤ 80 %, orange ≤ 100 %, rouge au-delà ;
+// revenus et épargne → vert ≥ 100 %, orange ≥ 80 %, rouge en dessous.
+function budState(kind,real,bud){
+  if(!(bud>0))return null;
+  const p=real/bud*100;
+  if(kind==='pos')return p>=100?'var(--green)':p>=80?'var(--amber)':'var(--red)';
+  return p<=80?'var(--green)':p<=100?'var(--amber)':'var(--red)';
+}
+function budBar(real,bud){return bud>0?Math.min(100,Math.round(real/bud*100)):(real>0?100:0);}
 function mc(lbl,val,bud,cnt=false){
-  const p=bud>0?Math.round(val/bud*100):null;
-  const cl=p===null?'':p>100?'r':p>80?'a':'g';
-  const bw=bud>0?Math.min(100,Math.round(val/bud*100)):0;
-  const bc=bw>100?'#ef4444':bw>80?'#f59e0b':'#22c55e';
+  // Chiffre : couleur de la catégorie ; barre : état du budget
+  const kind=lbl==='Épargne'?'pos':'exp';
+  const col=cnt?'var(--text)':lbl==='Épargne'?'var(--blue)':'var(--red)';
+  const st=budState(kind,val,bud);
   return `<div class="mc"><div class="mlbl">${lbl}</div>
-    <div class="mval ${cl}">${cnt?val:fmt(val)}</div>
-    ${!cnt&&bud>0?`<div class="msub">${fmt(bud)} F budgété</div><div class="pb"><div class="pbr" style="width:${bw}%;background:${bc}"></div></div>`:''}
+    <div class="mval" style="color:${col}">${cnt?val:fmt(val)}</div>
+    ${!cnt&&bud>0?`<div class="msub">${fmt(bud)} F budgété</div><div class="pb"><div class="pbr" style="width:${budBar(val,bud)}%;background:${st}"></div></div>`:''}
   </div>`;
 }
 
@@ -1116,14 +1183,12 @@ function renderDC(){
       if(!r&&!b)return;tR+=r;tB+=b;
       const isPos=cat==='Revenu'||cat==='Epargne';
       const pc=b>0?Math.round(r/b*100):null;
-      const cl=pc===null?(r>0?(isPos?'ok':'ov'):''):isPos?(pc>=100?'ok':pc>=80?'wa':'ov'):(pc>100?'ov':pc>80?'wa':'ok');
-      const rawPct=b>0?Math.round(r/b*100):(r>0?999:0);
-      const bw=Math.min(100,rawPct);
-      const bc=isPos
-        ?(b===0&&r>0?'var(--green)':rawPct>=100?'var(--green)':rawPct>=80?'var(--amber)':'var(--red)')
-        :(b===0&&r>0?'var(--red)':rawPct>100?'var(--red)':rawPct===100?'var(--amber)':'var(--green)');
+      // Sans budget : vert pour une rentrée, rouge pour une dépense non prévue
+      const bc=b>0?budState(isPos?'pos':'exp',r,b):(r>0?(isPos?'var(--green)':'var(--red)'):'var(--surf2)');
+      const cl='';
+      const bw=budBar(r,b);
       const pctTxt=pc!==null?(pc+'%'):(r>0?(isPos?'✓':'⚠'):'—');
-      rows+=`<tr><td style="cursor:pointer" onclick="goPoste('${p}','${cat}')">${p} <span style="font-size:10px;color:var(--blue);opacity:.7">›</span></td><td class="${cl}">${fmt(r)}</td><td style="color:var(--text3)">${b>0?fmt(b):'—'}</td><td style="color:var(--text3)">${pctTxt}</td></tr><tr><td colspan="4" style="padding:0 5px 6px"><div class="pb"><div class="pbr" style="width:${bw}%;background:${bc};min-width:${r>0?'4px':'0'}"></div></div></td></tr>`;
+      rows+=`<tr><td style="cursor:pointer" onclick="goPoste(${jsa(p)},'${cat}')">${esc(p)} <span style="font-size:11px;color:var(--blue);opacity:.7">›</span></td><td class="${cl}">${fmt(r)}</td><td style="color:var(--text3)">${b>0?fmt(b):'—'}</td><td style="color:${bc}">${pctTxt}</td></tr><tr><td colspan="4" style="padding:0 5px 6px"><div class="pb"><div class="pbr" style="width:${bw}%;background:${bc};min-width:${r>0?'4px':'0'}"></div></div></td></tr>`;
     });
     if(!rows&&dTab!=='all')return;
     html+=`<div class="card">
@@ -1155,18 +1220,24 @@ async function saveTx(){
   const cmt=document.getElementById('f-cmt').value.trim();
   const msg=document.getElementById('fmsg');
   if(!amt||isNaN(amt)||!date||!poste){msg.textContent='Montant et date obligatoires.';return;}
+  if(amt<=0){msg.textContent='Le montant doit être positif (choisis la catégorie pour le sens).';return;}
   msg.textContent='';
   const btn=document.getElementById('bsave');
   const inner=document.getElementById('bsave-inner');
   btn.disabled=true;
   if(inner)inner.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" style="animation:sp .8s linear infinite" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Enregistrement…';
   const{db,collection,addDoc}=window._fb;
-  const data={amt,date,cat:selCatVal,poste,cmt,ts:new Date().toISOString(),createdBy:userName,createdById:uid};
+  const data={amt:Math.round(amt),date,cat:selCatVal,poste,cmt,ts:new Date().toISOString(),createdBy:userName,createdById:uid};
   const alertInfo=budgetStatus(selCatVal,poste,date.slice(0,7),amt);
   try{
     await addDoc(collection(db,dataPath()+'/transactions'),data);
   }catch(e){
-    console.warn('Sync en attente:',e.message);
+    // Refus immédiat (accès, données invalides) : on ne prétend pas avoir enregistré
+    btn.disabled=false;
+    if(inner)inner.innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12l5 5L20 7"/></svg> Enregistrer';
+    msg.textContent='Non enregistré : '+e.message;
+    toast('⚠ Transaction non enregistrée');
+    return;
   }
   document.getElementById('f-amt').value='';
   document.getElementById('f-cmt').value='';
@@ -1202,7 +1273,7 @@ function updReste(){
   const ym=date.slice(0,7);
   if(!EXPENSE_CATS.includes(selCatVal)||!poste){el.innerHTML='';return;}
   const b=gBud(ym,poste);
-  if(!(b>0)){el.innerHTML=`<div style="font-size:11px;color:var(--text3);margin:-4px 0 10px">Pas de budget pour ${poste} en ${yml(ym)}.</div>`;return;}
+  if(!(b>0)){el.innerHTML=`<div style="font-size:11px;color:var(--text3);margin:-4px 0 10px">Pas de budget pour ${esc(poste)} en ${yml(ym)}.</div>`;return;}
   const spent=spentYM(selCatVal,poste,ym),reste=b-spent,after=spent+amt;
   const pctNow=Math.min(100,Math.round(spent/b*100));
   const col=spent>b?'var(--red)':spent>=b*ALERT_PCT?'var(--amber)':'var(--green)';
@@ -1213,7 +1284,7 @@ function updReste(){
   el.innerHTML=`<div style="background:${bg};border-radius:10px;padding:10px 12px;margin:-2px 0 12px">
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px"><span style="color:${col};font-weight:600">${reste>=0?'Reste ce mois':'Budget dépassé de'}</span><span style="color:${col};font-weight:600;font-family:var(--mono)">${fmt(Math.abs(reste))} F</span></div>
     <div style="height:4px;background:var(--border);border-radius:2px;margin-top:7px"><div style="width:${pctNow}%;height:4px;background:${col};border-radius:2px"></div></div>
-    <div style="font-size:10px;color:var(--text3);margin-top:5px;font-family:var(--mono)">${fmt(spent)} dépensés sur ${fmt(b)} · ${yml(ym)}</div>${warn}</div>`;
+    <div style="font-size:11px;color:var(--text3);margin-top:5px;font-family:var(--mono)">${fmt(spent)} dépensés sur ${fmt(b)} · ${yml(ym)}</div>${warn}</div>`;
 }
 function showBudgetAlert(a){
   const over=a.level===2,col=over?'var(--red)':'var(--amber)';
@@ -1221,7 +1292,7 @@ function showBudgetAlert(a){
   bg.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:flex-end;justify-content:center';
   bg.innerHTML=`<div style="background:var(--surf);border-radius:16px 16px 0 0;padding:18px 20px calc(18px + env(safe-area-inset-bottom,0px));width:100%;max-width:480px">
     <div style="width:32px;height:4px;background:var(--border2);border-radius:2px;margin:0 auto 14px"></div>
-    <div style="font-size:15px;font-weight:600;color:${col}">${over?'Budget '+a.poste+' dépassé':a.poste+' : '+a.pct+' % du budget'}</div>
+    <div style="font-size:15px;font-weight:600;color:${col}">${over?'Budget '+esc(a.poste)+' dépassé':esc(a.poste)+' : '+a.pct+' % du budget'}</div>
     <div style="font-size:12px;color:var(--text2);margin-top:6px;font-family:var(--mono)">${fmt(a.after)} F sur ${fmt(a.b)} F en ${yml(a.ym)} (${a.pct} %)</div>
     <div style="height:4px;background:var(--border);border-radius:2px;margin-top:10px"><div style="width:${Math.min(100,a.pct)}%;height:4px;background:${col};border-radius:2px"></div></div>
     <div style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.5">${over?`Le dépassement de ${fmt(-a.reste)} F réduit d'autant ton épargne prévue ce mois-ci.`:`Il te reste ${fmt(a.reste)} F sur ce poste jusqu'à la fin du mois.`}</div>
@@ -1229,122 +1300,6 @@ function showBudgetAlert(a){
   </div>`;
   bg.addEventListener('click',e=>{if(e.target===bg||e.target.closest('button'))bg.remove();});
   document.body.appendChild(bg);
-}
-
-// ═══════════════ PLAN BUDGÉTAIRE 2026–2031 (sans prime) ═══════════════
-const PLAN_START='2026-11',PLAN_END='2031-10',PLAN_END_Y=2031;
-const PLAN={
-  salaire:716200,salaireInc:30000,setec:10000,remu:50000,remuInc:15000,
-  pret:227000,finPret:'2030-09',
-  fixes:{'Frais bancaires':8000,'Assurances':20000,'Gardien':1500,'Electricité':15000,'Eau':6000,'Location':135000,'Abonnements':35000,'Téléphone':4000},
-  parents:115000,conjoint:15000,foyer:50000,
-  vars:{'Achats divers':15000,'Alimentation':20000,'Santé':7000,'Dons':35000,'Loisir':7000,'Prêts':15000,'Imprévus':15000,'Transport':8000,'Voiture':15000,'Tour de famille':6000},
-  avantMariage:{'Dons':35000,'Prêts':0}, // effort jusqu'au mariage
-  pretEnt:1575000,pretEntMois:'2027-09',pretEntMens:65000,pretEntDebut:'2028-06', // prêt de MBENGUE ARCHIBUILDING pour le mariage
-  dette:158777,detteMens:0, // dette reportée : regroupée dans le prêt du mariage
-  mariage:2000000,foyerPrep:300000,noces:400000,nocesDelai:31,majFetes:0.3,
-  fetes:{'Ramadan':50000,'Korité':120000,'Tabaski':250000,'Tamkharit':15000,'Grand Magal de Touba':75000,'Gamou':25000,'Rentrée scolaire':50000},
-  // Mois de dépense de chaque fête (dates lunaires estimées, à ajuster selon l'annonce)
-  cal:[['2027-02','Ramadan'],['2027-03','Korité'],['2027-05','Tabaski'],['2027-06','Tamkharit'],['2027-07','Grand Magal de Touba'],['2027-08','Gamou'],
-       ['2028-02','Ramadan'],['2028-02','Korité'],['2028-05','Tabaski'],['2028-06','Tamkharit'],['2028-07','Grand Magal de Touba'],['2028-08','Gamou'],
-       ['2029-01','Ramadan'],['2029-02','Korité'],['2029-04','Tabaski'],['2029-05','Tamkharit'],['2029-07','Grand Magal de Touba'],['2029-07','Gamou'],
-       ['2030-01','Ramadan'],['2030-02','Korité'],['2030-04','Tabaski'],['2030-05','Tamkharit'],['2030-06','Grand Magal de Touba'],['2030-07','Gamou'],
-       ['2031-01','Ramadan'],['2031-01','Korité'],['2031-04','Tabaski'],['2031-05','Tamkharit'],['2031-06','Grand Magal de Touba'],['2031-07','Gamou'],
-       ['2027-10','Rentrée scolaire'],['2028-10','Rentrée scolaire'],['2029-10','Rentrée scolaire'],['2030-10','Rentrée scolaire'],['2031-10','Rentrée scolaire']]
-};
-const P_FETES='Fêtes religieuses',P_MARIAGE='Mariage et foyer',P_EPARGNE='Epargne de précaution';
-function ymAdd(ym,n){const[y,m]=ym.split('-').map(Number);const t=y*12+(m-1)+n;return ymk(Math.floor(t/12),t%12+1);}
-function planMonths(){const out=[];for(let ym=PLAN_START;ym<=PLAN_END;ym=ymAdd(ym,1))out.push(ym);return out;}
-function buildPlan(marYm){
-  const bud={},det={};let detteRest=PLAN.detteMens>0?PLAN.dette:0,pretRest=PLAN.pretEnt+(PLAN.detteMens>0?0:PLAN.dette);
-  const evts={};const addE=(ym,l,a)=>{(evts[ym]=evts[ym]||[]).push({label:l,amt:a});};
-  addE(ymAdd(marYm,-3),'Préparation du foyer (1/2)',PLAN.foyerPrep/2);
-  addE(ymAdd(marYm,-2),'Préparation du foyer (2/2)',PLAN.foyerPrep/2);
-  addE(ymAdd(marYm,-1),'Mariage : préparatifs et dot',PLAN.mariage*0.4);
-  addE(marYm,'Mariage : cérémonie',PLAN.mariage*0.6);
-  addE(ymAdd(marYm,PLAN.nocesDelai),'Voyage de noces',PLAN.noces);
-  let cum=0;const summary={};
-  planMonths().forEach(ym=>{
-    const y=parseInt(ym.slice(0,4)),k=y-2026,after=ym>marYm,b={},d={};
-    b['Salaire net']=PLAN.salaire+PLAN.salaireInc*k;
-    b['Autres']=PLAN.setec; d['Autres']=[{label:'Forfait SETEC',amt:PLAN.setec}];
-    b['Extras professionnels']=PLAN.remu+PLAN.remuInc*k; d['Extras professionnels']=[{label:'Rémunération MBENGUE ARCHIBUILDING',amt:b['Extras professionnels']}];
-    if(ym<=PLAN.finPret)b['Mensualité de prêt']=PLAN.pret;
-    Object.assign(b,PLAN.fixes);
-    b['Aides versées']=PLAN.parents+(after?0:PLAN.conjoint);
-    d['Aides versées']=[{label:'Parents',amt:PLAN.parents}];if(!after)d['Aides versées'].push({label:'Conjoint',amt:PLAN.conjoint});
-    Object.assign(b,PLAN.vars);
-    if(!after)Object.assign(b,PLAN.avantMariage);
-    if(ym===PLAN.pretEntMois){b['Autres']+=PLAN.pretEnt;d['Autres'].push({label:'Prêt MBENGUE ARCHIBUILDING (mariage)',amt:PLAN.pretEnt});}
-    if(after){b['Alimentation']+=PLAN.foyer;d['Alimentation']=[{label:'Courant',amt:PLAN.vars['Alimentation']},{label:'Charges du foyer',amt:PLAN.foyer}];}
-    if(detteRest>0){const r=Math.min(PLAN.detteMens,detteRest);detteRest-=r;b['Remboursement']=r;d['Remboursement']=[{label:'Dette MBENGUE ARCHIBUILDING',amt:r}];}
-    if(ym>=PLAN.pretEntDebut&&pretRest>0){const r=Math.min(PLAN.pretEntMens,pretRest);pretRest-=r;b['Remboursement']=(b['Remboursement']||0)+r;(d['Remboursement']=d['Remboursement']||[]).push({label:'Prêt mariage et dette MBENGUE ARCHIBUILDING',amt:r});}
-    const fl=PLAN.cal.filter(c=>c[0]===ym).map(c=>({label:c[1],amt:Math.round(PLAN.fetes[c[1]]*((after&&c[1]!=='Rentrée scolaire')?1+PLAN.majFetes:1))}));
-    if(fl.length){b[P_FETES]=fl.reduce((s,x)=>s+x.amt,0);d[P_FETES]=fl;}
-    if(evts[ym]){b[P_MARIAGE]=evts[ym].reduce((s,x)=>s+x.amt,0);d[P_MARIAGE]=evts[ym];}
-    let rev=0,dep=0;
-    Object.entries(b).forEach(([p,v])=>{if(getPlanCat(p)==='Revenu')rev+=v;else dep+=v;});
-    const sol=rev-dep;cum+=sol;
-    const ep=Math.max(0,Math.floor(sol/1000)*1000);
-    if(ep>0)b[P_EPARGNE]=ep;
-    bud[ym]=b;det[ym]=d;summary[ym]={sol,cum};
-  });
-  return{bud,det,summary};
-}
-const PLAN_REVENUS=['Salaire net','Autres','Extras professionnels'];
-const PLAN_FIXES=['Mensualité de prêt','Aides versées',...Object.keys(PLAN.fixes)];
-function getPlanCat(p){if(PLAN_REVENUS.includes(p))return'Revenu';if(PLAN_FIXES.includes(p))return'Dépenses fixes';if(p===P_EPARGNE)return'Epargne';return'Dépenses variables';}
-function planStats(marYm){
-  const{summary}=buildPlan(marYm);const yms=Object.keys(summary);
-  let min=Infinity,minYm='';yms.forEach(ym=>{if(summary[ym].cum<min){min=summary[ym].cum;minYm=ym;}});
-  return{min,minYm,end:summary[PLAN_END].cum,atMar:summary[marYm]?summary[marYm].cum:null};
-}
-function renderPlanStats(){
-  const v=document.getElementById('plan-mar')?.value;const el=document.getElementById('plan-stats');if(!v||!el)return;
-  const st=planStats(v);const ok=st.min>=0;
-  el.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px">
-    <div style="background:var(--surf2);border-radius:9px;padding:8px"><div style="font-size:10px;color:var(--text3)">ÉPARGNE AU PLUS BAS</div><div style="font-weight:600;font-family:var(--mono);color:${ok?'var(--text)':'var(--red)'}">${fmtS(st.min)} F</div><div style="font-size:10px;color:var(--text3)">${yml(st.minYm)}</div></div>
-    <div style="background:var(--surf2);border-radius:9px;padding:8px"><div style="font-size:10px;color:var(--text3)">ÉPARGNE OCT. 2031</div><div style="font-weight:600;font-family:var(--mono)">${fmt(st.end)} F</div><div style="font-size:10px;color:var(--text3)">sans prime</div></div>
-  </div>
-  <div style="font-size:11px;margin-top:8px;color:${ok?'var(--green)':'var(--red)'}">${ok?'Le budget reste dans le vert sur toute la période.':'Le budget passe dans le rouge : choisis un mariage plus tard.'}</div>`;
-}
-function openPlanSheet(){
-  if(!isAdmin()){toast('Mode lecture — modification non autorisée');return;}
-  const bg=document.createElement('div');bg.id='plan-sheet';
-  bg.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:flex-end;justify-content:center';
-  const nb=planMonths().filter(ym=>Object.keys(budget[ym]||{}).length>0).length;
-  bg.innerHTML=`<div style="background:var(--surf);border-radius:16px 16px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom,0px));width:100%;max-width:480px;max-height:88vh;overflow-y:auto">
-    <div style="font-size:15px;font-weight:600;color:var(--text);display:flex;justify-content:space-between;align-items:center">
-      Plan budgétaire 2026–2031
-      <button onclick="document.getElementById('plan-sheet').remove()" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--text2);padding:0" aria-label="Fermer">×</button>
-    </div>
-    <div style="font-size:12px;color:var(--text2);margin-top:6px;line-height:1.5">Remplit tes budgets de novembre 2026 à octobre 2031 : salaire +30 000 par an, rémunération de l'entreprise +15 000 par an, prêt bancaire jusqu'en septembre 2030, fêtes religieuses et mariage. Dons à 35 000 par mois, aucun prêt aux proches jusqu'au mariage. Prêt de MBENGUE ARCHIBUILDING : 1 575 000 en septembre 2027 ; avec la dette actuelle de 158 777, le tout est remboursé 65 000 par mois de juin 2028 à août 2030. <b>La prime n'est pas comptée</b> : si elle arrive, elle sert à rembourser l'entreprise plus vite.</div>
-    <div style="margin-top:14px"><div class="flbl">Mois du mariage</div><input class="finp" type="month" id="plan-mar" value="2027-12" min="2027-03" max="2031-09" onchange="renderPlanStats()"></div>
-    <div id="plan-stats"></div>
-    <div style="font-size:11px;color:var(--text3);margin-top:12px;line-height:1.5">Postes ajoutés s'ils n'existent pas : ${P_FETES}, ${P_MARIAGE}, Tour de famille. Les fêtes et le mariage sont détaillés dans chaque mois.</div>
-    ${nb?`<div style="font-size:11px;color:var(--amber);margin-top:8px">${nb} mois ont déjà un budget sur cette période : ils seront remplacés.</div>`:''}
-    <div id="plan-err" style="font-size:11px;color:var(--red);min-height:14px;margin-top:6px"></div>
-    <button class="btn-p" id="plan-apply" onclick="applyPlan()" style="margin-top:4px">Appliquer le plan</button>
-  </div>`;
-  bg.addEventListener('click',e=>{if(e.target===bg)bg.remove();});
-  document.body.appendChild(bg);renderPlanStats();
-}
-async function applyPlan(){
-  const marYm=document.getElementById('plan-mar')?.value;const err=document.getElementById('plan-err');
-  if(!marYm||marYm<'2027-03'||marYm>'2031-09'){err.textContent='Choisis un mois de mariage entre mars 2027 et septembre 2031.';return;}
-  const btn=document.getElementById('plan-apply');btn.disabled=true;btn.textContent='Application…';
-  try{
-    const{bud,det}=buildPlan(marYm);
-    if(!CATS['Dépenses variables'])CATS['Dépenses variables']=[];
-    [P_FETES,P_MARIAGE,'Tour de famille'].forEach(p=>{if(!getAllPostes('Dépenses variables').includes(p))CATS['Dépenses variables'].push(p);});
-    if(!CATS['Epargne'])CATS['Epargne']=[];
-    if(!getAllPostes('Epargne').includes(P_EPARGNE))CATS['Epargne'].push(P_EPARGNE);
-    Object.keys(bud).forEach(ym=>{budget[ym]=bud[ym];budgetDetails[ym]=det[ym];});
-    await saveSettings();
-    document.getElementById('plan-sheet')?.remove();
-    syncPostes();renderCPUI();renderCurrent();
-    toast('Plan appliqué jusqu\'en octobre 2031 ✓');
-  }catch(e){err.textContent='Erreur : '+e.message;btn.disabled=false;btn.textContent='Appliquer le plan';}
 }
 
 // Corbeille temporaire (session)
@@ -1378,7 +1333,7 @@ async function delTx(id){
     ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;font-family:var(--font)';
     ov.innerHTML=`<div style="background:var(--surf);border-radius:var(--r);padding:22px;max-width:320px;width:100%;border:0.5px solid var(--border2)">
       <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px">Supprimer la transaction ?</div>
-      <div style="font-size:13px;color:var(--text3);margin-bottom:20px">${tx.poste||''} · ${tx.amt?parseInt(tx.amt).toLocaleString('fr-FR'):''} F · ${tx.date||''}</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:20px">${esc(tx.poste||'')} · ${tx.amt?parseInt(tx.amt).toLocaleString('fr-FR'):''} F · ${tx.date||''}</div>
       <div style="display:flex;gap:10px">
         <button id="dc-no" style="flex:1;padding:11px;border-radius:10px;border:0.5px solid var(--border);background:var(--surf2);color:var(--text);font-family:var(--font);font-size:13px;cursor:pointer">Annuler</button>
         <button id="dc-yes" style="flex:1;padding:11px;border-radius:10px;border:none;background:#ef4444;color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer">Supprimer</button>
@@ -1493,32 +1448,62 @@ function renderTX(){
     el.innerHTML=`<div class="empty">${q?'Aucun résultat pour "'+q+'"':'Aucune transaction'}</div>`;
     return;
   }
-  el.innerHTML=t.map(x=>{
-    const cl=CCLS[x.cat]||'v';
-    const isR=x.cat==='Revenu';const isE=x.cat==='Epargne';
-    const ac=isR?'g':isE?'p':'r';
-    const hi=(s,q)=>{if(!q||!s)return s||"";const i=s.toLowerCase().indexOf(q.toLowerCase());if(i<0)return s;return s.slice(0,i)+'<mark style="background:rgba(99,102,241,.3);color:#a5b4fc;border-radius:3px;padding:0 2px">'+s.slice(i,i+q.length)+'</mark>'+s.slice(i+q.length);};
-    return `<div class="txi">
-      <div class="txic ${cl}">${CICO[x.cat]||'●'}</div>
-      <div class="txin">
-        <div class="txp">${hi(x.poste||'',q)}</div>
-        <div class="txm">${x.date}${x.cmt?' · '+hi(x.cmt,q):''} <span class="bdg ${cl}">${x.cat}</span></div>
-        ${getTxBadge(x)?'<div style="font-size:10px;margin-top:2px">'+getTxBadge(x)+'</div>':''}
-      </div>
-      <div class="txr">
-        <div class="txa ${ac}">${isR?'+':'−'}${fmt(x.amt)} F</div>
-        <button class="txd" onclick="openEditTx('${x.id}')"><span style="display:flex;align-items:center;color:var(--text3)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></span></button>
-        <button class="txd" onclick="delTx('${x.id}')">✕</button>
-      </div>
-    </div>`;
+  const hi=(s,q)=>{if(!q||!s)return esc(s||"");const i=s.toLowerCase().indexOf(q.toLowerCase());if(i<0)return esc(s);return esc(s.slice(0,i))+'<mark style="background:rgba(99,102,241,.3);color:#a5b4fc;border-radius:3px;padding:0 2px">'+esc(s.slice(i,i+q.length))+'</mark>'+esc(s.slice(i+q.length));};
+  const tsN=x=>Date.parse(x.ts)||0;
+  t=[...t].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||tsN(b)-tsN(a));
+  const groupes=[];
+  t.forEach(x=>{const g=groupes[groupes.length-1];if(g&&g.date===x.date)g.l.push(x);else groupes.push({date:x.date,l:[x]});});
+  const CAT_COURT={'Revenu':'Revenu','Dépenses fixes':'Fixes','Dépenses variables':'Variables','Epargne':'Épargne'};
+  const ICO={
+    'Revenu':'<path d="M4 8h16v11H4zM9 8V5h6v3"/>',
+    'Dépenses fixes':'<path d="M3 11l9-7 9 7M5 10v10h14V10"/>',
+    'Dépenses variables':'<path d="M3 4h2l2.5 11h11L21 7H6.5"/><circle cx="9" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/>',
+    'Epargne':'<path d="M5 11a7 6 0 0114 0v4l2 1-2 1v2h-3l-1-2H9l-1 2H5v-3a5 5 0 01-2-4h2z"/><circle cx="15" cy="10" r="1"/>'
+  };
+  const JOURS=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const anneeCourante=new Date().getFullYear();
+  el.className='';el.style.padding='0';
+  el.innerHTML=groupes.map(g=>{
+    const net=g.l.reduce((s,x)=>s+(x.cat==='Revenu'?1:-1)*(x.amt||0),0);
+    let titre=g.date||'Sans date';
+    if(g.date){const d=new Date(g.date+'T12:00:00');titre=JOURS[d.getDay()]+' '+d.getDate()+' '+MFR[d.getMonth()].toLowerCase()+(d.getFullYear()!==anneeCourante?' '+d.getFullYear():'');}
+    const rows=g.l.map(x=>{
+      const cl=CCLS[x.cat]||'v';
+      const isR=x.cat==='Revenu',isE=x.cat==='Epargne';
+      const ac=isR?'g':isE?'p':'r';
+      const meta=[x.cmt?hi(x.cmt,q):'',CAT_COURT[x.cat]||esc(x.cat||'')].filter(Boolean).join(' · ');
+      const badge=sharedSpaceId?getTxBadge(x):'';
+      return `<div class="txi" onclick="openEditTx('${x.id}')">
+        <div class="txic ${cl}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICO[x.cat]||'<circle cx="12" cy="12" r="4"/>'}</svg></div>
+        <div class="txin">
+          <div class="txp">${hi(x.poste||'',q)}</div>
+          <div class="txm">${meta}</div>
+          ${badge?'<div style="font-size:11px;margin-top:2px">'+badge+'</div>':''}
+        </div>
+        <div class="txr"><div class="txa ${ac}">${isR?'+':'−'}${fmt(x.amt)} F</div></div>
+      </div>`;
+    }).join('');
+    return `<div class="dayh"><span>${titre}</span><span class="n" style="color:${net>=0?'var(--green)':'var(--red)'}">${net>=0?'+':'−'}${fmt(Math.abs(net))}</span></div><div class="txg">${rows}</div>`;
   }).join('');
 }
 
 // BUDGET
 function renderBudPage(){
-  const y0=new Date().getFullYear();const years=[];for(let y=y0;y<=Math.max(y0+2,PLAN_END_Y);y++)years.push(y);
+  const y0=new Date().getFullYear();
+  // Années proposées : jusqu'à 2 ans devant, ou jusqu'au dernier mois déjà budgété
+  const yMax=Math.max(y0+2,...Object.keys(budget).map(k=>parseInt(k)).filter(n=>n>0&&n<y0+20));
+  const years=[];for(let y=y0;y<=yMax;y++)years.push(y);
   document.getElementById('ytabs').innerHTML=years.map(y=>`<button class="ytab ${y.toString()===bYear?'active':''}" onclick="setBY(this,'${y}')">${y}</button>`).join('');
   document.getElementById('mtabs').innerHTML=MFR.map((m,i)=>`<button class="mtab ${(i+1)===bMonth?'active':''}" onclick="setBM(this,${i+1})">${MS[i]}</button>`).join('');
+  // Rangée de mois : de l'an dernier jusqu'à la dernière année budgétée
+  const bm=document.getElementById('bmonths');
+  if(bm){
+    const chips=[];
+    for(let y=y0-1;y<=yMax;y++)for(let m=1;m<=12;m++)
+      chips.push(`<button class="bmc ${String(y)===String(bYear)&&m===bMonth?'active':''}" onclick="setBYM('${y}',${m})">${MS[m-1]} ${String(y).slice(2)}</button>`);
+    bm.innerHTML=chips.join('');
+    const a=bm.querySelector('.bmc.active');if(a)bm.scrollLeft=a.offsetLeft-bm.clientWidth/2+a.clientWidth/2;
+  }
   renderBForm();
   
 }
@@ -1529,6 +1514,7 @@ function setBY(el,y){
   bYear=y;
   renderBForm();
 }
+function setBYM(y,m){if(!budLeaveOk())return;budDirty=false;bYear=String(y);bMonth=m;renderBudPage();}
 function setBM(el,m){document.querySelectorAll('.mtab').forEach(b=>b.classList.remove('active'));el.classList.add('active');bMonth=m;renderBForm();}
 function calcBudSolde(ym){
   // Lire les valeurs en direct depuis les inputs si disponibles, sinon depuis budget sauvegardé
@@ -1561,12 +1547,12 @@ function renderBudSolde(){
   const el=document.getElementById('bud-solde');
   if(!bRev&&!bDep){el.innerHTML='';return;}
   el.innerHTML=`<div style="background:var(--surf);border:0.5px solid var(--border);border-left:2px solid ${pos?'var(--green)':'var(--red)'};border-radius:0 var(--r) var(--r) 0;padding:16px 18px;margin-bottom:10px">
-    <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Solde budgétisé · ${yml(ym)}</div>
+    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Solde budgétisé · ${yml(ym)}</div>
     <div style="font-size:28px;font-weight:500;font-variant-numeric:tabular-nums;font-family:var(--font);color:${pos?'var(--green)':'var(--red)'};margin-bottom:14px">${pos?'+':'−'}${fmt(solde)} <span style="font-size:13px;font-weight:400;color:var(--text3)">FCFA</span></div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-top:0.5px solid var(--border);padding-top:12px;gap:0">
-      <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Revenus</div><div style="font-size:12px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--green)">${fmt(bRev)} F</div></div>
-      <div style="border-left:0.5px solid var(--border);padding-left:10px"><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Dépenses</div><div style="font-size:12px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--red)">${fmt(bDep)} F</div></div>
-      <div style="border-left:0.5px solid var(--border);padding-left:10px"><div style="font-size:10px;color:var(--text3);margin-bottom:3px">Réel</div><div style="font-size:12px;font-weight:500;font-variant-numeric:tabular-nums;color:${rSolde>=0?'var(--green)':'var(--red)'}">${rSolde>=0?'+':'−'}${fmt(rSolde)} F</div></div>
+      <div><div style="font-size:11px;color:var(--text3);margin-bottom:3px">Revenus</div><div style="font-size:12px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--green)">${fmt(bRev)} F</div></div>
+      <div style="border-left:0.5px solid var(--border);padding-left:10px"><div style="font-size:11px;color:var(--text3);margin-bottom:3px">Dépenses</div><div style="font-size:12px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--red)">${fmt(bDep)} F</div></div>
+      <div style="border-left:0.5px solid var(--border);padding-left:10px"><div style="font-size:11px;color:var(--text3);margin-bottom:3px">Réel</div><div style="font-size:12px;font-weight:500;font-variant-numeric:tabular-nums;color:${rSolde>=0?'var(--green)':'var(--red)'}">${rSolde>=0?'+':'−'}${fmt(rSolde)} F</div></div>
     </div>
   </div>`;
 }
@@ -1587,14 +1573,14 @@ function renderBForm(){
         const pKey=btoa(encodeURIComponent(ym+'|'+p));
         return `<div class="brow" style="flex-direction:column;align-items:stretch;gap:0">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:2px 0">
-            <div class="brow-n" style="flex:1">${p}</div>
+            <div class="brow-n" style="flex:1">${esc(p)}</div>
             <div style="display:flex;align-items:center;gap:8px">
               <div style="position:relative;width:120px">
                 <input class="binp" type="text" inputmode="numeric" id="${id}"
                   value="${val?new Intl.NumberFormat('fr-FR').format(val):''}"
                   placeholder="0"
                   style="width:120px;text-align:right;padding-right:8px"
-                  oninput="fmtBudInput(this);renderBudSolde()"
+                  oninput="fmtBudInput(this);budDirty=true;renderBudSolde()"
                   data-raw="${val||0}">
               </div>
               <button onclick="toggleBudDetail('${pKey}')" style="background:none;border:none;cursor:pointer;padding:2px;color:var(--text2);font-size:14px;line-height:1;display:flex;align-items:center" title="Sous-détails">
@@ -1607,12 +1593,12 @@ function renderBForm(){
               <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:0.5px solid var(--border)">
                 <span style="font-size:12px;color:var(--text);flex:1">${d.label}</span>
                 <span style="font-size:12px;font-family:var(--mono);color:var(--text2);margin:0 8px">${fmt(d.amt)} F</span>
-                <button onclick="removeBudDetail('${ym}','${p.replace(/'/g,"\'")}',${i})" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;padding:0 2px;line-height:1">×</button>
+                <button onclick="removeBudDetail('${ym}',${jsa(p)},${i})" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;padding:0 2px;line-height:1">×</button>
               </div>`).join('')}
             <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
               <input id="dl_${pKey}" type="text" placeholder="Ex: Carte BRT, Netflix..." style="flex:1;min-width:0;background:var(--surf);border:0.5px solid var(--border);border-radius:8px;padding:6px 8px;font-size:12px;color:var(--text);outline:none;font-family:var(--font)">
               <input id="da_${pKey}" type="text" inputmode="numeric" placeholder="Montant" style="width:70px;background:var(--surf);border:0.5px solid var(--border);border-radius:8px;padding:6px 8px;font-size:12px;color:var(--text);outline:none;font-family:var(--font)">
-              <button onclick="addBudDetail('${ym}','${p.replace(/'/g,"\'")}','${pKey}')" style="width:28px;height:28px;border-radius:8px;border:none;background:var(--orange);color:#fff;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</button>
+              <button onclick="addBudDetail('${ym}',${jsa(p)},'${pKey}')" style="width:28px;height:28px;border-radius:8px;border:none;background:var(--orange);color:#fff;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</button>
             </div>
             ${details.length?`<div style="font-size:11px;color:var(--text3);text-align:right;margin-top:4px">Total sous-détails : <b style="color:var(--text2)">${fmt(detTotal)} F</b></div>`:''}
           </div>
@@ -1720,9 +1706,119 @@ async function saveBudget(){
       if(raw>0)bud[p]=raw;
     }
   });
+  // Postes modifiés + mois suivants qui ont déjà un budget : on propose de propager
+  const old=budget[ym]||{};
+  const chg=[...new Set([...Object.keys(old),...Object.keys(bud)])]
+    .filter(p=>(old[p]||0)!==(bud[p]||0))
+    .map(p=>({p,from:old[p]||0,to:bud[p]||0,d:(bud[p]||0)-(old[p]||0)}));
+  const next=budFutureMonths(ym);
+  if(chg.length&&next.length){openBudCascade(ym,bud,chg,next);return;}
   budget[ym]=bud;await saveSettings();
   renderBudSolde();
   toast('Budget enregistré pour '+yml(ym)+' ✓');
+}
+
+// ═══════════════ PROPAGATION D'UN CHANGEMENT DE BUDGET AUX MOIS SUIVANTS ═══════════════
+// Mois après ym qui ont déjà un budget
+function budFutureMonths(ym){
+  return Object.keys(budget).filter(m=>m>ym&&Object.values(budget[m]||{}).some(v=>v>0)).sort();
+}
+let _bc=null;
+function openBudCascade(ym,bud,chg,next){
+  _bc={ym,bud,chg,next,scope:'all',mode:'diff',until:next[next.length-1]};
+  const sign=n=>(n>0?'+':'−')+fmt(Math.abs(n));
+  const bg=document.createElement('div');bg.id='bud-cascade';
+  bg.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:flex-end;justify-content:center';
+  bg.innerHTML=`<div style="background:var(--surf);border-radius:16px 16px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom,0px));width:100%;max-width:480px;max-height:88vh;overflow-y:auto">
+    <div style="font-size:15px;font-weight:600;color:var(--text);display:flex;justify-content:space-between;align-items:center">
+      ${chg.length} poste${chg.length>1?'s':''} modifié${chg.length>1?'s':''}
+      <button onclick="closeBudCascade()" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--text2);padding:0" aria-label="Fermer">×</button>
+    </div>
+    <div style="margin-top:8px">${chg.map(c=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:7px 0;border-bottom:0.5px solid var(--border)">
+      <span style="color:var(--text)">${esc(c.p)}</span>
+      <span style="color:var(--text2);white-space:nowrap">${fmt(c.from)} → ${fmt(c.to)} <b style="color:var(--amber);font-weight:600">${sign(c.d)}</b></span></div>`).join('')}</div>
+    <div class="bc-lbl">Appliquer à</div>
+    <div class="bc-opt" data-g="scope" data-v="one" onclick="setBudCascade('scope','one')"><div class="bc-rd"></div><div>${yml(ym)} seulement</div></div>
+    <div class="bc-opt on" data-g="scope" data-v="all" onclick="setBudCascade('scope','all')"><div class="bc-rd"></div><div style="flex:1">${yml(ym)} et les mois suivants
+      <div class="bc-sm">jusqu'à <select id="bc-until" onclick="event.stopPropagation()" onchange="_bc.until=this.value;renderBudCascade()" style="background:var(--surf2);color:var(--text);border:0.5px solid var(--border2);border-radius:8px;padding:3px 6px;font-size:11px;font-family:var(--font)">
+        ${next.map(m=>`<option value="${m}"${m===_bc.until?' selected':''}>${yml(m)}</option>`).join('')}</select> · <span id="bc-n"></span></div></div></div>
+    <div id="bc-mode">
+      <div class="bc-lbl">Comment</div>
+      <div class="bc-opt on" data-g="mode" data-v="diff" onclick="setBudCascade('mode','diff')"><div class="bc-rd"></div><div>Ajouter la différence
+        <div class="bc-sm">${chg.map(c=>sign(c.d)).join(' et ')} sur chaque mois. Les montants propres à chaque mois sont gardés.</div></div></div>
+      <div class="bc-opt" data-g="mode" data-v="same" onclick="setBudCascade('mode','same')"><div class="bc-rd"></div><div>Mettre le même montant partout
+        <div class="bc-sm">${chg.map(c=>fmt(c.to)).join(' et ')} tous les mois</div></div></div>
+    </div>
+    <div id="bc-imp" style="background:var(--surf2);border-radius:10px;padding:9px 11px;font-size:11px;line-height:1.6;color:var(--text2);margin-top:10px"></div>
+    <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:8px;margin-top:14px">
+      <button class="btn-o" onclick="closeBudCascade()">Annuler</button>
+      <button class="btn-p" id="bc-go" onclick="applyBudCascade()" style="margin:0"></button>
+    </div>
+  </div>`;
+  bg.addEventListener('click',e=>{if(e.target===bg)closeBudCascade();});
+  document.body.appendChild(bg);
+  renderBudCascade();
+}
+function closeBudCascade(){document.getElementById('bud-cascade')?.remove();_bc=null;}
+function setBudCascade(g,v){_bc[g]=v;renderBudCascade();}
+function budCascadeTargets(){return _bc.scope==='all'?_bc.next.filter(m=>m<=_bc.until):[];}
+// Nouvelle valeur d'un poste pour un mois cible
+function budCascadeVal(m,c){
+  const cur=(budget[m]||{})[c.p]||0;
+  return Math.max(0,_bc.mode==='diff'?cur+c.d:c.to);
+}
+function renderBudCascade(){
+  const el=document.getElementById('bud-cascade');if(!el||!_bc)return;
+  el.querySelectorAll('.bc-opt').forEach(o=>o.classList.toggle('on',_bc[o.dataset.g]===o.dataset.v));
+  const T=budCascadeTargets();
+  document.getElementById('bc-mode').style.display=T.length?'':'none';
+  document.getElementById('bc-n').textContent=(_bc.next.filter(m=>m<=_bc.until).length+1)+' mois';
+  const rev=new Set(getAllPostes('Revenu'));
+  const effet=(c,delta)=>rev.has(c.p)?delta:-delta; // effet sur le solde budgété
+  const cur=_bc.chg.reduce((s,c)=>s+effet(c,c.d),0);
+  let tot=cur;
+  T.forEach(m=>_bc.chg.forEach(c=>{tot+=effet(c,budCascadeVal(m,c)-((budget[m]||{})[c.p]||0));}));
+  const sg=n=>n===0?'0 F':(n>0?'+':'−')+fmt(Math.abs(n))+' F';
+  const n=T.length+1;
+  document.getElementById('bc-imp').innerHTML=T.length&&_bc.mode==='diff'
+    ?`Chaque mois : <b style="color:var(--text)">${sg(cur)}</b> de solde budgété<br>Sur les ${n} mois : <b style="color:var(--text)">${sg(tot)}</b> d'épargne cumulée`
+    :`${T.length?'Sur les '+n+' mois':'Sur '+yml(_bc.ym)} : <b style="color:var(--text)">${sg(tot)}</b> de solde budgété`;
+  document.getElementById('bc-go').textContent=T.length?'Appliquer à '+n+' mois':'Enregistrer';
+}
+async function applyBudCascade(){
+  if(!_bc)return;
+  const{ym,bud,chg}=_bc;const T=budCascadeTargets();
+  const btn=document.getElementById('bc-go');btn.disabled=true;btn.textContent='Application…';
+  const snapB=JSON.parse(JSON.stringify(budget)),snapD=JSON.parse(JSON.stringify(budgetDetails));
+  try{
+    // Mois modifié : même ligne d'ajustement sur un poste détaillé
+    chg.forEach(c=>{
+      const det=budgetDetails[ym]&&budgetDetails[ym][c.p];
+      if(det&&det.length&&c.d)det.push({label:'Ajustement '+(c.d>0?'+':'−')+fmt(Math.abs(c.d))+' ('+yml(ym)+')',amt:c.d});
+    });
+    budget[ym]=bud;
+    T.forEach(m=>{
+      const b=budget[m]=budget[m]||{};
+      chg.forEach(c=>{
+        const before=b[c.p]||0,after=budCascadeVal(m,c);
+        if(after===before)return;
+        if(after>0)b[c.p]=after;else delete b[c.p];
+        // Poste détaillé : une ligne d'ajustement garde le total des sous-détails juste
+        const det=budgetDetails[m]&&budgetDetails[m][c.p];
+        if(det&&det.length){
+          const k=after-before;
+          det.push({label:'Ajustement '+(k>0?'+':'−')+fmt(Math.abs(k))+' ('+yml(ym)+')',amt:k});
+        }
+      });
+    });
+    await saveSettings();
+    const n=T.length+1;
+    closeBudCascade();renderBudSolde();renderBForm();
+    toast(T.length?'Budget mis à jour sur '+n+' mois ✓':'Budget enregistré pour '+yml(ym)+' ✓');
+  }catch(e){
+    budget=snapB;budgetDetails=snapD; // rien n'est gardé si l'enregistrement échoue
+    toast('Erreur : '+e.message);btn.disabled=false;renderBudCascade();
+  }
 }
 
 // CHARTS
@@ -1743,7 +1839,7 @@ function renderCPUI(){
           const bg=isDef?'var(--surf2)':'rgba(99,102,241,.15)';
           const br=isDef?'var(--border)':'rgba(99,102,241,.3)';
           const cl=isDef?'var(--text2)':'#818cf8';
-          return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;background:${bg};border:1px solid ${br};color:${cl}">${p}<button class="rm-poste-btn" data-cat="${cat}" data-p="${p}" style="border:none;background:none;color:#fb7185;cursor:pointer;font-size:11px;padding:0 0 0 4px;line-height:1">✕</button></span>`;
+          return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;background:${bg};border:1px solid ${br};color:${cl}">${esc(p)}<button class="rm-poste-btn" data-cat="${cat}" data-p="${esc(p)}" style="border:none;background:none;color:#fb7185;cursor:pointer;font-size:11px;padding:0 0 0 4px;line-height:1">✕</button></span>`;
         }).join('')}
         ${postes.length===0?'<span style="font-size:11px;color:var(--text3);font-style:italic">Aucun poste</span>':''}
       </div>
@@ -1789,30 +1885,43 @@ function parseAndImport(){
   const raw=document.getElementById('imp-txt').value.trim();
   if(!raw){toast('Colle des données à importer');return;}
   const lines=raw.split('\n').filter(l=>l.trim());
-  const txList=[];
+  const txList=[],rejets=[];
   lines.forEach(line=>{
     const cols=line.split('\t');
     if(cols.length<4)return;
     const dateRaw=cols[0].trim();
-    const cat=cols[1].trim();
+    const cat=normCat(cols[1].trim());
     const poste=cols[2].trim();
-    const montant=parseFloat(cols[3].toString().replace(/[^0-9.-]/g,''));
+    const montant=Math.round(Math.abs(parseFloat(cols[3].toString().replace(/[^0-9.-]/g,''))));
     const cmt=(cols[4]||'').trim();
-    if(!dateRaw||isNaN(montant)||!poste)return;
+    if(!dateRaw||isNaN(montant)||!montant||!poste)return;
+    if(!cat){rejets.push(line.slice(0,60));return;}
     // Parse date
     let date=dateRaw;
     if(dateRaw.match(/^\d{2}\/\d{2}\/\d{4}$/)){const[d,m,y]=dateRaw.split('/');date=`${y}-${m}-${d}`;}
     else if(dateRaw.match(/^\d{5}$/)){const d=new Date((parseInt(dateRaw)-25569)*86400000);date=d.toISOString().split('T')[0];}
     txList.push({date,cat,poste,amt:montant,cmt});
   });
+  if(rejets.length)toast(rejets.length+' ligne(s) ignorée(s) : catégorie inconnue (Revenu, Dépenses fixes, Dépenses variables ou Epargne)');
   if(!txList.length){toast('Aucune ligne valide détectée');return;}
-  const rev=txList.filter(t=>t.cat==='Revenu'||t.cat==='Revenus').reduce((s,t)=>s+t.amt,0);
-  const dep=txList.filter(t=>t.cat!=='Revenu'&&t.cat!=='Revenus').reduce((s,t)=>s+t.amt,0);
+  const rev=txList.filter(t=>t.cat==='Revenu').reduce((s,t)=>s+t.amt,0);
+  const dep=txList.filter(t=>t.cat!=='Revenu').reduce((s,t)=>s+t.amt,0);
   document.getElementById('imp-stats').innerHTML=
-    `<div style="background:var(--surf2);border-radius:var(--rs);padding:10px;text-align:center"><div style="font-size:20px;font-weight:600;color:var(--green)">${txList.length}</div><div style="font-size:10px;color:var(--text3)">Lignes</div></div>
-     <div style="background:var(--surf2);border-radius:var(--rs);padding:10px;text-align:center"><div style="font-size:14px;font-weight:600;color:var(--green)">${fmt(rev)}F</div><div style="font-size:10px;color:var(--text3)">Revenus</div></div>
-     <div style="background:var(--surf2);border-radius:var(--rs);padding:10px;text-align:center"><div style="font-size:14px;font-weight:600;color:var(--red)">${fmt(dep)}F</div><div style="font-size:10px;color:var(--text3)">Dépenses</div></div>`;
+    `<div style="background:var(--surf2);border-radius:var(--rs);padding:10px;text-align:center"><div style="font-size:20px;font-weight:600;color:var(--green)">${txList.length}</div><div style="font-size:11px;color:var(--text3)">Lignes</div></div>
+     <div style="background:var(--surf2);border-radius:var(--rs);padding:10px;text-align:center"><div style="font-size:14px;font-weight:600;color:var(--green)">${fmt(rev)}F</div><div style="font-size:11px;color:var(--text3)">Revenus</div></div>
+     <div style="background:var(--surf2);border-radius:var(--rs);padding:10px;text-align:center"><div style="font-size:14px;font-weight:600;color:var(--red)">${fmt(dep)}F</div><div style="font-size:11px;color:var(--text3)">Dépenses</div></div>`;
   doImport(txList);
+}
+
+// Catégorie importée → catégorie de l'appli (null si inconnue)
+function normCat(c){
+  const k=(c||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/s$/,'').trim();
+  return{'revenu':'Revenu','depense fixe':'Dépenses fixes','depenses fixe':'Dépenses fixes','depense variable':'Dépenses variables','depenses variable':'Dépenses variables','epargne':'Epargne'}[k]||null;
+}
+// Clé de comparaison pour repérer une transaction déjà enregistrée
+function txKey(t){
+  const sens=t.cat==='Revenu'?'+':'-';
+  return [t.date,Math.round(t.amt||0),sens,(t.cmt||'').trim().toLowerCase()].join('|');
 }
 
 async function doImport(txList){
@@ -1821,21 +1930,25 @@ async function doImport(txList){
   const log=document.getElementById('imp-log');
   log.style.display='block';log.innerHTML='';
   const{db,collection,addDoc}=window._fb;
-  let ok=0;
+  let ok=0,doublons=0;
+  const deja=new Set(txs.map(txKey));
   for(let i=0;i<txList.length;i++){
     const t=txList[i];
+    const k=txKey(t);
+    if(deja.has(k)){doublons++;log.innerHTML+=`<span style="color:var(--text3)">= ${esc(t.date)} ${esc(t.poste)} ${fmt(t.amt)}F (déjà présente)</span>\n`;continue;}
+    deja.add(k);
     try{
       await addDoc(collection(db,dataPath()+'/transactions'),{amt:t.amt,date:t.date,cat:t.cat,poste:t.poste,cmt:t.cmt,ts:new Date().toISOString()});
       ok++;
-      log.innerHTML+=`<span style="color:var(--green)">✓ ${t.date} ${t.poste} ${fmt(t.amt)}F</span>\n`;
-    }catch(e){log.innerHTML+=`<span style="color:var(--red)">✗ ${t.poste}: ${e.message}</span>\n`;}
+      log.innerHTML+=`<span style="color:var(--green)">✓ ${t.date} ${esc(t.poste)} ${fmt(t.amt)}F</span>\n`;
+    }catch(e){log.innerHTML+=`<span style="color:var(--red)">✗ ${esc(t.poste)}: ${e.message}</span>\n`;}
     document.getElementById('imp-pb').style.width=Math.round((i+1)/txList.length*100)+'%';
     document.getElementById('imp-pt').textContent=`${i+1}/${txList.length} importées`;
     log.scrollTop=log.scrollHeight;
     await new Promise(r=>setTimeout(r,30));
   }
-  document.getElementById('imp-pt').textContent=`✓ ${ok}/${txList.length} transactions importées`;
-  toast(`${ok} transactions importées ✓`);
+  document.getElementById('imp-pt').textContent=`✓ ${ok}/${txList.length} transactions importées`+(doublons?` · ${doublons} doublon(s) ignoré(s)`:'');
+  toast(`${ok} transactions importées ✓`+(doublons?` · ${doublons} doublon(s) ignoré(s)`:''));
   btn.disabled=false;
   document.getElementById('imp-txt').value='';
 }
@@ -1845,197 +1958,6 @@ async function doImport(txList){
 
 
 
-// IMPORT WAVE / ORANGE MONEY VIA IA
-let imgBase64=null;
-let detectedTxs=[];
-
-function onImgSelected(input){
-  const file=input.files[0];
-  if(!file)return;
-  const reader=new FileReader();
-  reader.onload=e=>{
-    imgBase64=e.target.result.split(',')[1];
-    document.getElementById('img-thumb').src=e.target.result;
-    document.getElementById('img-name').textContent=file.name;
-    document.getElementById('img-preview').style.display='block';
-    document.getElementById('analyse-img-btn').style.display='flex';
-    document.getElementById('img-results').style.display='none';
-    document.getElementById('img-drop-zone').style.borderColor='var(--blue)';
-  };
-  reader.readAsDataURL(file);
-}
-
-async function analyseImage(){
-  if(!imgBase64){toast('Aucune image sélectionnée');return;}
-  document.getElementById('analyse-img-btn').style.display='none';
-  document.getElementById('img-loading').style.display='block';
-  document.getElementById('img-results').style.display='none';
-
-  try{
-    const prompt=`Tu es un assistant qui extrait des transactions financières depuis des captures d'écran d'historiques Wave ou Orange Money sénégalais.
-
-Analyse cette image et extrais uniquement les transactions PERTINENTES selon ces règles strictes :
-
-INCLURE comme SORTIE :
-- Transfert envoyé / Transfert effectué / Envoi effectué
-- "À [nom]" avec montant négatif
-- Achat crédit, achat forfait
-- Paiement marchand
-
-INCLURE comme ENTREE :
-- Transfert reçu
-- "De [nom]" avec montant positif
-
-IGNORER complètement :
-- Retraits (l'argent reste dans le patrimoine, juste changement de forme)
-- Dépôts reçus (rechargement de compte mobile)
-- Frais de transaction
-
-Pour chaque transaction retenue, retourne un objet JSON avec :
-- date: format YYYY-MM-DD (si seulement jour/mois visible, utilise 2026 comme année)
-- montant: nombre positif (valeur absolue)
-- sens: "sortie" ou "entree"
-- commentaire: nom de la personne ou description courte
-- operateur: "Wave" ou "Orange Money" selon le style de l'interface
-
-Réponds UNIQUEMENT avec un tableau JSON valide, sans texte avant ou après.
-Exemple: [{"date":"2026-04-26","montant":5000,"sens":"sortie","commentaire":"Adja Diaw","operateur":"Wave"}]`;
-
-    // Détection du type d'image
-    const mediaType=imgBase64.startsWith('/9j')?'image/jpeg':
-                    imgBase64.startsWith('iVBOR')?'image/png':'image/jpeg';
-
-    const response=await fetch('/api/analyse',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({image:imgBase64,mediaType})
-    });
-
-    if(!response.ok){
-      const err=await response.json();
-      throw new Error(err.error||'Erreur serveur');
-    }
-
-    const data=await response.json();
-    detectedTxs=data.transactions||[];
-
-    document.getElementById('img-loading').style.display='none';
-    renderDetectedTxs();
-
-  }catch(e){
-    document.getElementById('img-loading').style.display='none';
-    document.getElementById('analyse-img-btn').style.display='flex';
-    toast('Erreur analyse: '+e.message);
-  }
-}
-
-function renderDetectedTxs(){
-  if(!detectedTxs.length){
-    toast('Aucune transaction détectée');
-    document.getElementById('analyse-img-btn').style.display='flex';
-    return;
-  }
-
-  const totEntree=detectedTxs.filter(t=>t.sens==='entree').reduce((s,t)=>s+t.montant,0);
-  const totSortie=detectedTxs.filter(t=>t.sens==='sortie').reduce((s,t)=>s+t.montant,0);
-
-  document.getElementById('img-stats').innerHTML=`
-    <div style="background:var(--surf2);border-radius:var(--rs);padding:10px;text-align:center">
-      <div style="font-size:10px;color:var(--text3);margin-bottom:3px">Détectées</div>
-      <div style="font-size:18px;font-weight:600;color:var(--text)">${detectedTxs.length}</div>
-    </div>
-    <div style="background:var(--surf2);border-radius:var(--rs);padding:10px;text-align:center">
-      <div style="font-size:10px;color:var(--text3);margin-bottom:3px">Entrées</div>
-      <div style="font-size:13px;font-weight:600;color:var(--green)">${fmt(totEntree)} F</div>
-    </div>
-    <div style="background:var(--surf2);border-radius:var(--rs);padding:10px;text-align:center">
-      <div style="font-size:10px;color:var(--text3);margin-bottom:3px">Sorties</div>
-      <div style="font-size:13px;font-weight:600;color:var(--red)">${fmt(totSortie)} F</div>
-    </div>`;
-
-  // Liste avec sélecteur de poste
-  const allCats=Object.keys(CATS);
-  document.getElementById('img-tx-list').innerHTML=detectedTxs.map((t,i)=>{
-    const isEntree=t.sens==='entree';
-    const defaultCat=isEntree?'Revenu':'Dépenses variables';
-    const defaultPoste=isEntree?'Extras professionnels':'Dons';
-    const postesOpts=getAllPostes(defaultCat).map(p=>`<option value="${p}"${p===defaultPoste?' selected':''}>${p}</option>`).join('');
-    return `<div style="padding:10px 0;border-bottom:0.5px solid var(--border)">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-        <div>
-          <div style="font-size:13px;font-weight:500;color:var(--text)">${t.commentaire||t.operateur}</div>
-          <div style="font-size:11px;color:var(--text3)">${t.date} · <span style="color:var(--text2)">${t.operateur}</span></div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:14px;font-weight:600;color:${isEntree?'var(--green)':'var(--red)'}">${isEntree?'+':'−'}${fmt(t.montant)} F</div>
-          <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3);cursor:pointer;justify-content:flex-end;margin-top:3px">
-            <input type="checkbox" checked id="tx-sel-${i}" style="cursor:pointer">
-            Inclure
-          </label>
-        </div>
-      </div>
-      <div style="display:flex;gap:6px">
-        <select class="fsel" id="tx-cat-${i}" style="flex:1;font-size:12px;padding:7px 10px" onchange="updateTxPoste(${i})">
-          ${allCats.map(c=>`<option value="${c}"${c===defaultCat?' selected':''}>${c}</option>`).join('')}
-        </select>
-        <select class="fsel" id="tx-poste-${i}" style="flex:1;font-size:12px;padding:7px 10px">
-          ${postesOpts}
-        </select>
-      </div>
-    </div>`;
-  }).join('');
-
-  document.getElementById('img-results').style.display='block';
-  document.getElementById('img-pt').textContent='Vérifie et ajuste les catégories avant d\'importer';
-}
-
-function updateTxPoste(i){
-  const cat=document.getElementById('tx-cat-'+i).value;
-  const ps=getAllPostes(cat);
-  document.getElementById('tx-poste-'+i).innerHTML=ps.map(p=>`<option>${p}</option>`).join('');
-}
-
-async function importDetectedTx(){
-  const btn=document.getElementById('img-import-btn');
-  btn.disabled=true;
-  const{db,collection,addDoc}=window._fb;
-  let ok=0;
-  const toImport=detectedTxs.filter((_,i)=>document.getElementById('tx-sel-'+i)?.checked);
-
-  for(let i=0;i<detectedTxs.length;i++){
-    if(!document.getElementById('tx-sel-'+i)?.checked)continue;
-    const t=detectedTxs[i];
-    const cat=document.getElementById('tx-cat-'+i)?.value||'Dépenses variables';
-    const poste=document.getElementById('tx-poste-'+i)?.value||'Dons';
-    try{
-      addDoc(collection(db,dataPath()+'/transactions'),{
-        amt:t.montant,date:t.date,cat,poste,
-        cmt:t.commentaire||'',
-        ts:new Date().toISOString(),
-        source:t.operateur
-      });
-      ok++;
-    }catch(e){console.warn(e);}
-    const pct=Math.round((ok)/toImport.length*100);
-    document.getElementById('img-pb').style.width=pct+'%';
-    document.getElementById('img-pt').textContent=ok+' / '+toImport.length+' importées';
-    await new Promise(r=>setTimeout(r,30));
-  }
-
-  btn.disabled=false;
-  toast(ok+' transactions importées depuis '+( detectedTxs[0]?.operateur||'image')+' ✓');
-  // Reset
-  setTimeout(()=>{
-    document.getElementById('img-results').style.display='none';
-    document.getElementById('img-preview').style.display='none';
-    document.getElementById('analyse-img-btn').style.display='none';
-    document.getElementById('img-drop-zone').style.borderColor='var(--border2)';
-    document.getElementById('img-pb').style.width='0%';
-    document.getElementById('img-pt').textContent='';
-    imgBase64=null;detectedTxs=[];
-    document.getElementById('img-input').value='';
-  },2000);
-}
 
 
 // ══════════════════════════════════════════
@@ -2094,12 +2016,12 @@ async function renderSharedSpaceUI(){
       ${Object.entries(members).map(([mid,m])=>`
         <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:0.5px solid var(--border)">
           <div>
-            <div style="font-size:13px;font-weight:500;color:var(--text)">${m.name||'Utilisateur'} ${mid===uid?'<span style="font-size:10px;color:var(--text3)">(moi)</span>':''}</div>
-            <div style="font-size:11px;color:var(--text3)">${m.email||''}</div>
+            <div style="font-size:13px;font-weight:500;color:var(--text)">${esc(m.name||'Utilisateur')} ${mid===uid?'<span style="font-size:11px;color:var(--text3)">(moi)</span>':''}</div>
+            <div style="font-size:11px;color:var(--text3)">${esc(m.email||'')}</div>
           </div>
           <div style="display:flex;align-items:center;gap:8px">
             <span style="font-size:11px;padding:2px 8px;border-radius:20px;background:${m.role==='admin'?'var(--gd)':'rgba(245,158,11,.1)'};color:${m.role==='admin'?'var(--green)':'var(--amber)'}">${m.role==='admin'?'Admin':'Lecteur'}</span>
-            ${mid!==uid&&isAdmin()?`<button onclick="toggleMemberRole('${mid}','${m.role}')" class="btn-o" style="font-size:10px;padding:3px 8px">${m.role==='admin'?'→ Lecteur':'→ Admin'}</button>`:''}
+            ${mid!==uid&&isAdmin()?`<button onclick="toggleMemberRole('${mid}','${m.role}')" class="btn-o" style="font-size:11px;padding:3px 8px">${m.role==='admin'?'→ Lecteur':'→ Admin'}</button>`:''}
           </div>
         </div>`).join('')}
       <div style="margin-top:14px;display:flex;gap:8px">
@@ -2244,6 +2166,28 @@ let lockTimer=null;
 let isLocked=false;
 
 function getPin(){return localStorage.getItem(LOCK_KEY)||'';}
+const PIN_SALT_KEY='fiinas-pin-salt',PIN_FAILS_KEY='fiinas-pin-fails',PIN_UNTIL_KEY='fiinas-pin-until';
+const _hex=b=>Array.from(new Uint8Array(b),x=>x.toString(16).padStart(2,'0')).join('');
+async function pinHash(p){
+  let salt=localStorage.getItem(PIN_SALT_KEY);
+  if(!salt){salt=_hex(crypto.getRandomValues(new Uint8Array(16)));localStorage.setItem(PIN_SALT_KEY,salt);}
+  return'h1:'+_hex(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(salt+':'+p)));
+}
+async function pinMatches(p){
+  const st=getPin();
+  if(st.startsWith('h1:'))return(await pinHash(p))===st;
+  if(st&&p===st){setPin(await pinHash(p));return true;} // ancien PIN en clair → converti
+  return false;
+}
+function pinWait(){return Math.max(0,parseInt(localStorage.getItem(PIN_UNTIL_KEY)||'0',10)-Date.now());}
+function pinFail(){
+  const n=parseInt(localStorage.getItem(PIN_FAILS_KEY)||'0',10)+1;
+  localStorage.setItem(PIN_FAILS_KEY,String(n));
+  if(n>=5)localStorage.setItem(PIN_UNTIL_KEY,String(Date.now()+30000*Math.pow(2,Math.min(n-5,5))));
+  return n;
+}
+function pinReset(){localStorage.removeItem(PIN_FAILS_KEY);localStorage.removeItem(PIN_UNTIL_KEY);}
+function pinWaitMsg(){return"Trop d'essais — réessaie dans "+Math.ceil(pinWait()/1000)+' s';}
 function setPin(p){localStorage.setItem(LOCK_KEY,p);}
 function hasPin(){return getPin().length>=4;}
 
@@ -2303,6 +2247,7 @@ function pinKey(k){
   const overlay=document.getElementById('lock-overlay');
   if(!overlay)return;
   if(k===''){return;}
+  if(!overlay._isSetup&&pinWait()>0){const er=document.getElementById('pin-error');if(er)er.textContent=pinWaitMsg();pinInput='';return;}
   if(k==='⌫'){
     pinInput=pinInput.slice(0,-1);
   } else {
@@ -2318,7 +2263,7 @@ function pinKey(k){
     }
   }
   if(pinInput.length===6){
-    setTimeout(()=>{
+    setTimeout(async()=>{
       if(overlay._isSetup){
         if(!overlay._firstPin){
           overlay._firstPin=pinInput;
@@ -2331,7 +2276,7 @@ function pinKey(k){
           }
         } else {
           if(pinInput===overlay._firstPin){
-            setPin(pinInput);
+            setPin(await pinHash(pinInput));pinReset();
             pinInput='';
             overlay.remove();
             toast('Code PIN créé ✓');
@@ -2359,13 +2304,15 @@ function pinKey(k){
           }
         }
       } else {
-        if(pinInput===getPin()){
-          pinInput='';
+        const _essai=pinInput;pinInput='';
+        if(await pinMatches(_essai)){
+          pinReset();
           overlay.remove();
           isLocked=false;
           resetLockTimer();
         } else {
-          document.getElementById('pin-error').textContent='Code incorrect';
+          const _n=pinFail();
+          document.getElementById('pin-error').textContent=pinWait()>0?pinWaitMsg():('Code incorrect'+(_n>=3?' — '+(5-_n)+' essai'+(5-_n>1?'s':'')+' restant'+(5-_n>1?'s':''):''));
           pinInput='';
           for(let i=0;i<6;i++){
             const dot=document.getElementById('dot-'+i);
@@ -2547,7 +2494,7 @@ function renderTrash(){
   el.innerHTML=trashBin.map(t=>`
     <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:0.5px solid var(--border)">
       <div>
-        <div style="font-size:13px;font-weight:500;color:var(--text)">${t.poste}</div>
+        <div style="font-size:13px;font-weight:500;color:var(--text)">${esc(t.poste)}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">${t.date} · ${new Intl.NumberFormat('fr-FR').format(t.amt)} F · ${(()=>{const left=Math.max(0,Math.round((TRASH_TTL-(Date.now()-new Date(t.deletedAt).getTime()))/60000));return left>0?'expire dans '+left+' min':'expire bientôt';})()}</div>
       </div>
       <button data-id="${t.id}" class="restore-btn"
@@ -2601,7 +2548,7 @@ function openEditTx(id){
 function syncEditPostes(selected){
   const cat=document.getElementById('e-cat').value;
   const ps=getAllPostes(cat);
-  document.getElementById('e-poste').innerHTML=ps.map(p=>`<option ${p===selected?'selected':''}>${p}</option>`).join('');
+  document.getElementById('e-poste').innerHTML=ps.map(p=>`<option ${p===selected?'selected':''}>${esc(p)}</option>`).join('');
 }
 function closeEditTx(){
   document.getElementById('edit-modal').style.display='none';
@@ -2610,14 +2557,19 @@ function closeEditTx(){
 }
 async function saveEditTx(){
   if(!editingId)return;
+  if(!isAdmin()){toast('Mode lecture — modification non autorisée');return;}
   const amt=parseFloat(document.getElementById('e-amt').value.replace(/\s/g,'').replace(/,/g,'.'));
   const date=document.getElementById('e-date').value;
   const cat=document.getElementById('e-cat').value;
   const poste=document.getElementById('e-poste').value;
   const cmt=document.getElementById('e-cmt').value.trim();
   if(!amt||!date){toast('Montant et date obligatoires');return;}
+  if(amt<=0){toast('Le montant doit être positif');return;}
   const{db,doc,setDoc}=window._fb;
-  await setDoc(doc(db,dataPath()+'/transactions/'+editingId),{amt,date,cat,poste,cmt,ts:new Date().toISOString()});
+  try{
+    // merge : on garde ts (ordre d'origine), createdBy, source… ; on note la date de modification
+    await setDoc(doc(db,dataPath()+'/transactions/'+editingId),{amt:Math.round(amt),date,cat,poste,cmt,updatedAt:new Date().toISOString()},{merge:true});
+  }catch(e){toast('⚠ Modification non enregistrée : '+e.message);return;}
   closeEditTx();
   toast('Transaction modifiée ✓');
 }
@@ -3088,19 +3040,19 @@ function closeSpaceMenuOutside(e){
 function renderSpaceMenu(){
   const el=document.getElementById('space-menu-list');
   if(!el)return;
-  let html='<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:600;padding:4px 8px 8px">Changer d\'espace</div>';
+  let html='<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:600;padding:4px 8px 8px">Changer d\'espace</div>';
   const isPerso=!sharedSpaceId;
   html+=`<div onclick="switchSpace(null)" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--rs);cursor:pointer;background:${isPerso?'var(--surf2)':'transparent'};margin-bottom:4px">
     <span style="display:flex;align-items:center;color:var(--text2)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
-    <div style="flex:1"><div style="font-size:13px;font-weight:500;color:var(--text)">Mon espace</div><div style="font-size:10px;color:var(--text3)">Mes données personnelles</div></div>
-    ${isPerso?'<span style="font-size:10px;color:var(--green)">✓</span>':''}
+    <div style="flex:1"><div style="font-size:13px;font-weight:500;color:var(--text)">Mon espace</div><div style="font-size:11px;color:var(--text3)">Mes données personnelles</div></div>
+    ${isPerso?'<span style="font-size:11px;color:var(--green)">✓</span>':''}
   </div>`;
   mySpaces.forEach(sp=>{
     const isActive=sharedSpaceId===sp.ownerUid;
     html+=`<div onclick="switchSpace('${sp.ownerUid}')" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--rs);cursor:pointer;background:${isActive?'var(--surf2)':'transparent'};margin-bottom:4px">
       <span style="display:flex;align-items:center;color:var(--text2)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
-      <div style="flex:1"><div style="font-size:13px;font-weight:500;color:var(--text)">${sp.ownerName}</div><div style="font-size:10px;color:var(--text3)">${sp.role==='admin'?'Admin':'Lecteur'}</div></div>
-      ${isActive?'<span style="font-size:10px;color:var(--green)">✓</span>':''}
+      <div style="flex:1"><div style="font-size:13px;font-weight:500;color:var(--text)">${esc(sp.ownerName)}</div><div style="font-size:11px;color:var(--text3)">${sp.role==='admin'?'Admin':'Lecteur'}</div></div>
+      ${isActive?'<span style="font-size:11px;color:var(--green)">✓</span>':''}
     </div>`;
   });
   html+=`<div style="border-top:0.5px solid var(--border);margin-top:6px;padding-top:6px">
@@ -3166,6 +3118,13 @@ async function watchJoinRequests(){
 
 async function loadUserSpaces(){
   if(!uid)return;
+  if(!SHARING_ENABLED){
+    sharedSpaceId=null;userRole='admin';mySpaces=[];
+    const sb=document.getElementById('space-btn');if(sb)sb.style.display='none';
+    const su=document.getElementById('spaces-ui');if(su&&su.closest('.card'))su.closest('.card').style.display='none';
+    subscribe();
+    return;
+  }
   const{db,doc,onSnapshot}=window._fb;
   watchJoinRequests();
   // Real-time listener on profile — detects when someone grants access
@@ -3203,7 +3162,7 @@ async function loadUserSpaces(){
 
 async function renderSpacesUI(freshCode){
   const el=document.getElementById('spaces-ui');
-  if(!el)return;
+  if(!el||!SHARING_ENABLED)return;
 
   // Update role display
   const roleEl=document.getElementById('role-display');
@@ -3234,13 +3193,13 @@ async function renderSpacesUI(freshCode){
     sharedWith.forEach(m=>{
       html+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:0.5px solid var(--border)">
         <div>
-          <div style="font-size:13px;font-weight:500;color:var(--text)">${m.name||'Utilisateur'}</div>
-          <div style="font-size:11px;color:var(--text3)">${m.email||''}</div>
+          <div style="font-size:13px;font-weight:500;color:var(--text)">${esc(m.name||'Utilisateur')}</div>
+          <div style="font-size:11px;color:var(--text3)">${esc(m.email||'')}</div>
         </div>
         <div style="display:flex;align-items:center;gap:6px">
           <span style="font-size:11px;padding:2px 8px;border-radius:20px;background:${m.role==='admin'?'var(--gd)':'rgba(245,158,11,.1)'};color:${m.role==='admin'?'var(--green)':'var(--amber)'}">${m.role==='admin'?'Admin':'Lecteur'}</span>
-          <button onclick="toggleAccess('${m.uid}','${m.role}')" class="btn-o" style="font-size:10px;padding:2px 8px">${m.role==='admin'?'→ Lecteur':'→ Admin'}</button>
-          <button onclick="revokeAccess('${m.uid}')" class="btn-o" style="font-size:10px;padding:2px 8px;color:var(--red);border-color:var(--red)">Retirer</button>
+          <button onclick="toggleAccess('${m.uid}','${m.role}')" class="btn-o" style="font-size:11px;padding:2px 8px">${m.role==='admin'?'→ Lecteur':'→ Admin'}</button>
+          <button onclick="revokeAccess('${m.uid}')" class="btn-o" style="font-size:11px;padding:2px 8px;color:var(--red);border-color:var(--red)">Retirer</button>
         </div>
       </div>`;
     });
@@ -3278,7 +3237,7 @@ async function renderSpacesUI(freshCode){
 
   if(inviteCode){
     html+=`<div style="margin-top:12px;background:var(--surf2);border-radius:var(--rs);padding:12px">
-      <div style="font-size:10px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.07em;font-weight:600">Code d'invitation actif</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.07em;font-weight:600">Code d'invitation actif</div>
       <div style="display:flex;gap:8px;align-items:center">
         <div style="font-size:16px;font-weight:600;letter-spacing:.15em;color:var(--blue);flex:1;text-align:center;padding:8px;background:var(--surf);border-radius:var(--rs)">${inviteCode}</div>
         <button onclick="copyInviteCode('${inviteCode}')" class="btn-o">Copier</button>
@@ -3302,7 +3261,7 @@ async function renderSpacesUI(freshCode){
       const isActive=sharedSpaceId===sp.ownerUid;
       html+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:0.5px solid var(--border)">
         <div>
-          <div style="font-size:13px;font-weight:500;color:var(--text)">${sp.ownerName}</div>
+          <div style="font-size:13px;font-weight:500;color:var(--text)">${esc(sp.ownerName)}</div>
           <div style="font-size:11px;color:${sp.role==='admin'?'var(--green)':'var(--amber)'}">${sp.role==='admin'?'Admin':'Lecteur'}</div>
         </div>
         <div style="display:flex;gap:6px">
@@ -3498,6 +3457,94 @@ function switchToPersonal(){
   document.getElementById('space-menu').style.display='none';
 }
 
+
+// ══════════ SAUVEGARDE COMPLÈTE (fichier .json) + RESTAURATION ══════════
+const BACKUP_JOURS=30,BACKUP_KEY='fiinas-last-backup';
+function derniereSauvegarde(){return localStorage.getItem(BACKUP_KEY)||null;}
+function joursDepuisSauvegarde(){const d=derniereSauvegarde();return d?Math.floor((Date.now()-Date.parse(d))/86400000):null;}
+// Date de la dernière sauvegarde aussi gardée en ligne (visible sur tous tes appareils)
+async function syncDerniereSauvegarde(){
+  try{
+    const{db,doc,getDoc}=window._fb;
+    const s=await getDoc(doc(db,'users/'+uid+'/data/profile'));
+    const d=s.exists()&&s.data().derniereSauvegarde;
+    if(d&&(!derniereSauvegarde()||d>derniereSauvegarde())){localStorage.setItem(BACKUP_KEY,d);renderBackupBanner();}
+  }catch(e){}
+}
+function renderBackupBanner(){
+  const el=document.getElementById('backup-banner');if(!el)return;
+  const j=joursDepuisSauvegarde();
+  if(!txs.length||(j!==null&&j<BACKUP_JOURS)||sharedSpaceId){el.innerHTML='';return;}
+  el.innerHTML=`<div style="margin:0 0 10px;background:var(--bd);border:0.5px solid var(--blue);border-radius:var(--r);padding:12px;display:flex;gap:10px;align-items:center">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" style="flex-shrink:0"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--text)">${j===null?'Aucune sauvegarde enregistrée':'Dernière sauvegarde il y a '+j+' jours'}</div>
+    <div style="font-size:11px;color:var(--text2)">Transactions, budgets et postes</div></div>
+    <button onclick="downloadBackup()" style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font);flex-shrink:0">Sauvegarder</button>
+  </div>`;
+}
+function renderBackupUI(){
+  const el=document.getElementById('backup-ui');if(!el)return;
+  const d=derniereSauvegarde();
+  const lbl=d?new Date(d).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}):'jamais';
+  el.innerHTML=`<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Dernière : ${lbl}</div>
+    <button onclick="downloadBackup()" style="width:100%;padding:11px;border-radius:var(--rs);border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);margin-bottom:8px">Télécharger la sauvegarde complète</button>
+    <button onclick="document.getElementById('backup-file').click()" style="width:100%;padding:11px;border-radius:var(--rs);border:0.5px solid var(--border2);background:transparent;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">Restaurer depuis un fichier</button>
+    <input type="file" id="backup-file" accept=".json,application/json" hidden onchange="restoreBackup(this)">
+    <div style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.5">Un fichier .json avec toutes tes transactions, tes budgets mois par mois, le détail des budgets et tes postes. À garder sur Google Drive ou WhatsApp.</div>`;
+}
+let _backupBusy=false;
+async function downloadBackup(){
+  if(_backupBusy)return;_backupBusy=true;
+  const{db,collection,getDocs,doc,getDoc,setDoc}=window._fb;
+  const base='users/'+uid;
+  try{
+    toast('Préparation de la sauvegarde…');
+    const tx=(await getDocs(collection(db,base+'/transactions'))).docs.map(d=>({id:d.id,...d.data()}));
+    const st=await getDoc(doc(db,base+'/data/settings'));
+    const out={app:'FII\'NAS',version:1,date:new Date().toISOString(),transactions:tx,settings:st.exists()?st.data():{}};
+    const blob=new Blob([JSON.stringify(out,null,1)],{type:'application/json'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='Sauvegarde_FIINAS_'+new Date().toISOString().slice(0,10)+'.json';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    localStorage.setItem(BACKUP_KEY,out.date);
+    setDoc(doc(db,base+'/data/profile'),{derniereSauvegarde:out.date},{merge:true}).catch(()=>{});
+    renderBackupBanner();renderBackupUI();
+    toast('Sauvegarde téléchargée ✓ ('+tx.length+' transactions)');
+  }catch(e){toast('⚠ Sauvegarde impossible : '+e.message);}
+  finally{_backupBusy=false;}
+}
+async function restoreBackup(input){
+  const file=input.files&&input.files[0];input.value='';
+  if(!file||_backupBusy)return;
+  let b;
+  try{b=JSON.parse(await file.text());}catch(e){toast('Fichier illisible');return;}
+  if(!b||b.app!=="FII'NAS"||!Array.isArray(b.transactions)){toast("Ce fichier n'est pas une sauvegarde FII'NAS");return;}
+  const d=new Date(b.date).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'});
+  if(!confirm(`Restaurer la sauvegarde du ${d} ?\n\n${b.transactions.length} transactions, budgets et postes.\n\nLes éléments du fichier remplacent ceux qui portent le même identifiant. Ce qui a été ajouté après la sauvegarde est conservé.`))return;
+  _backupBusy=true;
+  const{db,doc,setDoc}=window._fb;
+  const base='users/'+uid;
+  try{
+    let n=0;
+    for(const t of b.transactions){
+      const{id,...data}=t;if(!id)continue;
+      await setDoc(doc(db,base+'/transactions/'+id),data);n++;
+      if(n%50===0)toast('Restauration… '+n+' / '+b.transactions.length);
+    }
+    if(b.settings&&Object.keys(b.settings).length){
+      await setDoc(doc(db,base+'/data/settings'),b.settings);
+      // Mise à jour immédiate de l'écran (l'écho local de cet enregistrement est ignoré)
+      budget=b.settings.budget||{};budgetDetails=b.settings.budgetDetails||{};custom=b.settings.custom||{};
+      loadCatsFromSettings(b.settings);
+      lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,b.settings.cats||null]);
+      renderCurrent();renderCPUI();
+    }
+    toast('Restauration terminée ✓ ('+n+' transactions)');
+  }catch(e){toast('⚠ Restauration interrompue : '+e.message);}
+  finally{_backupBusy=false;}
+}
 
 // TOAST
 let tt;
