@@ -157,6 +157,8 @@ body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin
 
 /* HERO */
 .hero{background:var(--surf);border:0.5px solid var(--border);border-left:3px solid var(--green);border-radius:0 var(--r) var(--r) 0;padding:20px 18px;margin-bottom:10px}
+.hero.hero-n{border-left:0.5px solid var(--border);border-radius:var(--r)}
+.hero.hero-neg{border-left-color:var(--red)}
 .hlbl{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;font-weight:600}
 .hamt{font-size:34px;font-weight:600;font-family:var(--font);letter-spacing:-.01em}
 .hamt.pos{color:var(--green)}.hamt.neg{color:var(--red)}
@@ -1358,7 +1360,7 @@ function computePatrimoineToday(){
 async function renderDash(){
   renderBackupBanner();
   renderCptDash();
-  if(isAnnual()){renderDashAnnual();return;}
+  if(isAnnual()){const h=document.getElementById('hero');h.className='hero';h.onclick=null;h.style.cursor='';renderDashAnnual();return;}
   const ym=curYM();const t=txYM(ym);
   const rev=sumC(t,'Revenu');const fix=sumC(t,'Dépenses fixes');
   const vr=sumC(t,'Dépenses variables');const ep=sumC(t,'Epargne');
@@ -1384,15 +1386,32 @@ async function renderDash(){
   // Comparaison avec le mois précédent, en phrase
   const prevLbl=yml(prevYm).split(' ')[0].toLowerCase();
   const cmp=diffSol===null?'':diffSol===0?`Comme en ${prevLbl}`:`${Math.abs(diffSol)} % de ${diffSol>0?'plus':'moins'} qu'en ${prevLbl}`;
-  document.getElementById('hero').innerHTML=`
-    <div class="hlbl">Solde net du mois</div>
-    <div class="hamt ${sol>=0?'pos':'neg'}">${fmtS(sol)} <span style="font-size:15px;opacity:.55">FCFA</span></div>
-    ${cmp?`<div class="hcmp">${cmp}</div>`:''}
-    <div class="hmeta">
-      <div class="hmi">Revenus<span style="color:var(--green)">${fmt(rev)} F</span></div>
+  const moisNom=yml(ym).split(' ')[0].toLowerCase();
+  const deMois=(/^[aeiouyéèh]/.test(moisNom)?"d'":'de ')+moisNom;
+  const metaBilan=`<div class="hmeta">
+      <div class="hmi">Entrées<span style="color:var(--green)">${fmt(rev)} F</span></div>
       <div class="hmi">Dépenses<span style="color:var(--red)">${fmt(dep)} F</span></div>
       <div class="hmi">Épargne<span style="color:var(--blue)">${fmt(ep)} F</span></div>
     </div>`;
+  const heroEl=document.getElementById('hero');
+  if(modules.comptes&&comptes.length){
+    // « Mes comptes » actif : l'argent réellement disponible en tête, le bilan du mois en dessous
+    heroEl.className='hero hero-n';heroEl.style.cursor='pointer';heroEl.onclick=()=>goP('cpt',null);
+    heroEl.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center"><div class="hlbl" style="margin:0">Disponible</div><div style="font-size:11px;color:var(--text3)">${comptes.length} compte${comptes.length>1?'s':''} ›</div></div>
+      <div class="hamt" style="color:var(--text);margin:6px 0 10px">${fmtS(totalComptes()).replace('+','')} <span style="font-size:15px;opacity:.55">F</span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${comptes.map(c=>`<span style="background:var(--surf2);border-radius:8px;padding:4px 9px;font-size:11.5px;color:var(--text)"><span style="color:${typeCpt(c).c}">●</span> ${esc(c.nom)} ${fmtS(soldeCompte(c)).replace('+','')}</span>`).join('')}</div>`;
+    document.getElementById('cpt-dash').innerHTML=`<div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><div class="hlbl" style="margin:0">Bilan ${deMois}</div><div style="font-size:18px;font-weight:600;color:var(--text)">${fmtS(sol)} F</div></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-top:3px">Entrées − sorties enregistrées ce mois${cmp?' · '+cmp:''}</div>
+      ${metaBilan}</div>`;
+  } else {
+    heroEl.className='hero'+(sol<0?' hero-neg':'');heroEl.style.cursor='';heroEl.onclick=null;
+    heroEl.innerHTML=`
+    <div class="hlbl">Bilan ${deMois}</div>
+    <div class="hamt ${sol>=0?'pos':'neg'}">${fmtS(sol)} <span style="font-size:15px;opacity:.55">FCFA</span></div>
+    <div class="hcmp">Entrées − sorties enregistrées ce mois${cmp?' · '+cmp:''}</div>
+    ${metaBilan}`;
+  }
   // Patrimoine + budget du mois
   const ligne=(lbl,val,bud,kind,col)=>{
     const st=budState(kind,val,bud);
@@ -1405,7 +1424,7 @@ async function renderDash(){
   dm.innerHTML=(avecComptes?'':`
     <div class="card">
       <div class="ct">Patrimoine net · à aujourd'hui</div>
-      <div class="pat-v" style="color:${patrimoine>=0?'var(--green)':'var(--red)'}">${patrimoine>=0?'+':''}${fmt(patrimoine)} F</div>
+      <div class="pat-v" style="color:${patrimoine>=0?'var(--green)':'var(--red)'}">${patrimoine>=0?'+':'−'}${fmt(patrimoine)} F</div>
       <div class="pat-s">dont épargne ${fmt(epaCumul)} F · disponible ${solCumul>=0?'':'−'}${fmt(Math.abs(solCumul))} F</div>
     </div>`)+`
     <div class="card">
