@@ -366,15 +366,16 @@ select option{background:#1F2840;color:#F1F4FA}
         </div>
       </div>
       <div class="frow">
-        <div class="fgrp">
+        <div class="fgrp" id="f-poste-grp">
           <div class="flbl">Poste</div>
-          <select class="fsel" id="f-poste" onchange="updReste()"></select>
+          <select class="fsel" id="f-poste" onchange="updReste();objNote()"></select>
         </div>
         <div class="fgrp">
           <div class="flbl">Date</div>
           <input class="finp" type="date" id="f-date" onchange="updReste()">
         </div>
       </div>
+      <div class="fgrp" id="f-poste-list-wrap" style="display:none"><div class="flbl">Poste</div><div id="f-poste-list" style="background:var(--surf2);border-radius:var(--rs);padding:4px"></div><div id="f-obj-note" style="font-size:11.5px;color:var(--text3);margin-top:6px"></div></div>
       <div id="f-reste"></div>
       <div class="fgrp" id="f-cpt-wrap" style="display:none"></div>
       <div class="fgrp" id="f-obj-wrap" style="display:none">
@@ -602,7 +603,7 @@ select option{background:#1F2840;color:#F1F4FA}
     </div>
     <div class="frow" style="margin-bottom:11px">
       <div class="fgrp"><div class="flbl">Catégorie</div>
-        <select class="fsel" id="e-cat" onchange="syncEditPostes();document.getElementById('e-obj-wrap').style.display=(this.value==='Epargne'&&modules.objectifs&&objectifs.length)?'block':'none';payRefresh('edit')"></select>
+        <select class="fsel" id="e-cat" onchange="syncEditPostes();payRefresh('edit')"></select>
       </div>
       <div class="fgrp"><div class="flbl">Poste</div>
         <select class="fsel" id="e-poste"></select>
@@ -1461,9 +1462,11 @@ function cptNote(){payRefresh('add');}
 // Un retrait = mouvement {type:'retrait_obj', objectif, amt, compte|null} : l'argent revient
 // sur un compte (si choisi) ou est simplement sorti de l'objectif ; ni revenu ni dépense.
 const VIOLET='#A78BFA';
+// Un objectif est lié à un poste d'épargne (o.poste) : toute épargne sur ce poste le fait avancer
+function objDuPoste(p){return modules.objectifs?objectifs.find(o=>o.poste===p)||null:null;}
 function progObj(o){
   let s=o.depart||0;
-  txs.forEach(t=>{if(t.cat==='Epargne'&&t.objectif===o.id)s+=t.amt||0;});
+  txs.forEach(t=>{if(t.cat==='Epargne'&&(t.objectif?t.objectif===o.id:t.poste===(o.poste||o.nom)))s+=t.amt||0;});
   mouvs.forEach(m=>{if(m.type==='retrait_obj'&&m.objectif===o.id)s-=m.amt||0;});
   return s;
 }
@@ -1478,7 +1481,7 @@ function effortObj(o){
   const cur=todayStr().slice(0,7);
   const n=moisEntre(cur,o.echeance)+1;
   if(n<=0)return{etat:'depasse',reste:o.cible-p};
-  const ceMois=txs.filter(t=>t.cat==='Epargne'&&t.objectif===o.id&&(t.date||'').startsWith(cur)).reduce((s,t)=>s+(t.amt||0),0);
+  const ceMois=txs.filter(t=>t.cat==='Epargne'&&(t.objectif?t.objectif===o.id:t.poste===(o.poste||o.nom))&&(t.date||'').startsWith(cur)).reduce((s,t)=>s+(t.amt||0),0);
   const parMois=Math.ceil((o.cible-(p-ceMois))/n);
   return{etat:'date',parMois,ceMois,encore:Math.max(0,parMois-ceMois),n};
 }
@@ -1489,7 +1492,26 @@ function barreObj(o,h){
 function pctObj(o){return o.cible>0?Math.max(0,Math.round(progObj(o)/o.cible*100)):0;}
 
 // ── Accueil : résumé, ou suggestion
+let _migObj=false;const _migTx=new Set();
+async function migrerObjectifs(){
+  try{
+    // 1. chaque objectif reçoit son poste d'épargne (une fois)
+    if(!_migObj&&objectifs.some(o=>!o.poste||!getAllPostes('Epargne').includes(o.poste))){
+      _migObj=true;
+      objectifs.forEach(o=>{if(!o.poste)o.poste=o.nom;if(!getAllPostes('Epargne').includes(o.poste))(CATS['Epargne']=CATS['Epargne']||[]).push(o.poste);});
+      await saveSettings();
+    }
+    // 2. les épargnes rattachées à un objectif passent sur son poste (dès que les transactions sont chargées)
+    const{db,doc,setDoc}=window._fb;
+    for(const t of txs.filter(t=>t.objectif&&!_migTx.has(t.id))){
+      _migTx.add(t.id);
+      const o=objectifs.find(x=>x.id===t.objectif);
+      await setDoc(doc(db,dataPath()+'/transactions/'+t.id),o?{poste:o.poste||o.nom,objectif:null}:{objectif:null},{merge:true});
+    }
+  }catch(e){_migObj=false;}
+}
 function renderObjDash(){
+  if(objectifs.some(o=>!o.poste)||txs.some(t=>t.objectif))migrerObjectifs();
   const el=document.getElementById('obj-dash');if(!el)return;
   if(modules.objectifs){
     if(!objectifs.length){el.innerHTML=`<div class="card" style="cursor:pointer;padding:12px 14px;margin:0 0 10px;height:calc(100% - 10px)" onclick="goP('obj',null)"><div class="hlbl" style="margin:0;font-size:12px">Objectifs ›</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-top:4px;line-height:1.35">Crée ton premier objectif</div></div>`;layoutTiles();return;}
@@ -1551,38 +1573,63 @@ function renderObjPage(){
 }
 
 // ── Créer / modifier
+let obMode='nouveau';
 function openAddObj(editId){
   const o=editId?objectifs.find(x=>x.id===editId):null;
-  const fa=v=>v?Number(v).toLocaleString('fr-FR').replace(/ /g,' '):'';
+  const fa=v=>v?Number(v).toLocaleString('fr-FR').replace(/\u202f/g,' '):'';
+  const libres=getAllPostes('Epargne').filter(p=>!objectifs.some(x=>(x.poste||x.nom)===p));
+  if(!o)obMode='nouveau';
   openSheet(sheetHead(o?'Modifier l\'objectif':'Nouvel objectif')+`
-    <div class="fgrp"><div class="flbl">Nom</div><input class="finp" id="ob-nom" maxlength="40" value="${esc(o?o.nom:'')}" placeholder="Tabaski 2027, Moto, Fonds d'urgence…"></div>
+    ${o?`<div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:12px"><span style="color:var(--purple)">◎</span> ${esc(o.poste||o.nom)}</div>`:`
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5">Un objectif est un poste d'épargne avec un montant visé.</div>
+    ${libres.length?`<div class="flbl">Pour quoi ?</div><div id="ob-mode" style="display:flex;gap:6px;margin-bottom:12px"></div>`:''}
+    <div class="fgrp" id="ob-nom-g"><div class="flbl">Nom</div><input class="finp" id="ob-nom" maxlength="40" placeholder="Tabaski 2027, Mariage, Moto…"></div>
+    <div class="fgrp" id="ob-poste-g" style="display:none"><div class="flbl">Poste d'épargne</div><select class="fsel" id="ob-poste">${libres.map(p=>`<option>${esc(p)}</option>`).join('')}</select></div>`}
     <div class="frow">
       <div class="fgrp"><div class="flbl">Montant visé (FCFA)</div><input class="finp" id="ob-cible" inputmode="numeric" value="${fa(o&&o.cible)}" oninput="fmtAmtInput(this)"></div>
       <div class="fgrp"><div class="flbl">Échéance (facultatif)</div><input class="finp" type="month" id="ob-ech" value="${o?esc(o.echeance||''):''}" min="${todayStr().slice(0,7)}"></div>
     </div>
-    ${o?'':`<div class="fgrp"><div class="flbl">Déjà mis de côté (FCFA)</div><input class="finp" id="ob-dep" inputmode="numeric" placeholder="0" oninput="fmtAmtInput(this)">
-      <div style="font-size:11px;color:var(--text3);margin-top:5px">Ce que tu as déjà épargné pour ce but avant aujourd'hui.</div></div>`}
+    ${o?'':`<div class="fgrp"><div class="flbl">Déjà mis de côté avant aujourd'hui (FCFA)</div><input class="finp" id="ob-dep" inputmode="numeric" placeholder="0" oninput="fmtAmtInput(this)">
+      <div style="font-size:11px;color:var(--text3);margin-top:5px" id="ob-dep-n">Ce que tu as déjà épargné pour ce but, hors saisies dans l'appli.</div></div>
+    <div style="font-size:12px;color:var(--text2);background:var(--surf2);border-radius:var(--rs);padding:9px 12px;margin-bottom:8px;line-height:1.5" id="ob-info"></div>`}
     <div id="ob-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
     <button class="btn-p" id="ob-go" onclick="saveObj(${o?jsa(o.id):''})">${o?'Enregistrer':'Créer l\'objectif'}</button>`);
+  if(!o)renderObMode();
+}
+function renderObMode(){
+  const m=document.getElementById('ob-mode');
+  if(m)m.innerHTML=[['nouveau','Nouveau but'],['poste','Un poste existant']].map(([k,l])=>`<button type="button" class="cpt-ch ${obMode===k?'on':''}" onclick="obMode='${k}';renderObMode()">${l}</button>`).join('');
+  document.getElementById('ob-nom-g').style.display=obMode==='nouveau'?'':'none';
+  document.getElementById('ob-poste-g').style.display=obMode==='poste'?'':'none';
+  const info=document.getElementById('ob-info');
+  if(info)info.innerHTML=obMode==='poste'?'<span style="color:var(--purple)">◎</span> Ce poste devient un objectif : l\'épargne déjà saisie dessus compte dans la progression.':'<span style="color:var(--purple)">◎</span> Crée aussi le poste d\'épargne du même nom. Tout ce que tu y épargnes fait avancer l\'objectif.';
 }
 async function saveObj(editId){
   const err=document.getElementById('ob-err');
-  const nom=(document.getElementById('ob-nom').value||'').trim();
   const cible=parseAmt(document.getElementById('ob-cible').value);
   const ech=document.getElementById('ob-ech').value||'';
-  if(!nom){err.textContent='Donne un nom à cet objectif.';return;}
   if(!(cible>0)){err.textContent='Indique le montant visé.';return;}
   if(editId){
     const o=objectifs.find(x=>x.id===editId);if(!o)return;
-    Object.assign(o,{nom,cible,echeance:ech});
+    Object.assign(o,{cible,echeance:ech});
   } else {
+    let poste;
+    if(obMode==='poste'){poste=document.getElementById('ob-poste').value;}
+    else{
+      poste=(document.getElementById('ob-nom').value||'').trim();
+      if(!poste){err.textContent='Donne un nom à cet objectif.';return;}
+      const exist=getAllPostes('Epargne').find(p=>p.toLowerCase()===poste.toLowerCase());
+      if(exist)poste=exist;
+    }
+    if(objectifs.some(x=>(x.poste||x.nom)===poste)){err.textContent='Ce poste a déjà un objectif.';return;}
     const r=document.getElementById('ob-dep').value;const dep=r.trim()===''?0:parseAmt(r);
     if(isNaN(dep)||dep<0){err.textContent='Montant déjà mis de côté invalide.';return;}
-    objectifs.push({id:'o'+Date.now().toString(36),nom,cible,echeance:ech,depart:dep,date0:todayStr()});
+    if(!getAllPostes('Epargne').includes(poste))(CATS['Epargne']=CATS['Epargne']||[]).push(poste);
+    objectifs.push({id:'o'+Date.now().toString(36),nom:poste,poste,cible,echeance:ech,depart:dep,date0:todayStr()});
   }
   document.getElementById('ob-go').disabled=true;
   try{await saveSettings();}catch(e){document.getElementById('ob-go').disabled=false;err.textContent='Non enregistré : '+e.message;return;}
-  closeSheet();renderCurrent();toast(editId?'Objectif modifié':'Objectif créé');
+  closeSheet();syncPostes();renderCPUI();renderCurrent();toast(editId?'Objectif modifié':'Objectif créé');
 }
 
 // ── Détail
@@ -1591,7 +1638,7 @@ function openObjDetail(id){
   const p=progObj(o),e=effortObj(o),pct=pctObj(o);
   const dFr=d=>d?new Date(d+'T12:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'';
   const lignes=[];
-  txs.forEach(t=>{if(t.cat==='Epargne'&&t.objectif===id)lignes.push({date:t.date||'',lib:'Ajout',sub:t.cmt||'',v:t.amt||0});});
+  txs.forEach(t=>{if(t.cat==='Epargne'&&(t.objectif?t.objectif===id:t.poste===(o.poste||o.nom)))lignes.push({date:t.date||'',lib:'Ajout',sub:t.cmt||'',v:t.amt||0});});
   mouvs.forEach(m=>{if(m.type==='retrait_obj'&&m.objectif===id)lignes.push({date:m.date,lib:'Retrait',sub:m.compte?'remis sur '+nomCpt(m.compte):'',v:-(m.amt||0)});});
   lignes.sort((a,b)=>b.date.localeCompare(a.date));
   let conseil='';
@@ -1622,11 +1669,12 @@ function ajouterAObj(id){
   goP('add',document.querySelectorAll('.ni')[2]);
   const b=[...document.querySelectorAll('.cat-chips .chip')].find(x=>(x.getAttribute('onclick')||'').includes("'Epargne'"));
   if(b)b.click();
+  const o=objectifs.find(x=>x.id===id);if(o)choisirPoste(o.poste||o.nom);
   setTimeout(()=>document.getElementById('f-amt')?.focus(),50);
 }
 async function supprimerObj(id){
   const o=objectifs.find(x=>x.id===id);if(!o)return;
-  if(!confirm(`Supprimer l'objectif « ${o.nom} » ?\n\nTon épargne déjà enregistrée reste dans ton historique et ton budget.`))return;
+  if(!confirm(`Supprimer l'objectif « ${o.nom} » ?\n\nLe poste d'épargne « ${o.poste||o.nom} » et l'épargne déjà enregistrée restent dans ton historique et ton budget.`))return;
   objectifs=objectifs.filter(x=>x.id!==id);
   try{await saveSettings();}catch(e){toast('⚠ '+e.message);return;}
   closeSheet();renderCurrent();toast('Objectif supprimé');
@@ -1667,22 +1715,14 @@ async function saveRetraitObj(id){
 // ── Formulaire : « Pour l'objectif » (catégorie Épargne)
 let formObj=null;
 function renderFormObjectifs(){
-  const w=document.getElementById('f-obj-wrap');if(!w)return;
-  if(!modules.objectifs||!objectifs.length||selCatVal!=='Epargne'){w.style.display='none';return;}
-  w.style.display='block';
-  if(formObj!==''&&!objectifs.some(o=>o.id===formObj)){
-    const ouvert=objectifs.find(o=>progObj(o)<o.cible);formObj=(ouvert||objectifs[0]).id;
-  }
-  document.getElementById('f-obj').innerHTML=objectifs.map(o=>`<button type="button" class="cpt-ch obj ${o.id===formObj?'on':''}" onclick="formObj=${jsa(o.id)};renderFormObjectifs()">${esc(o.nom)}</button>`).join('')
-    +`<button type="button" class="cpt-ch obj ${formObj===''?'on':''}" onclick="formObj='';renderFormObjectifs()">Aucun</button>`
-    +'<div id="f-obj-note" style="width:100%;font-size:11px;color:var(--text3);margin-top:2px"></div>';
-  objNote();
+  const w=document.getElementById('f-obj-wrap');if(w)w.style.display='none';
+  renderPosteList();
 }
-function objetFormulaire(){return(modules.objectifs&&selCatVal==='Epargne'&&objectifs.some(o=>o.id===formObj))?formObj:null;}
+function objetFormulaire(){return null;}
 function objNote(){
   const el=document.getElementById('f-obj-note');if(!el)return;
-  const o=objectifs.find(x=>x.id===formObj);
-  if(!o){el.textContent='Épargne libre, sans objectif.';return;}
+  const o=selCatVal==='Epargne'?objDuPoste(document.getElementById('f-poste')?.value):null;
+  if(!o){el.textContent=selCatVal==='Epargne'?'Épargne simple, sans objectif.':'';return;}
   const a=parseAmt(document.getElementById('f-amt')?.value),p=progObj(o);
   const apres=p+(a>0?a:0);
   el.textContent=a>0?`${o.nom} : ${fmt(p)} → ${fmt(apres)} F (${o.cible>0?Math.round(apres/o.cible*100):0} %)`:`${o.nom} : ${fmt(p)} / ${fmt(o.cible)} F`;
@@ -2632,10 +2672,29 @@ function selCat(el,cat,cls){
   el.classList.add(cls);selCatVal=cat;syncPostes();renderFormComptes();renderFormObjectifs();
 }
 function syncPostes(){
-  const p=getAllPostes(selCatVal);
-  document.getElementById('f-poste').innerHTML=p.map(x=>`<option>${x}</option>`).join('');
+  const p=getAllPostes(selCatVal),sel=document.getElementById('f-poste'),prev=sel.value;
+  sel.innerHTML=p.map(x=>`<option>${esc(x)}</option>`).join('');
+  if(p.includes(prev))sel.value=prev;
+  renderPosteList();
   updReste();
 }
+// Épargne avec objectifs : une seule liste, les postes liés à un objectif montrent leur progression
+function renderPosteList(){
+  const w=document.getElementById('f-poste-list-wrap'),g=document.getElementById('f-poste-grp');if(!w)return;
+  const actif=selCatVal==='Epargne'&&modules.objectifs&&objectifs.length>0;
+  w.style.display=actif?'block':'none';g.style.display=actif?'none':'';
+  if(!actif)return;
+  const sel=document.getElementById('f-poste');
+  const ordre=[...getAllPostes('Epargne')].sort((a,b)=>!!objDuPoste(b)-!!objDuPoste(a));
+  document.getElementById('f-poste-list').innerHTML=ordre.map(p=>{const o=objDuPoste(p),on=p===sel.value;
+    return `<div onclick="choisirPoste(${jsa(p)})" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer;${on?'background:var(--bd);box-shadow:inset 0 0 0 1px var(--blue)':''}">
+      <span style="width:14px;color:var(--purple);font-size:14px;line-height:1">${o?'◎':''}</span>
+      <div style="flex:1;min-width:0"><div style="font-size:13.5px;color:var(--text)">${esc(p)}</div>${o?`<div style="height:4px;border-radius:2px;background:var(--surf);margin-top:5px"><div style="height:100%;width:${Math.min(100,pctObj(o))}%;border-radius:2px;background:${progObj(o)>=o.cible?'var(--green)':'var(--purple)'}"></div></div>`:''}</div>
+      ${o?`<span style="font-size:11.5px;color:var(--text2)">${pctObj(o)} %</span>`:''}</div>`;}).join('');
+  objNote();
+}
+function choisirPoste(p){document.getElementById('f-poste').value=p;renderPosteList();updReste();}
+
 async function saveTx(){
   if(!isAdmin()){toast('Mode lecture — modification non autorisée');return;}
   const amt=parseFloat(document.getElementById('f-amt').value.replace(/\s/g,'').replace(/,/g,'.'));
@@ -2995,7 +3054,7 @@ function renderBForm(){
   ['Revenu','Dépenses fixes','Dépenses variables','Epargne'].forEach(cat=>{
     const ps=getAllPostes(cat);
     const total=ps.reduce((s,p)=>s+(bud[p]||0),0);
-    html+=`<div class="card"><div class="ct">${CICO[cat]} ${cat}${total>0?` <span style="float:right;color:${cat==='Revenu'?'#34d399':'#fb7185'};font-family:var(--mono)">${fmt(total)} F</span>`:''}</div>
+    html+=`<div class="card"><div class="ct">${CICO[cat]} ${cat}${total>0?` <span style="float:right;color:${cat==='Revenu'?'var(--green)':'var(--text)'};font-family:var(--mono)">${fmt(total)} F</span>`:''}</div>
       ${ps.map(p=>{
         const id='bi_'+btoa(encodeURIComponent(p));
         const val=bud[p]||'';
@@ -3004,7 +3063,7 @@ function renderBForm(){
         const pKey=btoa(encodeURIComponent(ym+'|'+p));
         return `<div class="brow" style="flex-direction:column;align-items:stretch;gap:0">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:2px 0">
-            <div class="brow-n" style="flex:1">${esc(p)}</div>
+            <div class="brow-n" style="flex:1">${cat==='Epargne'&&objDuPoste(p)?`<span style="color:var(--purple)">◎</span> ${esc(p)}${effortBudget(objDuPoste(p),ym)?`<div style="font-size:11px;color:var(--purple);margin-top:1px">Objectif : ${fmt(effortBudget(objDuPoste(p),ym))} / mois</div>`:''}`:esc(p)}</div>
             <div style="display:flex;align-items:center;gap:8px">
               <div style="position:relative;width:120px">
                 <input class="binp" type="text" inputmode="numeric" id="${id}"
@@ -3029,16 +3088,39 @@ function renderBForm(){
             <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
               <input id="dl_${pKey}" type="text" placeholder="Ex: Carte BRT, Netflix..." style="flex:1;min-width:0;background:var(--surf);border:0.5px solid var(--border);border-radius:8px;padding:6px 8px;font-size:12px;color:var(--text);outline:none;font-family:var(--font)">
               <input id="da_${pKey}" type="text" inputmode="numeric" placeholder="Montant" style="width:70px;background:var(--surf);border:0.5px solid var(--border);border-radius:8px;padding:6px 8px;font-size:12px;color:var(--text);outline:none;font-family:var(--font)">
-              <button onclick="addBudDetail('${ym}',${jsa(p)},'${pKey}')" style="width:28px;height:28px;border-radius:8px;border:none;background:var(--orange);color:#fff;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</button>
+              <button onclick="addBudDetail('${ym}',${jsa(p)},'${pKey}')" style="width:28px;height:28px;border-radius:8px;border:none;background:var(--blue);color:#fff;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</button>
             </div>
             ${details.length?`<div style="font-size:11px;color:var(--text3);text-align:right;margin-top:4px">Total sous-détails : <b style="color:var(--text2)">${fmt(detTotal)} F</b></div>`:''}
           </div>
         </div>`;
       }).join('')}
+      ${cat==='Epargne'?lienEffort(ym):''}
     </div>`;
   });
   document.getElementById('bform').innerHTML=html;
   renderBudSolde();
+}
+// Effort mensuel d'un objectif pour un mois donné (entre ce mois-ci et l'échéance)
+function effortBudget(o,ym){
+  if(!o||!modules.objectifs)return 0;
+  const e=effortObj(o);if(e.etat!=='date')return 0;
+  const cur=todayStr().slice(0,7);
+  return(ym>=cur&&ym<=o.echeance)?e.parMois:0;
+}
+function lienEffort(ym){
+  const bud=budget[ym]||{};
+  const a=objectifs.map(o=>({p:o.poste||o.nom,v:effortBudget(o,ym)})).filter(x=>x.v>0&&!(bud[x.p]>0));
+  const tot=a.reduce((s,x)=>s+x.v,0);
+  return tot>0?`<button onclick="appliquerEffort('${ym}')" style="background:none;border:none;color:var(--blue);font-size:12.5px;cursor:pointer;padding:10px 0 2px;font-family:var(--font);text-align:left">Appliquer l'effort des objectifs (+${fmt(tot)} F)</button>`:'';
+}
+function appliquerEffort(ym){
+  let n=0;
+  objectifs.forEach(o=>{
+    const v=effortBudget(o,ym),p=o.poste||o.nom;if(!(v>0))return;
+    const el=document.getElementById('bi_'+btoa(encodeURIComponent(p)));
+    if(el&&!(parseFloat(el.dataset.raw)>0)){el.value=new Intl.NumberFormat('fr-FR').format(v);el.dataset.raw=v;n++;}
+  });
+  if(n){budDirty=true;renderBudSolde();toast('Montants proposés : touche Enregistrer pour les garder');}
 }
 
 function openCopyBudget(){
@@ -3988,7 +4070,7 @@ function openEditTx(id){
   syncEditPostes(tx.poste);
   const eo=document.getElementById('e-obj-wrap');
   if(modules.objectifs&&objectifs.length){
-    eo.style.display=tx.cat==='Epargne'?'block':'none';
+    eo.style.display='none';
     document.getElementById('e-obj').innerHTML='<option value="">Aucun objectif</option>'+objectifs.map(o=>`<option value="${esc(o.id)}" ${o.id===tx.objectif?'selected':''}>${esc(o.nom)}</option>`).join('');
   } else eo.style.display='none';
   const ew=document.getElementById('e-cpt-wrap');
@@ -4025,7 +4107,7 @@ async function saveEditTx(){
   const{db,doc,setDoc}=window._fb;
   try{
     // merge : on garde ts (ordre d'origine), createdBy, source… ; on note la date de modification
-    await setDoc(doc(db,dataPath()+'/transactions/'+editingId),Object.assign({amt:Math.round(amt),date,cat,poste,cmt,updatedAt:new Date().toISOString()},payObj,(modules.objectifs&&objectifs.length)?{objectif:cat==='Epargne'?(document.getElementById('e-obj').value||null):null}:{}),{merge:true});
+    await setDoc(doc(db,dataPath()+'/transactions/'+editingId),Object.assign({amt:Math.round(amt),date,cat,poste,cmt,updatedAt:new Date().toISOString()},payObj,{objectif:null}),{merge:true});
   }catch(e){toast('⚠ Modification non enregistrée : '+e.message);return;}
   closeEditTx();
   toast('Transaction modifiée ✓');
