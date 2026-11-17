@@ -21,7 +21,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, setDoc as _setDoc, getDoc, getDocs, onSnapshot, collection, deleteDoc as _deleteDoc, query, orderBy, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey:            "AIzaSyDNb0ei06G6_zyC0IFHLry2fd84N0d6dGI",
@@ -55,7 +55,7 @@ const setDoc=(r,d,o)=>soft(o?_setDoc(r,d,o):_setDoc(r,d));
 const deleteDoc=r=>soft(_deleteDoc(r));
 const addDoc=(c,d)=>{const r=doc(c);return soft(_setDoc(r,d),r);};
 
-window._fb = { db, auth, doc, setDoc, getDoc, getDocs, onSnapshot, collection, addDoc, deleteDoc, query, orderBy, where, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut };
+window._fb = { db, auth, doc, setDoc, getDoc, getDocs, onSnapshot, collection, addDoc, deleteDoc, query, orderBy, where, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile };
 </script>
 
 <style>
@@ -300,11 +300,8 @@ select option{background:#2c2c2e;color:#f5f5f7}
 <div id="auth" style="display:none">
   <div class="logo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v2m0 8v2M9.5 9h3a1.5 1.5 0 0 1 0 3h-3m0 0h3.5a1.5 1.5 0 0 1 0 3H9.5"/></svg></div>
   <h1 style="color:var(--text);font-weight:500">FII'NAS</h1>
-  <p>Suivez revenus, dépenses et épargne. Synchronisé sur tous vos appareils en temps réel.</p>
-  <button class="btn-g" onclick="doSignIn()">
-    <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-    Continuer avec Google
-  </button>
+  <p>Tes entrées, dépenses et budget, simplement.</p>
+  <div id="auth-box" style="width:100%;max-width:340px"></div>
 </div>
 
 <div id="app" style="display:none">
@@ -670,6 +667,197 @@ function loadCatsFromSettings(settings){
     });
   }
 }
+
+// ═══════════════ COMPTE PAR NOM D'UTILISATEUR ═══════════════
+// Firebase « e-mail / mot de passe » avec une adresse technique pseudo@utilisateurs… (jamais affichée).
+// Mot de passe oublié : code de secours (empreinte SHA-256 dans users/{uid}/data/secours),
+// vérifié par /api/recuperer qui seul peut changer le mot de passe.
+const DOMAINE_PSEUDO='@utilisateurs.fii-nas-sn.vercel.app';
+const normPseudo=v=>String(v||'').trim().toLowerCase().replace(/^@/,'');
+const pseudoValide=p=>/^[a-z0-9][a-z0-9._-]{2,19}$/.test(p);
+const pseudoDeEmail=e=>(e&&e.endsWith(DOMAINE_PSEUDO))?e.slice(0,-DOMAINE_PSEUDO.length):null;
+const normCodeS=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+async function sha256Hex(s){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))].map(b=>b.toString(16).padStart(2,'0')).join('');}
+function genCodeSecours(){
+  const A='ABCDEFGHJKMNPQRSTUVWXYZ23456789';let c='';
+  while(c.length<12){const b=crypto.getRandomValues(new Uint8Array(1))[0];if(b<248)c+=A[b%31];}
+  return c.slice(0,4)+'-'+c.slice(4,8)+'-'+c.slice(8);
+}
+async function enregistrerCodeSecours(uidX){
+  const code=genCodeSecours(),salt=[...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,'0')).join('');
+  const{db,doc,setDoc}=window._fb;
+  await setDoc(doc(db,'users/'+uidX+'/data/secours'),{hash:await sha256Hex(salt+':'+normCodeS(code)),salt,date:new Date().toISOString(),echecs:0,bloqueJusqua:0});
+  return code;
+}
+function msgErreurAuth(e){
+  const c=(e&&e.code)||'';
+  if(/invalid-credential|wrong-password|user-not-found|invalid-email|invalid-login/.test(c))return'Nom d\'utilisateur ou mot de passe incorrect.';
+  if(/email-already-in-use/.test(c))return'Ce nom d\'utilisateur est déjà pris. Choisis-en un autre.';
+  if(/weak-password/.test(c))return'Mot de passe trop faible : 8 caractères minimum.';
+  if(/too-many-requests/.test(c))return'Trop d\'essais. Réessaie dans quelques minutes.';
+  if(/network-request-failed/.test(c))return'Pas de connexion internet.';
+  if(/operation-not-allowed/.test(c))return'La connexion par nom d\'utilisateur n\'est pas encore activée.';
+  return'Erreur : '+((e&&e.message)||e);
+}
+
+// ── Écran de connexion (3 vues : connexion, création, mot de passe oublié)
+const ICO_OEIL='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+function champMdp(id,ph,ac){return `<div style="position:relative"><input class="finp" type="password" id="${id}" placeholder="${ph}" autocomplete="${ac}" style="padding-right:42px"><button type="button" aria-label="Afficher le mot de passe" onclick="const i=document.getElementById('${id}');i.type=i.type==='password'?'text':'password'" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;padding:6px;display:flex">${ICO_OEIL}</button></div>`;}
+function renderAuth(vue){
+  const el=document.getElementById('auth-box');if(!el)return;
+  const lien=(t,fn)=>`<button type="button" onclick="${fn}" style="background:none;border:none;color:var(--blue);font-size:13px;cursor:pointer;padding:8px;font-family:var(--font)">${t}</button>`;
+  const err='<div id="au-err" style="font-size:12.5px;color:var(--red);min-height:18px;margin:8px 0 2px;text-align:left"></div>';
+  const g=(lbl,inp)=>`<div class="fgrp" style="text-align:left"><div class="flbl">${lbl}</div>${inp}</div>`;
+  if(vue==='creer'){
+    el.innerHTML=`<div style="font-size:19px;font-weight:600;color:var(--text);margin-bottom:16px;text-align:left">Créer ton compte</div>
+      ${g('Ton prénom','<input class="finp" id="au-prenom" maxlength="30" autocomplete="given-name" placeholder="Awa">')}
+      ${g('Nom d\'utilisateur','<input class="finp" id="au-pseudo" maxlength="20" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="awa.diop" oninput="verifPseudo()"><div id="au-dispo" style="font-size:11.5px;margin-top:5px;min-height:15px"></div>')}
+      ${g('Mot de passe (8 caractères min.)',champMdp('au-mdp','','new-password'))}
+      ${g('Confirme le mot de passe',champMdp('au-mdp2','','new-password'))}
+      ${err}
+      <button class="btn-p" id="au-go" style="background:var(--green);color:#0b2a1a;font-weight:600" onclick="creerCompte()">Créer mon compte</button>
+      <div style="font-size:11.5px;color:var(--text3);margin-top:10px">Lettres, chiffres, point ou tiret. Pas d'espace.</div>
+      ${lien('J\'ai déjà un compte','renderAuth(\'login\')')}`;
+  } else if(vue==='oubli'){
+    el.innerHTML=`<div style="font-size:19px;font-weight:600;color:var(--text);margin-bottom:6px;text-align:left">Mot de passe oublié</div>
+      <div style="font-size:12.5px;color:var(--text2);margin-bottom:16px;text-align:left;line-height:1.5">Saisis ton nom d'utilisateur et le code de secours reçu à la création du compte.</div>
+      ${g('Nom d\'utilisateur','<input class="finp" id="au-pseudo" autocomplete="username" autocapitalize="none" spellcheck="false">')}
+      ${g('Code de secours','<input class="finp" id="au-code" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX" style="font-family:var(--mono);letter-spacing:.05em">')}
+      ${g('Nouveau mot de passe',champMdp('au-mdp','','new-password'))}
+      ${g('Confirme le nouveau mot de passe',champMdp('au-mdp2','','new-password'))}
+      ${err}
+      <button class="btn-p" id="au-go" onclick="recupererCompte()">Changer le mot de passe</button>
+      ${lien('Retour à la connexion','renderAuth(\'login\')')}`;
+  } else {
+    el.innerHTML=`${g('Nom d\'utilisateur','<input class="finp" id="au-pseudo" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="awa.diop">')}
+      ${g('Mot de passe',champMdp('au-mdp','','current-password'))}
+      ${err}
+      <button class="btn-p" id="au-go" style="background:var(--green);color:#0b2a1a;font-weight:600" onclick="connexionPseudo()">Se connecter</button>
+      ${lien('Mot de passe oublié ?','renderAuth(\'oubli\')')}
+      <div style="display:flex;align-items:center;gap:10px;color:var(--text3);font-size:12px;margin:10px 0 12px"><span style="flex:1;height:0.5px;background:var(--border2)"></span>ou<span style="flex:1;height:0.5px;background:var(--border2)"></span></div>
+      <button class="btn-p" style="background:var(--surf2);color:var(--text);border:0.5px solid var(--border2)" onclick="renderAuth('creer')">Créer un compte</button>
+      <button type="button" onclick="doSignIn()" style="margin-top:10px;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;background:none;border:none;color:var(--text2);font-size:13px;cursor:pointer;padding:8px;font-family:var(--font)">${GOOGLE_G}Continuer avec Google</button>`;
+  }
+  el.querySelectorAll('input').forEach(i=>i.addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('au-go')?.click();}));
+}
+const GOOGLE_G='<svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>';
+function auErr(t){const e=document.getElementById('au-err');if(e)e.textContent=t||'';}
+function auBusy(on,txt){const b=document.getElementById('au-go');if(!b)return;if(on){b.dataset.t=b.textContent;b.textContent=txt||'Un instant…';b.disabled=true;}else{b.textContent=b.dataset.t||b.textContent;b.disabled=false;}}
+
+// Disponibilité du nom (via le serveur ; silencieux si indisponible)
+let _dispoT=null;
+function verifPseudo(){
+  const el=document.getElementById('au-dispo'),p=normPseudo(document.getElementById('au-pseudo').value);
+  clearTimeout(_dispoT);
+  if(!p){el.textContent='';return;}
+  if(!pseudoValide(p)){el.style.color='var(--text3)';el.textContent=p.length<3?'3 caractères minimum':'Lettres, chiffres, point ou tiret, sans espace';return;}
+  el.style.color='var(--text3)';el.textContent='Vérification…';
+  _dispoT=setTimeout(async()=>{
+    try{
+      const r=await fetch('/api/disponible?u='+encodeURIComponent(p));const j=await r.json();
+      if(normPseudo(document.getElementById('au-pseudo')?.value)!==p)return;
+      if(r.ok){el.style.color=j.disponible?'var(--green)':'var(--red)';el.textContent=j.disponible?'Disponible':'Déjà pris';}
+      else el.textContent='';
+    }catch(e){el.textContent='';}
+  },450);
+}
+
+async function connexionPseudo(){
+  const p=normPseudo(document.getElementById('au-pseudo').value),m=document.getElementById('au-mdp').value;
+  if(!p||!m){auErr('Saisis ton nom d\'utilisateur et ton mot de passe.');return;}
+  if(!pseudoValide(p)){auErr('Nom d\'utilisateur ou mot de passe incorrect.');return;}
+  auErr('');auBusy(true,'Connexion…');
+  try{const{auth,signInWithEmailAndPassword}=window._fb;await signInWithEmailAndPassword(auth,p+DOMAINE_PSEUDO,m);}
+  catch(e){auBusy(false);auErr(msgErreurAuth(e));}
+}
+
+async function creerCompte(){
+  const prenom=(document.getElementById('au-prenom').value||'').trim();
+  const p=normPseudo(document.getElementById('au-pseudo').value);
+  const m=document.getElementById('au-mdp').value,m2=document.getElementById('au-mdp2').value;
+  if(!prenom){auErr('Indique ton prénom.');return;}
+  if(!pseudoValide(p)){auErr('Nom d\'utilisateur : 3 à 20 caractères, lettres, chiffres, point ou tiret.');return;}
+  if(m.length<8){auErr('Le mot de passe doit faire au moins 8 caractères.');return;}
+  if(m!==m2){auErr('Les deux mots de passe ne sont pas identiques.');return;}
+  auErr('');auBusy(true,'Création…');
+  const{auth,createUserWithEmailAndPassword,updateProfile}=window._fb;
+  try{
+    window.__nouveauCompte=prenom;
+    const cred=await createUserWithEmailAndPassword(auth,p+DOMAINE_PSEUDO,m);
+    try{await updateProfile(cred.user,{displayName:prenom});setUserUI(cred.user);}catch(e){}
+    const code=await enregistrerCodeSecours(cred.user.uid);
+    afficherCodeSecours(code,'creation');
+  }catch(e){window.__nouveauCompte=null;auBusy(false);auErr(msgErreurAuth(e));}
+}
+
+async function recupererCompte(){
+  const p=normPseudo(document.getElementById('au-pseudo').value),code=document.getElementById('au-code').value;
+  const m=document.getElementById('au-mdp').value,m2=document.getElementById('au-mdp2').value;
+  if(!pseudoValide(p)||normCodeS(code).length!==12){auErr('Vérifie ton nom d\'utilisateur et ton code (12 caractères).');return;}
+  if(m.length<8){auErr('Le nouveau mot de passe doit faire au moins 8 caractères.');return;}
+  if(m!==m2){auErr('Les deux mots de passe ne sont pas identiques.');return;}
+  auErr('');auBusy(true,'Vérification…');
+  try{
+    const r=await fetch('/api/recuperer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pseudo:p,code,mdp:m})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||!j.ok){auBusy(false);auErr(j.erreur||'Récupération impossible pour le moment.');return;}
+    const{auth,signInWithEmailAndPassword}=window._fb;
+    await signInWithEmailAndPassword(auth,p+DOMAINE_PSEUDO,m);
+    afficherCodeSecours(j.nouveauCode,'recuperation');
+  }catch(e){auBusy(false);auErr(/fetch|network/i.test(String(e))?'Pas de connexion internet.':msgErreurAuth(e));}
+}
+
+// ── Code de secours : affiché une seule fois
+function afficherCodeSecours(code,contexte){
+  document.getElementById('secours-ov')?.remove();
+  const pseudo=pseudoDeEmail(window._fb?.auth?.currentUser?.email)||'';
+  const ov=document.createElement('div');ov.id='secours-ov';
+  ov.style.cssText='position:fixed;inset:0;background:var(--bg);z-index:1100;overflow-y:auto;display:flex;justify-content:center';
+  const bt='width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:var(--r);border:none;background:var(--surf2);color:var(--text);font-size:13.5px;font-weight:500;cursor:pointer;font-family:var(--font);margin-top:10px';
+  const msg=`Mon code de secours FII'NAS (compte @${pseudo}) : ${code}`;
+  ov.innerHTML=`<div style="width:100%;max-width:420px;padding:40px 22px 28px">
+    <div style="width:44px;height:44px;border-radius:12px;background:rgba(255,159,10,.15);color:var(--amber);display:flex;align-items:center;justify-content:center;margin-bottom:14px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M16 7l3 3M19 4l2 2"/></svg></div>
+    <div style="font-size:20px;font-weight:600;color:var(--text)">${contexte==='recuperation'?'Ton nouveau code de secours':'Garde ce code en lieu sûr'}</div>
+    <div style="font-size:13px;color:var(--text2);line-height:1.55;margin:8px 0 18px">${contexte==='recuperation'?'Ton mot de passe est changé. L\'ancien code ne marche plus : garde celui-ci à la place.':contexte==='nouveau'?'L\'ancien code ne marche plus. Garde celui-ci à la place.':'C\'est le seul moyen de récupérer ton compte si tu oublies ton mot de passe.'} Il ne sera plus jamais affiché.</div>
+    <div id="secours-code" style="background:var(--surf);border:1px dashed rgba(255,159,10,.55);border-radius:14px;padding:18px;text-align:center;font-family:var(--mono);font-size:21px;font-weight:600;letter-spacing:.08em;color:var(--text);user-select:all">${esc(code)}</div>
+    ${pseudo?`<div style="font-size:12px;color:var(--text3);text-align:center;margin-top:8px">Compte @${esc(pseudo)}</div>`:''}
+    <button style="${bt}" onclick="window.open('https://wa.me/?text='+encodeURIComponent(${jsa(msg)}),'_blank')"><span style="color:var(--green);display:flex">${ICO_WA}</span>M'envoyer sur WhatsApp</button>
+    <button style="${bt}" onclick="navigator.clipboard&&navigator.clipboard.writeText(${jsa(code)}).then(()=>toast('Code copié'),()=>toast('Copie impossible : note-le'))">Copier</button>
+    <button onclick="fermerCodeSecours(${jsa(contexte)})" style="${bt};background:var(--green);color:#0b2a1a;font-weight:600;margin-top:20px">Je l'ai noté</button>
+  </div>`;
+  document.body.appendChild(ov);
+}
+async function fermerCodeSecours(contexte){
+  document.getElementById('secours-ov')?.remove();
+  if(contexte==='creation')proposerEmpreinte();
+}
+
+// ── Empreinte : proposée après la création (s'appuie sur le code PIN existant)
+async function proposerEmpreinte(){
+  let dispo=false;
+  try{dispo=typeof PublicKeyCredential!=='undefined'&&await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();}catch(e){}
+  if(!dispo||hasPin())return;
+  const ov=document.createElement('div');ov.id='empreinte-ov';
+  ov.style.cssText='position:fixed;inset:0;background:var(--bg);z-index:1100;display:flex;justify-content:center';
+  ov.innerHTML=`<div style="width:100%;max-width:420px;padding:28px 22px;display:flex;flex-direction:column">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">
+      <div style="width:72px;height:72px;border-radius:50%;background:var(--gd);color:var(--green);display:flex;align-items:center;justify-content:center;margin-bottom:18px"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M18.9 7a8 8 0 0 1 1.1 5v1a6 6 0 0 0 .8 3M8 11a4 4 0 0 1 8 .5v1.5a10 10 0 0 0 1.5 5M12 11.5v1.5a14 14 0 0 0 2.5 7.5M8 15a18 18 0 0 0 1.8 6M4.9 19a22 22 0 0 1-.9-6v-1a8 8 0 0 1 12-6.9"/></svg></div>
+      <div style="font-size:20px;font-weight:600;color:var(--text)">Protéger avec ton empreinte ?</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.55;margin-top:10px;max-width:320px">Tu restes connecté. À chaque ouverture, ton empreinte déverrouille l'appli : personne d'autre ne voit tes comptes, même avec ton téléphone. Tu choisiras d'abord un code PIN, utile si le doigt n'est pas reconnu.</div>
+    </div>
+    <button onclick="document.getElementById('empreinte-ov').remove();setupPin()" style="width:100%;padding:14px;border-radius:var(--r);border:none;background:var(--green);color:#0b2a1a;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font)">Activer l'empreinte</button>
+    <button onclick="document.getElementById('empreinte-ov').remove()" style="width:100%;padding:12px;margin-top:6px;border:none;background:none;color:var(--text2);font-size:13px;cursor:pointer;font-family:var(--font)">Plus tard</button>
+  </div>`;
+  document.body.appendChild(ov);
+}
+
+// ── Profil : nouveau code de secours (si perdu)
+async function nouveauCodeSecours(){
+  const u=window._fb?.auth?.currentUser;if(!u||!pseudoDeEmail(u.email))return;
+  if(!confirm('Créer un nouveau code de secours ?\n\nL\'ancien code ne marchera plus.'))return;
+  try{afficherCodeSecours(await enregistrerCodeSecours(u.uid),'nouveau');}catch(e){toast('⚠ '+e.message);}
+}
+
 
 // ═══════════════ CHOIX DU OU DES COMPTES (paiement simple ou réparti) ═══════════════
 // Composant commun : formulaire d'ajout, modification, prêts/emprunts, remboursements.
@@ -1796,6 +1984,7 @@ waitFB(()=>{
     } else {
       uid=null;
       document.getElementById('auth').style.display='flex';
+      renderAuth('login');
       document.getElementById('app').style.display='none';
       if(unsub1)unsub1();if(unsub2)unsub2();if(unsub3)unsub3();
     }
@@ -1803,11 +1992,12 @@ waitFB(()=>{
 });
 
 function setUserUI(u){
-  const n=(u.displayName||u.email||'User').split(' ')[0];
-  userName=u.displayName||n;
+  const ps=pseudoDeEmail(u.email);
+  const n=(u.displayName||window.__nouveauCompte||ps||u.email||'Utilisateur').split(' ')[0];
+  userName=u.displayName||window.__nouveauCompte||n;
   document.getElementById('uname').textContent=n;
-  document.getElementById('pname').textContent=u.displayName||'Utilisateur';
-  document.getElementById('pemail').textContent=u.email||'';
+  document.getElementById('pname').textContent=u.displayName||window.__nouveauCompte||ps||'Utilisateur';
+  document.getElementById('pemail').textContent=ps?'@'+ps:(u.email||'');
   ['uav','pav'].forEach(id=>{
     const el=document.getElementById(id);
     if(u.photoURL){el.innerHTML=`<img src="${u.photoURL}" alt="">`;}
@@ -3542,6 +3732,13 @@ function renderSecurityUI(){
       </button>
     </div>
 
+    ${pseudoDeEmail(window._fb?.auth?.currentUser?.email)?`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:0.5px solid var(--border)">
+      <div>
+        <div style="font-size:13px;font-weight:500;color:var(--text)">Code de secours</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Pour récupérer ton compte si tu oublies ton mot de passe</div>
+      </div>
+      <button onclick="nouveauCodeSecours()" class="btn-o" style="font-size:11px">Nouveau code</button>
+    </div>`:''}
     <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:0.5px solid var(--border)">
       <div>
         <div style="font-size:13px;font-weight:500;color:var(--text)">Verrouiller maintenant</div>
