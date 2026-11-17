@@ -3,6 +3,18 @@
 import crypto from 'node:crypto';
 
 export const DOMAINE = '@utilisateurs.fii-nas-sn.vercel.app';
+export const DOMAINE_NUM = '@numeros.fii-nas-sn.vercel.app';
+// Numéro sénégalais → 2217XXXXXXXX (null si ce n'est pas un numéro)
+export function numeroDe(v) {
+  const s = String(v || '').trim();
+  if (!/^[+\d\s().-]+$/.test(s)) return null;
+  let d = s.replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.length === 9 && d[0] === '7') d = '221' + d;
+  return /^2217\d{8}$/.test(d) ? d : null;
+}
+// Identifiant caché d'un compte « numéro » : empreinte du numéro et du mot de passe
+export const emailNumero = (num, mdp) => 't' + sha256('fiinas-sn:' + num + ':' + mdp).slice(0, 40) + DOMAINE_NUM;
 const ORIGINES = ['https://fii-nas-sn.vercel.app'];
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const MAX_ECHECS = 5, BLOCAGE_MS = 60 * 60 * 1000;
@@ -39,7 +51,23 @@ function corps(req) {
   try { return JSON.parse(req.body || '{}'); } catch { return {}; }
 }
 
-// POST /api/recuperer {pseudo, code, mdp} → {ok, nouveauCode} | {erreur}
+async function verifierCode(ops, uid, code) {
+  const s = (await ops.lireSecours(uid)) || {};
+  if (!s.hash || !s.salt) return 'non';
+  if ((s.bloqueJusqua || 0) > Date.now()) return 'bloque';
+  if (egal(hashCode(code, s.salt), s.hash)) return 'ok';
+  const echecs = (s.echecs || 0) + 1;
+  await ops.ecrireSecours(uid, echecs >= MAX_ECHECS ? { echecs: 0, bloqueJusqua: Date.now() + BLOCAGE_MS } : { echecs });
+  return 'non';
+}
+async function renouvelerCode(ops, uid) {
+  const nc = nouveauCode(), salt = crypto.randomBytes(16).toString('hex');
+  await ops.ecrireSecours(uid, { hash: hashCode(nc, salt), salt, date: new Date().toISOString(), echecs: 0, bloqueJusqua: 0 });
+  return nc;
+}
+const MSG_DOUBLON = 'Ce mot de passe est déjà utilisé avec ce numéro. Choisis-en un autre.';
+
+// POST /api/recuperer {identifiant (ou pseudo), code, mdp} → {ok, nouveauCode} | {erreur}
 export function makeRecuperer(ops) {
   return async (req, res) => {
     entetes(req, res);
@@ -47,25 +75,31 @@ export function makeRecuperer(ops) {
     if (req.method !== 'POST') return res.status(405).json({ erreur: 'Méthode non autorisée.' });
     if (!ops.pret()) return res.status(503).json({ erreur: 'La récupération de compte n\'est pas encore configurée.' });
     const b = corps(req);
-    const pseudo = normPseudo(b.pseudo), code = normCode(b.code), mdp = String(b.mdp || '');
-    if (!pseudoValide(pseudo) || code.length !== 12) return res.status(400).json({ erreur: ERR_GENERIQUE });
+    const ident = b.identifiant != null ? b.identifiant : b.pseudo;
+    const num = numeroDe(ident), pseudo = num ? null : normPseudo(ident);
+    const code = normCode(b.code), mdp = String(b.mdp || '');
+    if ((!num && !pseudoValide(pseudo)) || code.length !== 12) return res.status(400).json({ erreur: ERR_GENERIQUE });
     if (mdp.length < 8 || mdp.length > 128) return res.status(400).json({ erreur: 'Le nouveau mot de passe doit faire au moins 8 caractères.' });
     try {
-      const uid = await ops.uidDePseudo(pseudo);
-      if (!uid) return res.status(400).json({ erreur: ERR_GENERIQUE });
-      const s = (await ops.lireSecours(uid)) || {};
-      if (!s.hash || !s.salt) return res.status(400).json({ erreur: ERR_GENERIQUE });
-      if ((s.bloqueJusqua || 0) > Date.now()) return res.status(429).json({ erreur: 'Trop d\'essais. Réessaie dans une heure.' });
-      if (!egal(hashCode(code, s.salt), s.hash)) {
-        const echecs = (s.echecs || 0) + 1;
-        await ops.ecrireSecours(uid, echecs >= MAX_ECHECS ? { echecs: 0, bloqueJusqua: Date.now() + BLOCAGE_MS } : { echecs });
-        return res.status(400).json({ erreur: ERR_GENERIQUE });
+      let uid = null, bloque = false;
+      if (num) {
+        // Plusieurs comptes peuvent partager un numéro : on cherche celui dont le code correspond
+        for (const u of (await ops.uidsDeNumero(num)).slice(0, 50)) {
+          const r = await verifierCode(ops, u, code);
+          if (r === 'ok') { uid = u; break; }
+          if (r === 'bloque') bloque = true;
+        }
+      } else {
+        const u = await ops.uidDePseudo(pseudo);
+        if (u) { const r = await verifierCode(ops, u, code); if (r === 'ok') uid = u; else if (r === 'bloque') bloque = true; }
       }
-      await ops.changerMdp(uid, mdp);
+      if (!uid) return res.status(bloque ? 429 : 400).json({ erreur: bloque ? 'Trop d\'essais. Réessaie dans une heure.' : ERR_GENERIQUE });
+      if (num) {
+        try { await ops.majUtilisateur(uid, { email: emailNumero(num, mdp), password: mdp }); }
+        catch (e) { if (e.code === 'auth/email-already-exists') return res.status(409).json({ erreur: MSG_DOUBLON }); throw e; }
+      } else await ops.changerMdp(uid, mdp);
       // Le code utilisé est remplacé : il ne peut servir qu'une fois
-      const nc = nouveauCode(), salt = crypto.randomBytes(16).toString('hex');
-      await ops.ecrireSecours(uid, { hash: hashCode(nc, salt), salt, date: new Date().toISOString(), echecs: 0, bloqueJusqua: 0 });
-      return res.status(200).json({ ok: true, nouveauCode: nc });
+      return res.status(200).json({ ok: true, nouveauCode: await renouvelerCode(ops, uid) });
     } catch (e) {
       console.error('recuperer', e);
       return res.status(500).json({ erreur: 'Erreur du serveur. Réessaie plus tard.' });
@@ -83,5 +117,55 @@ export function makeDisponible(ops) {
     if (!ops.pret()) return res.status(503).json({ erreur: 'indisponible' });
     try { return res.status(200).json({ disponible: !(await ops.uidDePseudo(pseudo)) }); }
     catch (e) { console.error('disponible', e); return res.status(500).json({ erreur: 'indisponible' }); }
+  };
+}
+
+// Jeton de connexion Firebase de l'appelant → uid (et heure de connexion)
+async function appelant(ops, b) {
+  if (!b.idToken) return null;
+  try { return await ops.verifierJeton(String(b.idToken)); } catch { return null; }
+}
+
+// POST /api/numero {idToken, numero} → relie le compte à son numéro (pour la récupération)
+export function makeNumero(ops) {
+  return async (req, res) => {
+    entetes(req, res);
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    if (req.method !== 'POST') return res.status(405).json({ erreur: 'Méthode non autorisée.' });
+    if (!ops.pret()) return res.status(503).json({ erreur: 'indisponible' });
+    const b = corps(req), num = numeroDe(b.numero), t = await appelant(ops, b);
+    if (!t) return res.status(401).json({ erreur: 'Connexion requise.' });
+    if (!num) return res.status(400).json({ erreur: 'Numéro invalide.' });
+    try {
+      const u = await ops.lireUtilisateur(t.uid);
+      if (!u || !String(u.email || '').endsWith(DOMAINE_NUM)) return res.status(400).json({ erreur: 'Ce compte n\'utilise pas de numéro.' });
+      await ops.ajouterNumero(num, t.uid);
+      return res.status(200).json({ ok: true });
+    } catch (e) { console.error('numero', e); return res.status(500).json({ erreur: 'Erreur du serveur.' }); }
+  };
+}
+
+// POST /api/motdepasse {idToken, nouveau} → change le mot de passe d'un compte « numéro »
+// (l'identifiant caché dépend du mot de passe). L'appli refait d'abord vérifier l'ancien.
+export function makeMotDePasse(ops) {
+  return async (req, res) => {
+    entetes(req, res);
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    if (req.method !== 'POST') return res.status(405).json({ erreur: 'Méthode non autorisée.' });
+    if (!ops.pret()) return res.status(503).json({ erreur: 'Le changement de mot de passe n\'est pas encore configuré.' });
+    const b = corps(req), mdp = String(b.nouveau || ''), t = await appelant(ops, b);
+    if (!t) return res.status(401).json({ erreur: 'Reconnecte-toi puis réessaie.' });
+    if (Date.now() / 1000 - (t.auth_time || 0) > 300) return res.status(401).json({ erreur: 'Confirme d\'abord ton mot de passe actuel.' });
+    if (mdp.length < 8 || mdp.length > 128) return res.status(400).json({ erreur: 'Le nouveau mot de passe doit faire au moins 8 caractères.' });
+    try {
+      const u = await ops.lireUtilisateur(t.uid);
+      if (!u || !String(u.email || '').endsWith(DOMAINE_NUM)) return res.status(400).json({ erreur: 'Ce compte n\'utilise pas de numéro.' });
+      const num = numeroDe((await ops.lireProfil(t.uid) || {}).numero);
+      if (!num) return res.status(400).json({ erreur: 'Numéro du compte introuvable.' });
+      try { await ops.majUtilisateur(t.uid, { email: emailNumero(num, mdp), password: mdp }); }
+      catch (e) { if (e.code === 'auth/email-already-exists') return res.status(409).json({ erreur: MSG_DOUBLON }); throw e; }
+      await ops.ajouterNumero(num, t.uid);
+      return res.status(200).json({ ok: true });
+    } catch (e) { console.error('motdepasse', e); return res.status(500).json({ erreur: 'Erreur du serveur.' }); }
   };
 }

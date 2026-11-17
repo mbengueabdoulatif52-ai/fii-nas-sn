@@ -21,7 +21,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, setDoc as _setDoc, getDoc, getDocs, onSnapshot, collection, deleteDoc as _deleteDoc, query, orderBy, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey:            "AIzaSyDNb0ei06G6_zyC0IFHLry2fd84N0d6dGI",
@@ -55,7 +55,7 @@ const setDoc=(r,d,o)=>soft(o?_setDoc(r,d,o):_setDoc(r,d));
 const deleteDoc=r=>soft(_deleteDoc(r));
 const addDoc=(c,d)=>{const r=doc(c);return soft(_setDoc(r,d),r);};
 
-window._fb = { db, auth, doc, setDoc, getDoc, getDocs, onSnapshot, collection, addDoc, deleteDoc, query, orderBy, where, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile };
+window._fb = { db, auth, doc, setDoc, getDoc, getDocs, onSnapshot, collection, addDoc, deleteDoc, query, orderBy, where, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword };
 </script>
 
 <style>
@@ -677,6 +677,40 @@ const normPseudo=v=>String(v||'').trim().toLowerCase().replace(/^@/,'');
 const pseudoValide=p=>/^[a-z0-9][a-z0-9._-]{2,19}$/.test(p);
 const pseudoDeEmail=e=>(e&&e.endsWith(DOMAINE_PSEUDO))?e.slice(0,-DOMAINE_PSEUDO.length):null;
 const normCodeS=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+// Comptes « numéro » : le numéro n'est pas unique ; l'identifiant caché est l'empreinte du numéro
+// et du mot de passe (même numéro + même mot de passe = même compte). Index numéro → comptes côté serveur.
+const DOMAINE_NUM='@numeros.fii-nas-sn.vercel.app';
+function numeroDe(v){const s=String(v||'').trim();if(!/^[+\d\s().-]+$/.test(s))return null;let d=s.replace(/\D/g,'');if(d.startsWith('00'))d=d.slice(2);if(d.length===9&&d[0]==='7')d='221'+d;return /^2217\d{8}$/.test(d)?d:null;}
+const fmtNumero=n=>'+221 '+n.slice(3,5)+' '+n.slice(5,8)+' '+n.slice(8,10)+' '+n.slice(10);
+async function emailNumero(n,m){return 't'+(await sha256Hex('fiinas-sn:'+n+':'+m)).slice(0,40)+DOMAINE_NUM;}
+const estCompteNumero=e=>!!(e&&e.endsWith(DOMAINE_NUM));
+let monNumero=null;
+function identLabel(){const e=window._fb?.auth?.currentUser?.email;const ps=pseudoDeEmail(e);return ps?'@'+ps:(estCompteNumero(e)&&monNumero?fmtNumero(monNumero):'');}
+// Mot de passe : le numéro n'étant pas secret, on refuse les mots de passe évidents
+function motDePasseFaible(pw,num){
+  if(pw.length<8)return'8 caractères minimum.';
+  const p=pw.toLowerCase(),chif=pw.replace(/\D/g,'');
+  if(/^(.)\1+$/.test(pw)||(/^\d+$/.test(pw)&&('01234567890123456789'.includes(pw)||'98765432109876543210'.includes(pw)))||'abcdefghijklmnopqrstuvwxyz'.includes(p)||'azertyuiopqsdfghjklmwxcvbn'.includes(p)||'qwertyuiopasdfghjklzxcvbnm'.includes(p)
+     ||['password','motdepasse','azerty','qwerty','senegal','fiinas','iloveyou','bismillah','12345678'].some(w=>p.includes(w)))return'Trop facile à deviner : choisis-en un autre.';
+  if(num&&chif.length>=9&&chif.includes(num.slice(3)))return'Ton mot de passe ne doit pas contenir ton numéro.';
+  if(/^\d{8}$/.test(pw)){const d=+pw.slice(0,2),m=+pw.slice(2,4),y=+pw.slice(4),y2=+pw.slice(0,4),m2=+pw.slice(4,6),d2=+pw.slice(6);
+    if((d>=1&&d<=31&&m>=1&&m<=12&&y>=1920&&y<=2035)||(y2>=1920&&y2<=2035&&m2>=1&&m2<=12&&d2>=1&&d2<=31))return'Évite une date (naissance…) : trop facile à deviner.';}
+  return'';
+}
+// Relie un compte « numéro » à son numéro côté serveur (pour « Mot de passe oublié »). Sans effet si déjà fait.
+async function lierNumero(user){
+  try{
+    const{db,doc,getDoc}=window._fb;
+    const d=await getDoc(doc(db,'users/'+user.uid+'/data/profil'));
+    monNumero=d.exists()&&d.data().numero||monNumero;
+    if(!monNumero)return;
+    const pe=document.getElementById('pemail');if(pe)pe.textContent=fmtNumero(monNumero);
+    if(sessionStorage.getItem('fiinas-lie')===user.uid||window.__liaison)return;
+    window.__liaison=true;setTimeout(()=>{window.__liaison=false;},10000);
+    const r=await fetch('/api/numero',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idToken:await user.getIdToken(),numero:monNumero})});
+    if(r.ok)sessionStorage.setItem('fiinas-lie',user.uid);
+  }catch(e){}
+}
 async function sha256Hex(s){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))].map(b=>b.toString(16).padStart(2,'0')).join('');}
 function genCodeSecours(){
   const A='ABCDEFGHJKMNPQRSTUVWXYZ23456789';let c='';
@@ -691,7 +725,7 @@ async function enregistrerCodeSecours(uidX){
 }
 function msgErreurAuth(e){
   const c=(e&&e.code)||'';
-  if(/invalid-credential|wrong-password|user-not-found|invalid-email|invalid-login/.test(c))return'Nom d\'utilisateur ou mot de passe incorrect.';
+  if(/invalid-credential|wrong-password|user-not-found|invalid-email|invalid-login/.test(c))return'Identifiant ou mot de passe incorrect.';
   if(/email-already-in-use/.test(c))return'Ce nom d\'utilisateur est déjà pris. Choisis-en un autre.';
   if(/weak-password/.test(c))return'Mot de passe trop faible : 8 caractères minimum.';
   if(/too-many-requests/.test(c))return'Trop d\'essais. Réessaie dans quelques minutes.';
@@ -711,17 +745,16 @@ function renderAuth(vue){
   if(vue==='creer'){
     el.innerHTML=`<div style="font-size:19px;font-weight:600;color:var(--text);margin-bottom:16px;text-align:left">Créer ton compte</div>
       ${g('Ton prénom','<input class="finp" id="au-prenom" maxlength="30" autocomplete="given-name" placeholder="Awa">')}
-      ${g('Nom d\'utilisateur','<input class="finp" id="au-pseudo" maxlength="20" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="awa.diop" oninput="verifPseudo()"><div id="au-dispo" style="font-size:11.5px;margin-top:5px;min-height:15px"></div>')}
-      ${g('Mot de passe (8 caractères min.)',champMdp('au-mdp','','new-password'))}
+      ${g('Numéro WhatsApp ou nom d\'utilisateur','<input class="finp" id="au-pseudo" maxlength="24" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="77 123 45 67 ou awa.diop" oninput="verifPseudo()"><div id="au-dispo" style="font-size:11.5px;margin-top:5px;min-height:15px;line-height:1.45"></div>')}
+      ${g('Mot de passe (8 caractères min.)',champMdp('au-mdp','','new-password')+'<div id="au-force" style="font-size:11.5px;margin-top:5px;min-height:15px;color:var(--red)"></div>')}
       ${g('Confirme le mot de passe',champMdp('au-mdp2','','new-password'))}
       ${err}
       <button class="btn-p" id="au-go" style="background:var(--green);color:#0b2a1a;font-weight:600" onclick="creerCompte()">Créer mon compte</button>
-      <div style="font-size:11.5px;color:var(--text3);margin-top:10px">Lettres, chiffres, point ou tiret. Pas d'espace.</div>
       ${lien('J\'ai déjà un compte','renderAuth(\'login\')')}`;
   } else if(vue==='oubli'){
     el.innerHTML=`<div style="font-size:19px;font-weight:600;color:var(--text);margin-bottom:6px;text-align:left">Mot de passe oublié</div>
-      <div style="font-size:12.5px;color:var(--text2);margin-bottom:16px;text-align:left;line-height:1.5">Saisis ton nom d'utilisateur et le code de secours reçu à la création du compte.</div>
-      ${g('Nom d\'utilisateur','<input class="finp" id="au-pseudo" autocomplete="username" autocapitalize="none" spellcheck="false">')}
+      <div style="font-size:12.5px;color:var(--text2);margin-bottom:16px;text-align:left;line-height:1.5">Saisis ton numéro (ou nom d'utilisateur) et le code de secours reçu à la création du compte.</div>
+      ${g('Numéro WhatsApp ou nom d\'utilisateur','<input class="finp" id="au-pseudo" autocomplete="username" autocapitalize="none" spellcheck="false" oninput="identHint()"><div id="au-hint" style="font-size:11.5px;margin-top:5px;min-height:0;color:var(--text3)"></div>')}
       ${g('Code de secours','<input class="finp" id="au-code" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX" style="font-family:var(--mono);letter-spacing:.05em">')}
       ${g('Nouveau mot de passe',champMdp('au-mdp','','new-password'))}
       ${g('Confirme le nouveau mot de passe',champMdp('au-mdp2','','new-password'))}
@@ -729,7 +762,7 @@ function renderAuth(vue){
       <button class="btn-p" id="au-go" onclick="recupererCompte()">Changer le mot de passe</button>
       ${lien('Retour à la connexion','renderAuth(\'login\')')}`;
   } else {
-    el.innerHTML=`${g('Nom d\'utilisateur','<input class="finp" id="au-pseudo" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="awa.diop">')}
+    el.innerHTML=`${g('Numéro WhatsApp ou nom d\'utilisateur','<input class="finp" id="au-pseudo" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="77 123 45 67 ou awa.diop" oninput="identHint()"><div id="au-hint" style="font-size:11.5px;margin-top:5px;color:var(--text3)"></div>')}
       ${g('Mot de passe',champMdp('au-mdp','','current-password'))}
       ${err}
       <button class="btn-p" id="au-go" style="background:var(--green);color:#0b2a1a;font-weight:600" onclick="connexionPseudo()">Se connecter</button>
@@ -739,17 +772,26 @@ function renderAuth(vue){
       <button type="button" onclick="doSignIn()" style="margin-top:10px;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;background:none;border:none;color:var(--text2);font-size:13px;cursor:pointer;padding:8px;font-family:var(--font)">${GOOGLE_G}Continuer avec Google</button>`;
   }
   el.querySelectorAll('input').forEach(i=>i.addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('au-go')?.click();}));
+  const fm=document.getElementById('au-force');
+  if(fm)document.getElementById('au-mdp').addEventListener('input',()=>{const v=document.getElementById('au-mdp').value;fm.textContent=v.length>=8?motDePasseFaible(v,numeroDe(document.getElementById('au-pseudo').value)):'';});
 }
 const GOOGLE_G='<svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>';
 function auErr(t){const e=document.getElementById('au-err');if(e)e.textContent=t||'';}
 function auBusy(on,txt){const b=document.getElementById('au-go');if(!b)return;if(on){b.dataset.t=b.textContent;b.textContent=txt||'Un instant…';b.disabled=true;}else{b.textContent=b.dataset.t||b.textContent;b.disabled=false;}}
 
+function identHint(){
+  const h=document.getElementById('au-hint');if(!h)return;
+  const n=numeroDe(document.getElementById('au-pseudo').value);h.textContent=n?'Numéro reconnu : '+fmtNumero(n):'';
+}
 // Disponibilité du nom (via le serveur ; silencieux si indisponible)
 let _dispoT=null;
 function verifPseudo(){
-  const el=document.getElementById('au-dispo'),p=normPseudo(document.getElementById('au-pseudo').value);
+  const el=document.getElementById('au-dispo'),v=document.getElementById('au-pseudo').value,p=normPseudo(v);
   clearTimeout(_dispoT);
   if(!p){el.textContent='';return;}
+  const n=numeroDe(v);
+  if(n){el.style.color='var(--green)';el.innerHTML='Numéro reconnu : '+fmtNumero(n)+'<br><span style="color:var(--text3)">Ton numéro sert d\'identifiant. Aucun message n\'est envoyé.</span>';return;}
+  if(/^[+\d\s().-]+$/.test(v.trim())){el.style.color='var(--text3)';el.textContent='Numéro incomplet : 9 chiffres, commençant par 7';return;}
   if(!pseudoValide(p)){el.style.color='var(--text3)';el.textContent=p.length<3?'3 caractères minimum':'Lettres, chiffres, point ou tiret, sans espace';return;}
   el.style.color='var(--text3)';el.textContent='Vérification…';
   _dispoT=setTimeout(async()=>{
@@ -763,46 +805,68 @@ function verifPseudo(){
 }
 
 async function connexionPseudo(){
-  const p=normPseudo(document.getElementById('au-pseudo').value),m=document.getElementById('au-mdp').value;
-  if(!p||!m){auErr('Saisis ton nom d\'utilisateur et ton mot de passe.');return;}
-  if(!pseudoValide(p)){auErr('Nom d\'utilisateur ou mot de passe incorrect.');return;}
+  const v=document.getElementById('au-pseudo').value,n=numeroDe(v),p=normPseudo(v),m=document.getElementById('au-mdp').value;
+  if(!p||!m){auErr('Saisis ton numéro (ou nom d\'utilisateur) et ton mot de passe.');return;}
+  if(!n&&!pseudoValide(p)){auErr('Identifiant ou mot de passe incorrect.');return;}
   auErr('');auBusy(true,'Connexion…');
-  try{const{auth,signInWithEmailAndPassword}=window._fb;await signInWithEmailAndPassword(auth,p+DOMAINE_PSEUDO,m);}
+  try{const{auth,signInWithEmailAndPassword}=window._fb;if(n)monNumero=n;await signInWithEmailAndPassword(auth,n?await emailNumero(n,m):p+DOMAINE_PSEUDO,m);}
   catch(e){auBusy(false);auErr(msgErreurAuth(e));}
 }
 
 async function creerCompte(){
   const prenom=(document.getElementById('au-prenom').value||'').trim();
-  const p=normPseudo(document.getElementById('au-pseudo').value);
+  const v=document.getElementById('au-pseudo').value,n=numeroDe(v),p=normPseudo(v);
   const m=document.getElementById('au-mdp').value,m2=document.getElementById('au-mdp2').value;
   if(!prenom){auErr('Indique ton prénom.');return;}
-  if(!pseudoValide(p)){auErr('Nom d\'utilisateur : 3 à 20 caractères, lettres, chiffres, point ou tiret.');return;}
-  if(m.length<8){auErr('Le mot de passe doit faire au moins 8 caractères.');return;}
+  if(!n&&/^[+\d\s().-]+$/.test(v.trim())){auErr('Numéro incomplet : 9 chiffres, commençant par 7.');return;}
+  if(!n&&!pseudoValide(p)){auErr('Nom d\'utilisateur : 3 à 20 caractères, lettres, chiffres, point ou tiret.');return;}
+  const faible=motDePasseFaible(m,n);if(faible){auErr(faible);return;}
   if(m!==m2){auErr('Les deux mots de passe ne sont pas identiques.');return;}
   auErr('');auBusy(true,'Création…');
-  const{auth,createUserWithEmailAndPassword,updateProfile}=window._fb;
+  const{auth,createUserWithEmailAndPassword,signInWithEmailAndPassword,updateProfile,db,doc,setDoc}=window._fb;
+  const email=n?await emailNumero(n,m):p+DOMAINE_PSEUDO;
+  if(n)monNumero=n;
   try{
     window.__nouveauCompte=prenom;
-    const cred=await createUserWithEmailAndPassword(auth,p+DOMAINE_PSEUDO,m);
+    let cred;
+    try{cred=await createUserWithEmailAndPassword(auth,email,m);}
+    catch(e){
+      // Même numéro + même mot de passe : c'est le même compte, on l'ouvre
+      if(n&&/email-already-in-use/.test(e.code||'')){window.__nouveauCompte=null;await signInWithEmailAndPassword(auth,email,m);dejaUnCompte();return;}
+      throw e;
+    }
     try{await updateProfile(cred.user,{displayName:prenom});setUserUI(cred.user);}catch(e){}
+    if(n){await setDoc(doc(db,'users/'+cred.user.uid+'/data/profil'),{numero:n,date:new Date().toISOString()});lierNumero(cred.user);}
     const code=await enregistrerCodeSecours(cred.user.uid);
     afficherCodeSecours(code,'creation');
   }catch(e){window.__nouveauCompte=null;auBusy(false);auErr(msgErreurAuth(e));}
 }
+function dejaUnCompte(){
+  const ov=document.createElement('div');ov.id='deja-ov';
+  ov.style.cssText='position:fixed;inset:0;background:var(--bg);z-index:1100;display:flex;justify-content:center';
+  ov.innerHTML=`<div style="width:100%;max-width:420px;padding:28px 22px;display:flex;flex-direction:column;justify-content:center;text-align:center">
+    <div style="width:60px;height:60px;border-radius:50%;background:var(--bd);color:var(--blue);display:flex;align-items:center;justify-content:center;margin:0 auto 16px"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2M16 11l2 2 4-4"/></svg></div>
+    <div style="font-size:19px;font-weight:600;color:var(--text)">Tu as déjà un compte</div>
+    <div style="font-size:13px;color:var(--text2);line-height:1.55;margin-top:8px">Un compte existe avec ce numéro et ce mot de passe. On t'y connecte : tes données y sont déjà.</div>
+    <button onclick="document.getElementById('deja-ov').remove()" style="width:100%;margin-top:22px;padding:14px;border-radius:var(--r);border:none;background:var(--green);color:#0b2a1a;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font)">Ouvrir mon compte</button>
+  </div>`;
+  document.body.appendChild(ov);
+}
 
 async function recupererCompte(){
-  const p=normPseudo(document.getElementById('au-pseudo').value),code=document.getElementById('au-code').value;
+  const v=document.getElementById('au-pseudo').value,n=numeroDe(v),p=normPseudo(v),code=document.getElementById('au-code').value;
   const m=document.getElementById('au-mdp').value,m2=document.getElementById('au-mdp2').value;
-  if(!pseudoValide(p)||normCodeS(code).length!==12){auErr('Vérifie ton nom d\'utilisateur et ton code (12 caractères).');return;}
-  if(m.length<8){auErr('Le nouveau mot de passe doit faire au moins 8 caractères.');return;}
+  if((!n&&!pseudoValide(p))||normCodeS(code).length!==12){auErr('Vérifie ton identifiant et ton code (12 caractères).');return;}
+  const faible=motDePasseFaible(m,n);if(faible){auErr(faible);return;}
   if(m!==m2){auErr('Les deux mots de passe ne sont pas identiques.');return;}
   auErr('');auBusy(true,'Vérification…');
   try{
-    const r=await fetch('/api/recuperer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pseudo:p,code,mdp:m})});
+    const r=await fetch('/api/recuperer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifiant:n||p,code,mdp:m})});
     const j=await r.json().catch(()=>({}));
     if(!r.ok||!j.ok){auBusy(false);auErr(j.erreur||'Récupération impossible pour le moment.');return;}
     const{auth,signInWithEmailAndPassword}=window._fb;
-    await signInWithEmailAndPassword(auth,p+DOMAINE_PSEUDO,m);
+    if(n)monNumero=n;
+    await signInWithEmailAndPassword(auth,n?await emailNumero(n,m):p+DOMAINE_PSEUDO,m);
     afficherCodeSecours(j.nouveauCode,'recuperation');
   }catch(e){auBusy(false);auErr(/fetch|network/i.test(String(e))?'Pas de connexion internet.':msgErreurAuth(e));}
 }
@@ -810,17 +874,17 @@ async function recupererCompte(){
 // ── Code de secours : affiché une seule fois
 function afficherCodeSecours(code,contexte){
   document.getElementById('secours-ov')?.remove();
-  const pseudo=pseudoDeEmail(window._fb?.auth?.currentUser?.email)||'';
+  const pseudo=identLabel();
   const ov=document.createElement('div');ov.id='secours-ov';
   ov.style.cssText='position:fixed;inset:0;background:var(--bg);z-index:1100;overflow-y:auto;display:flex;justify-content:center';
   const bt='width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:var(--r);border:none;background:var(--surf2);color:var(--text);font-size:13.5px;font-weight:500;cursor:pointer;font-family:var(--font);margin-top:10px';
-  const msg=`Mon code de secours FII'NAS (compte @${pseudo}) : ${code}`;
+  const msg=`Mon code de secours FII'NAS${pseudo?' (compte '+pseudo+')':''} : ${code}`;
   ov.innerHTML=`<div style="width:100%;max-width:420px;padding:40px 22px 28px">
     <div style="width:44px;height:44px;border-radius:12px;background:rgba(255,159,10,.15);color:var(--amber);display:flex;align-items:center;justify-content:center;margin-bottom:14px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M16 7l3 3M19 4l2 2"/></svg></div>
     <div style="font-size:20px;font-weight:600;color:var(--text)">${contexte==='recuperation'?'Ton nouveau code de secours':'Garde ce code en lieu sûr'}</div>
     <div style="font-size:13px;color:var(--text2);line-height:1.55;margin:8px 0 18px">${contexte==='recuperation'?'Ton mot de passe est changé. L\'ancien code ne marche plus : garde celui-ci à la place.':contexte==='nouveau'?'L\'ancien code ne marche plus. Garde celui-ci à la place.':'C\'est le seul moyen de récupérer ton compte si tu oublies ton mot de passe.'} Il ne sera plus jamais affiché.</div>
     <div id="secours-code" style="background:var(--surf);border:1px dashed rgba(255,159,10,.55);border-radius:14px;padding:18px;text-align:center;font-family:var(--mono);font-size:21px;font-weight:600;letter-spacing:.08em;color:var(--text);user-select:all">${esc(code)}</div>
-    ${pseudo?`<div style="font-size:12px;color:var(--text3);text-align:center;margin-top:8px">Compte @${esc(pseudo)}</div>`:''}
+    ${pseudo?`<div style="font-size:12px;color:var(--text3);text-align:center;margin-top:8px">Compte ${esc(pseudo)}</div>`:''}
     <button style="${bt}" onclick="window.open('https://wa.me/?text='+encodeURIComponent(${jsa(msg)}),'_blank')"><span style="color:var(--green);display:flex">${ICO_WA}</span>M'envoyer sur WhatsApp</button>
     <button style="${bt}" onclick="navigator.clipboard&&navigator.clipboard.writeText(${jsa(code)}).then(()=>toast('Code copié'),()=>toast('Copie impossible : note-le'))">Copier</button>
     <button onclick="fermerCodeSecours(${jsa(contexte)})" style="${bt};background:var(--green);color:#0b2a1a;font-weight:600;margin-top:20px">Je l'ai noté</button>
@@ -853,11 +917,42 @@ async function proposerEmpreinte(){
 
 // ── Profil : nouveau code de secours (si perdu)
 async function nouveauCodeSecours(){
-  const u=window._fb?.auth?.currentUser;if(!u||!pseudoDeEmail(u.email))return;
+  const u=window._fb?.auth?.currentUser;if(!u||!(pseudoDeEmail(u.email)||estCompteNumero(u.email)))return;
   if(!confirm('Créer un nouveau code de secours ?\n\nL\'ancien code ne marchera plus.'))return;
   try{afficherCodeSecours(await enregistrerCodeSecours(u.uid),'nouveau');}catch(e){toast('⚠ '+e.message);}
 }
 
+
+// ── Profil : changer le mot de passe (comptes nom d'utilisateur ou numéro)
+function openChangerMdp(){
+  const u=window._fb?.auth?.currentUser;if(!u)return;
+  openSheet(sheetHead('Changer le mot de passe')+`
+    <div class="fgrp"><div class="flbl">Mot de passe actuel</div>${champMdp('cm-old','','current-password')}</div>
+    <div class="fgrp"><div class="flbl">Nouveau mot de passe</div>${champMdp('cm-new','','new-password')}</div>
+    <div class="fgrp"><div class="flbl">Confirme le nouveau mot de passe</div>${champMdp('cm-new2','','new-password')}</div>
+    <div id="cm-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
+    <button class="btn-p" id="cm-go" onclick="changerMdp()">Changer le mot de passe</button>`);
+}
+async function changerMdp(){
+  const err=document.getElementById('cm-err'),bt=document.getElementById('cm-go');
+  const a=document.getElementById('cm-old').value,m=document.getElementById('cm-new').value,m2=document.getElementById('cm-new2').value;
+  const{auth,EmailAuthProvider,reauthenticateWithCredential,updatePassword,signInWithEmailAndPassword}=window._fb;const u=auth.currentUser;
+  const num=estCompteNumero(u.email)?monNumero:null;
+  const f=motDePasseFaible(m,num);if(f){err.textContent=f;return;}
+  if(m!==m2){err.textContent='Les deux mots de passe ne sont pas identiques.';return;}
+  if(m===a){err.textContent='Choisis un mot de passe différent de l\'actuel.';return;}
+  bt.disabled=true;err.textContent='';
+  try{
+    await reauthenticateWithCredential(u,EmailAuthProvider.credential(u.email,a));
+    if(num){
+      const r=await fetch('/api/motdepasse',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idToken:await u.getIdToken(true),nouveau:m})});
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok){bt.disabled=false;err.textContent=j.erreur||'Changement impossible pour le moment.';return;}
+      await signInWithEmailAndPassword(auth,await emailNumero(num,m),m);
+    } else await updatePassword(u,m);
+    closeSheet();toast('Mot de passe changé');
+  }catch(e){bt.disabled=false;err.textContent=/invalid-credential|wrong-password/.test(e.code||'')?'Mot de passe actuel incorrect.':msgErreurAuth(e);}
+}
 
 // ═══════════════ CHOIX DU OU DES COMPTES (paiement simple ou réparti) ═══════════════
 // Composant commun : formulaire d'ajout, modification, prêts/emprunts, remboursements.
@@ -1996,11 +2091,12 @@ waitFB(()=>{
 
 function setUserUI(u){
   const ps=pseudoDeEmail(u.email);
-  const n=(u.displayName||window.__nouveauCompte||ps||u.email||'Utilisateur').split(' ')[0];
+  const n=(u.displayName||window.__nouveauCompte||ps||(estCompteNumero(u.email)?'Utilisateur':u.email)||'Utilisateur').split(' ')[0];
   userName=u.displayName||window.__nouveauCompte||n;
   document.getElementById('uname').textContent=n;
   document.getElementById('pname').textContent=u.displayName||window.__nouveauCompte||ps||'Utilisateur';
-  document.getElementById('pemail').textContent=ps?'@'+ps:(u.email||'');
+  document.getElementById('pemail').textContent=ps?'@'+ps:estCompteNumero(u.email)?(monNumero?fmtNumero(monNumero):''):(u.email||'');
+  if(estCompteNumero(u.email))lierNumero(u);
   ['uav','pav'].forEach(id=>{
     const el=document.getElementById(id);
     if(u.photoURL){el.innerHTML=`<img src="${u.photoURL}" alt="">`;}
@@ -3735,7 +3831,14 @@ function renderSecurityUI(){
       </button>
     </div>
 
-    ${pseudoDeEmail(window._fb?.auth?.currentUser?.email)?`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:0.5px solid var(--border)">
+    ${(pseudoDeEmail(window._fb?.auth?.currentUser?.email)||estCompteNumero(window._fb?.auth?.currentUser?.email))?`<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:0.5px solid var(--border)">
+      <div>
+        <div style="font-size:13px;font-weight:500;color:var(--text)">Mot de passe</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Changer ton mot de passe</div>
+      </div>
+      <button onclick="openChangerMdp()" class="btn-o" style="font-size:11px">Changer</button>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:0.5px solid var(--border)">
       <div>
         <div style="font-size:13px;font-weight:500;color:var(--text)">Code de secours</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">Pour récupérer ton compte si tu oublies ton mot de passe</div>
