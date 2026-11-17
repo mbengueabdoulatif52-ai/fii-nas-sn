@@ -378,10 +378,7 @@ select option{background:#2c2c2e;color:#f5f5f7}
         </div>
       </div>
       <div id="f-reste"></div>
-      <div class="fgrp" id="f-cpt-wrap" style="display:none">
-        <div class="flbl" id="f-cpt-lbl">Payé avec</div>
-        <div id="f-cpt" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-      </div>
+      <div class="fgrp" id="f-cpt-wrap" style="display:none"></div>
       <div class="fgrp" id="f-obj-wrap" style="display:none">
         <div class="flbl">Pour l'objectif</div>
         <div id="f-obj" style="display:flex;flex-wrap:wrap;gap:6px"></div>
@@ -602,12 +599,12 @@ select option{background:#2c2c2e;color:#f5f5f7}
     </div>
     <div class="fgrp"><div class="flbl">Montant</div>
       <div class="amtwrap"><div class="amtcur">FCFA</div>
-        <input class="amtinp" type="text" id="e-amt" inputmode="numeric" oninput="fmtAmtInput(this)">
+        <input class="amtinp" type="text" id="e-amt" inputmode="numeric" oninput="fmtAmtInput(this);payRefresh('edit')">
       </div>
     </div>
     <div class="frow" style="margin-bottom:11px">
       <div class="fgrp"><div class="flbl">Catégorie</div>
-        <select class="fsel" id="e-cat" onchange="syncEditPostes();document.getElementById('e-obj-wrap').style.display=(this.value==='Epargne'&&modules.objectifs&&objectifs.length)?'block':'none'"></select>
+        <select class="fsel" id="e-cat" onchange="syncEditPostes();document.getElementById('e-obj-wrap').style.display=(this.value==='Epargne'&&modules.objectifs&&objectifs.length)?'block':'none';payRefresh('edit')"></select>
       </div>
       <div class="fgrp"><div class="flbl">Poste</div>
         <select class="fsel" id="e-poste"></select>
@@ -624,9 +621,7 @@ select option{background:#2c2c2e;color:#f5f5f7}
     <div class="fgrp" id="e-obj-wrap" style="display:none;margin-bottom:11px"><div class="flbl">Pour l'objectif</div>
       <select class="fsel" id="e-obj"></select>
     </div>
-    <div class="fgrp" id="e-cpt-wrap" style="display:none;margin-bottom:11px"><div class="flbl">Compte</div>
-      <select class="fsel" id="e-cpt"></select>
-    </div>
+    <div class="fgrp" id="e-cpt-wrap" style="display:none;margin-bottom:11px"></div>
     <button class="btn-p" onclick="saveEditTx()">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12l5 5L20 7"/></svg>
       Enregistrer les modifications
@@ -675,6 +670,147 @@ function loadCatsFromSettings(settings){
     });
   }
 }
+
+// ═══════════════ CHOIX DU OU DES COMPTES (paiement simple ou réparti) ═══════════════
+// Composant commun : formulaire d'ajout, modification, prêts/emprunts, remboursements.
+// Une opération porte soit `compte` (un seul compte), soit `parts:[{compte,amt}]` (réparti).
+// Avant d'enregistrer une sortie d'argent, avertit si un compte (hors banque) passerait sous zéro.
+const PAY={};
+function deNom(n){return(/^[aeiouyéèêàh]/i.test(String(n||''))?'d\'':'de ')+n;}
+function partsOf(o,amt){if(o&&Array.isArray(o.parts)&&o.parts.length)return o.parts;return(o&&o.compte)?[{compte:o.compte,amt:amt||0}]:[];}
+function partsLabel(o,amt){const p=partsOf(o,amt);if(!p.length)return'';if(p.length===1)return nomCpt(p[0].compte);return p.map(x=>nomCpt(x.compte)+' '+fmt(x.amt)).join(' + ');}
+function payInit(key,o){
+  PAY[key]=Object.assign({mode:'one',one:null,parts:[],force:false,warn:false,cor:null},o);
+  const p=PAY[key],i=o.init||{};
+  if(Array.isArray(i.parts)&&i.parts.length>1){p.mode='multi';p.parts=i.parts.map(x=>({compte:x.compte,amt:x.amt}));}
+  else p.one=(i.compte&&comptes.some(c=>c.id===i.compte))?i.compte:(o.allowNone&&i.compte===null?null:(i.compte||null));
+  if(p.one&&!comptes.some(c=>c.id===p.one))p.one=null;
+}
+function payRefresh(k){if(PAY[k]){PAY[k].warn=false;PAY[k].force=false;payRender(k);}}
+function paySortie(p){return typeof p.sortie==='function'?p.sortie():!!p.sortie;}
+function payDispo(p,c){return soldeCompte(c,p.excl);}
+function payTot(p){return Math.max(0,p.total()||0);}
+function payRender(key){
+  const p=PAY[key];if(!p)return;const el=document.getElementById(p.el);if(!el)return;
+  if(!(modules.comptes&&comptes.length)||(p.hidden&&p.hidden())){el.innerHTML='';el.style.display='none';return;}
+  el.style.display='block';
+  const sortie=paySortie(p),T=payTot(p);
+  const chip=(on,txt,fn)=>`<button type="button" class="cpt-ch ${on?'on':''}" onclick="${fn}">${txt}</button>`;
+  const lien=(txt,fn)=>`<button type="button" onclick="${fn}" style="background:none;border:none;color:var(--blue);font-size:12px;cursor:pointer;padding:6px 0 0;font-family:var(--font)">${txt}</button>`;
+  let h=`<div class="flbl">${p.label?p.label(sortie):(sortie?'Payé avec':'Reçu sur')}</div>`;
+  if(p.mode==='one'){
+    h+=`<div style="display:flex;flex-wrap:wrap;gap:6px">`+comptes.map(c=>chip(c.id===p.one,esc(c.nom),`payOne('${key}',${jsa(c.id)})`)).join('')
+      +(p.allowNone?chip(p.one===null,'Aucun compte',`payOne('${key}',null)`):'')+`</div>`;
+    const c=comptes.find(x=>x.id===p.one);
+    if(c){const s=payDispo(p,c),ap=s+(sortie?-T:T),neg=ap<0;
+      h+=`<div style="font-size:11px;color:${neg?'var(--amber)':'var(--text3)'};margin-top:4px">${esc(c.nom)} : ${fmtSigne(s)}${T>0?' → '+fmtSigne(ap):''}${neg&&c.type==='banque'?' (découvert)':''}</div>`;}
+    if(comptes.length>1)h+=lien(`+ ${sortie?'Payer':'Recevoir'} avec plusieurs comptes`,`payMulti('${key}')`);
+  } else {
+    h+=p.parts.map((x,i)=>{const c=comptes.find(y=>y.id===x.compte);
+      return `<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px">
+        <div style="flex:1.15;min-width:0"><select class="fsel" style="padding:10px 11px" onchange="payPart('${key}',${i},'compte',this.value)">${comptes.map(y=>`<option value="${esc(y.id)}" ${y.id===x.compte?'selected':''}>${esc(y.nom)}</option>`).join('')}</select>
+          <div style="font-size:10.5px;color:var(--text3);margin-top:3px">${c?fmtSigne(payDispo(p,c))+' dispo':''}</div></div>
+        <input class="finp" style="flex:1;min-width:0;text-align:right" inputmode="numeric" value="${x.amt?fmtSansMasque(x.amt):''}" placeholder="0" oninput="fmtAmtInput(this);payPart('${key}',${i},'amt',this.value)">
+        ${p.parts.length>2?`<button type="button" aria-label="Retirer" onclick="payDel('${key}',${i})" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:8px 2px">×</button>`:''}
+      </div>`;}).join('');
+    if(p.parts.length<comptes.length)h+=lien('+ Ajouter un compte',`payAdd('${key}')`);
+    h+=`<div id="${p.el}-st" style="border-radius:var(--rs);padding:8px 12px;font-size:12px;margin-top:6px"></div>`;
+    h+=lien('Un seul compte',`payOneMode('${key}')`);
+  }
+  h+=`<div id="${p.el}-warn"></div>`;
+  el.innerHTML=h;
+  if(p.mode==='multi')payStatus(key);
+  if(p.warn)payWarn(key);
+  if(key==='nd'&&document.getElementById('nd-note'))renderNdNote();
+}
+function payStatus(key){
+  const p=PAY[key],st=document.getElementById(p.el+'-st');if(!st)return;
+  const d=payTot(p)-p.parts.reduce((s,x)=>s+(x.amt||0),0);
+  if(d===0&&payTot(p)>0){st.style.background='var(--gd)';st.style.color='var(--green)';st.textContent='Total réparti : '+fmt(payTot(p))+' F ✓';}
+  else{st.style.background='rgba(255,159,10,.12)';st.style.color='var(--amber)';st.textContent=payTot(p)===0?'Saisis d\'abord le montant':d>0?'Il reste '+fmt(d)+' F à répartir':'Tu as réparti '+fmt(-d)+' F de trop';}
+}
+function payOne(key,id){const p=PAY[key];p.one=id;p.warn=false;p.force=false;if(key==='add'&&id)formCpt=id;payRender(key);if(key==='nd')renderNdNote();}
+function payOneMode(key){const p=PAY[key];p.mode='one';p.one=(p.parts[0]&&p.parts[0].compte)||p.one;p.warn=false;payRender(key);}
+// Passage en répartition : le compte choisi donne ce qu'il a (sortie) ou la moitié, le reste va au compte le mieux garni
+function payMulti(key){
+  const p=PAY[key],T=payTot(p),sortie=paySortie(p);
+  const a=comptes.find(c=>c.id===p.one)||comptes[0];
+  const autres=comptes.filter(c=>c.id!==a.id).sort((x,y)=>payDispo(p,y)-payDispo(p,x));
+  const b=autres[0];
+  const dA=payDispo(p,a);
+  let partA=(sortie&&dA<T)?Math.max(0,dA):Math.round(T/2);
+  p.mode='multi';p.parts=[{compte:a.id,amt:partA},{compte:b.id,amt:T-partA}];p.warn=false;p.force=false;
+  payRender(key);
+}
+function payPart(key,i,f,v){
+  const p=PAY[key];if(!p.parts[i])return;
+  if(f==='compte'){
+    const autre=p.parts.findIndex((x,j)=>j!==i&&x.compte===v);
+    if(autre>=0)p.parts[autre].compte=p.parts[i].compte; // échange plutôt que doublon
+    p.parts[i].compte=v;p.warn=false;payRender(key);
+  } else {const n=parseAmt(v);p.parts[i].amt=isNaN(n)?0:n;p.warn=false;payStatus(key);const w=document.getElementById(p.el+'-warn');if(w)w.innerHTML='';}
+}
+function payAdd(key){
+  const p=PAY[key],libre=comptes.find(c=>!p.parts.some(x=>x.compte===c.id));if(!libre)return;
+  const d=payTot(p)-p.parts.reduce((s,x)=>s+(x.amt||0),0);
+  p.parts.push({compte:libre.id,amt:Math.max(0,d)});payRender(key);
+}
+function payDel(key,i){const p=PAY[key];p.parts.splice(i,1);payRender(key);}
+// Résultat : {compte} ou {parts} ; {err} si la répartition est incomplète
+function payResult(key){
+  const p=PAY[key];
+  if(!p||!(modules.comptes&&comptes.length)||(p.hidden&&p.hidden()))return{compte:null,parts:null};
+  if(p.mode==='one')return{compte:p.one||null,parts:null};
+  const T=payTot(p),parts=p.parts.filter(x=>x.amt>0).map(x=>({compte:x.compte,amt:x.amt}));
+  const s=parts.reduce((a,x)=>a+x.amt,0);
+  if(s!==T)return{err:s<T?'Répartis tout le montant entre les comptes (il reste '+fmt(T-s)+' F).':'La répartition dépasse le montant de '+fmt(s-T)+' F.'};
+  if(parts.length===1)return{compte:parts[0].compte,parts:null};
+  return{compte:null,parts};
+}
+// Premier compte (hors banque) qui passerait sous zéro
+function payNeg(key){
+  const p=PAY[key];if(!p||!paySortie(p))return null;
+  const r=payResult(key);if(r.err)return null;
+  const l=r.parts||(r.compte?[{compte:r.compte,amt:payTot(p)}]:[]);
+  for(const x of l){const c=comptes.find(y=>y.id===x.compte);if(!c||c.type==='banque')continue;
+    const d=payDispo(p,c);if(d-x.amt<0)return{c,dispo:d,apres:d-x.amt,amt:x.amt};}
+  return null;
+}
+// À appeler avant d'enregistrer : false = l'avertissement est affiché, on n'enregistre pas
+function payOk(key){
+  const p=PAY[key];if(!p||p.force)return true;
+  if(payNeg(key)){p.warn=true;payRender(key);document.getElementById(p.el+'-warn')?.scrollIntoView({block:'nearest',behavior:'smooth'});return false;}
+  return true;
+}
+function payWarn(key){
+  const p=PAY[key],w=document.getElementById(p.el+'-warn'),n=payNeg(key);if(!w)return;
+  if(!n){w.innerHTML='';return;}
+  const T=payTot(p),c=n.c;
+  const mieux=p.mode==='one'?comptes.filter(y=>y.id!==c.id&&(y.type==='banque'||payDispo(p,y)>=T)).sort((a,b)=>payDispo(p,b)-payDispo(p,a))[0]:null;
+  const bt='width:100%;margin-top:7px;padding:10px;border-radius:var(--rs);border:none;background:var(--surf2);color:var(--text);font-size:12.5px;font-weight:500;cursor:pointer;font-family:var(--font)';
+  w.innerHTML=`<div style="background:rgba(255,159,10,.1);border:1px solid rgba(255,159,10,.4);border-radius:12px;padding:12px;margin-top:10px">
+    <div style="font-size:13px;font-weight:600;color:var(--text)">${esc(c.nom)} n'a que ${fmtSigne(n.dispo)}</div>
+    <div style="font-size:11.5px;color:var(--text2);line-height:1.5;margin-top:3px">Après ${paySortie(p)?'ce paiement':'cette opération'}, le solde serait de ${fmtSigne(n.apres)}, ce qui est impossible ${c.type==='especes'?'en espèces':'sur '+esc(c.nom)}. Tu as peut-être oublié de noter une rentrée d'argent.</div>
+    ${mieux?`<button type="button" style="${bt}" onclick="payOne('${key}',${jsa(mieux.id)})">Payer avec ${esc(mieux.nom)} (${fmtSigne(payDispo(p,mieux))})</button>`:''}
+    ${p.mode==='one'&&comptes.length>1?`<button type="button" style="${bt}" onclick="payMulti('${key}')">Payer avec plusieurs comptes</button>`:''}
+    ${p.cor===c.id?`<div style="display:flex;gap:8px;margin-top:7px"><input class="finp" id="${p.el}-cor" inputmode="numeric" placeholder="Solde réel ${esc(deNom(c.nom))}" oninput="fmtAmtInput(this)"><button type="button" onclick="payCorrige('${key}',${jsa(c.id)})" style="padding:0 14px;border-radius:var(--rs);border:none;background:var(--blue);color:#fff;font-size:12.5px;cursor:pointer;font-family:var(--font)">OK</button></div>`
+      :`<button type="button" style="${bt}" onclick="PAY['${key}'].cor=${jsa(c.id)};payWarn('${key}')">Corriger le solde ${esc(deNom(c.nom))}</button>`}
+    <button type="button" onclick="PAY['${key}'].force=true;PAY['${key}'].warn=false;PAY['${key}'].retry&&PAY['${key}'].retry()" style="width:100%;margin-top:6px;padding:8px;border:none;background:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:var(--font)">Enregistrer quand même</button>
+  </div>`;
+}
+async function payCorrige(key,cid){
+  const p=PAY[key],c=comptes.find(x=>x.id===cid);if(!c)return;
+  const v=parseAmt(document.getElementById(p.el+'-cor')?.value);if(isNaN(v)){toast('Saisis le solde réel');return;}
+  const delta=v-soldeCompte(c);p.cor=null;
+  if(delta!==0){
+    const m={type:'ajustement',compte:cid,amt:delta,date:todayStr(),ts:new Date().toISOString()};
+    const{db,collection,addDoc}=window._fb;
+    try{await addDoc(collection(db,dataPath()+'/mouvements'),m);}catch(e){toast('⚠ '+e.message);return;}
+    if(!mouvs.some(x=>x.ts===m.ts))mouvs.push(Object.assign({id:'tmp'+Date.now()},m)); // affichage immédiat
+  }
+  toast('Solde corrigé');p.warn=!!payNeg(key);payRender(key);
+}
+
 
 // ═══════════════ MODULES ═══════════════
 // Fonctions facultatives, activées depuis Profil → Modules ou par une suggestion sur l'accueil.
@@ -738,15 +874,16 @@ function nomCpt(id){const c=comptes.find(x=>x.id===id);return c?c.nom:'Compte su
 function parseAmt(v){const n=parseFloat(String(v||'').replace(/[\s ]/g,'').replace(/,/g,'.'));return isNaN(n)?NaN:Math.round(n);}
 function todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function signeTx(t){return t.cat==='Revenu'?1:-1;}
-function soldeCompte(c){
+function soldeCompte(c,exclTx){
   let s=c.solde0||0;
-  dettes.forEach(d=>{if(d.compte===c.id)s+=d.sens==='pret'?-(d.montant||0):(d.montant||0);});
-  txs.forEach(t=>{if(t.compte===c.id)s+=signeTx(t)*(t.amt||0);});
+  const add=(o,amt,sg)=>partsOf(o,amt).forEach(x=>{if(x.compte===c.id)s+=sg*(x.amt||0);});
+  dettes.forEach(d=>add(d,d.montant||0,d.sens==='pret'?-1:1));
+  txs.forEach(t=>{if(t.id!==exclTx)add(t,t.amt||0,signeTx(t));});
   mouvs.forEach(m=>{
     if(m.type==='virement'){if(m.de===c.id)s-=m.amt||0;if(m.vers===c.id)s+=m.amt||0;}
     else if(m.type==='ajustement'&&m.compte===c.id)s+=m.amt||0;
     else if(m.type==='retrait_obj'&&m.compte===c.id)s+=m.amt||0;
-    else if(m.type==='remb'&&m.compte===c.id){const d=dettes.find(x=>x.id===m.dette);if(d)s+=d.sens==='pret'?(m.amt||0):-(m.amt||0);}
+    else if(m.type==='remb'){const d=dettes.find(x=>x.id===m.dette);if(d)add(m,m.amt||0,d.sens==='pret'?1:-1);}
   });
   return s;
 }
@@ -883,15 +1020,16 @@ async function saveCompte(editId){
 function openCompteDetail(id){
   const c=comptes.find(x=>x.id===id);if(!c)return;
   const lignes=[];
-  txs.forEach(t=>{if(t.compte===id)lignes.push({date:t.date||'',lib:t.poste||t.cat,sub:t.cmt||'',v:signeTx(t)*(t.amt||0)});});
+  const part=(o,amt)=>{const x=partsOf(o,amt).find(y=>y.compte===id);return x?x.amt||0:null;};
+  txs.forEach(t=>{const a=part(t,t.amt||0);if(a!==null)lignes.push({date:t.date||'',lib:t.poste||t.cat,sub:(t.parts?'partagé · ':'')+(t.cmt||''),v:signeTx(t)*a});});
   mouvs.forEach(m=>{
     if(m.type==='virement'&&m.de===id)lignes.push({date:m.date,lib:'Virement vers '+nomCpt(m.vers),sub:'',v:-(m.amt||0)});
     if(m.type==='virement'&&m.vers===id)lignes.push({date:m.date,lib:'Virement de '+nomCpt(m.de),sub:'',v:m.amt||0});
     if(m.type==='ajustement'&&m.compte===id)lignes.push({date:m.date,lib:'Ajustement du solde',sub:'',v:m.amt||0});
-    if(m.type==='remb'&&m.compte===id){const d=dettes.find(x=>x.id===m.dette);if(d)lignes.push({date:m.date,lib:(d.sens==='pret'?'Remboursé par ':'Remboursé à ')+d.personne,sub:'',v:d.sens==='pret'?(m.amt||0):-(m.amt||0)});}
+    if(m.type==='remb'){const d=dettes.find(x=>x.id===m.dette),a=part(m,m.amt||0);if(d&&a!==null)lignes.push({date:m.date,lib:(d.sens==='pret'?'Remboursé par ':'Remboursé à ')+d.personne,sub:'',v:d.sens==='pret'?a:-a});}
     if(m.type==='retrait_obj'&&m.compte===id)lignes.push({date:m.date,lib:'Retrait objectif '+nomObj(m.objectif),sub:'',v:m.amt||0});
   });
-  dettes.forEach(d=>{if(d.compte===id)lignes.push({date:d.date,lib:(d.sens==='pret'?'Prêt à ':'Emprunt auprès de ')+d.personne,sub:'',v:d.sens==='pret'?-(d.montant||0):(d.montant||0)});});
+  dettes.forEach(d=>{const a=part(d,d.montant||0);if(a!==null)lignes.push({date:d.date,lib:(d.sens==='pret'?'Prêt à ':'Emprunt auprès de ')+d.personne,sub:'',v:d.sens==='pret'?-a:a});});
   lignes.sort((a,b)=>b.date.localeCompare(a.date));
   const dFr=d=>d?new Date(d+'T12:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'';
   const liste=lignes.slice(0,40).map(l=>`<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:0.5px solid var(--border)">
@@ -1019,26 +1157,17 @@ async function saveVirement(){
 let formCpt=null;
 function renderFormComptes(){
   const w=document.getElementById('f-cpt-wrap');if(!w)return;
-  if(!modules.comptes||!comptes.length){w.style.display='none';return;}
-  w.style.display='block';
-  document.getElementById('f-cpt-lbl').textContent=selCatVal==='Revenu'?'Reçu sur':'Payé avec';
-  if(!comptes.some(c=>c.id===formCpt)){
+  if(!modules.comptes||!comptes.length){w.style.display='none';w.innerHTML='';return;}
+  if(!PAY.add){
     let last=null;try{last=localStorage.getItem('fiinas-dernier-cpt');}catch(e){}
-    formCpt=comptes.some(c=>c.id===last)?last:comptes[0].id;
+    payInit('add',{el:'f-cpt-wrap',sortie:()=>selCatVal!=='Revenu',total:()=>parseAmt(document.getElementById('f-amt')?.value)||0,retry:()=>saveTx(),init:{compte:comptes.some(c=>c.id===last)?last:comptes[0].id}});
   }
-  document.getElementById('f-cpt').innerHTML=comptes.map(c=>`<button type="button" class="cpt-ch ${c.id===formCpt?'on':''}" onclick="selFormCpt(${jsa(c.id)})">${esc(c.nom)}</button>`).join('')
-    +'<div id="f-cpt-note" style="width:100%;font-size:11px;color:var(--text3);margin-top:2px"></div>';
-  cptNote();
+  const p=PAY.add;
+  if(p.mode==='one'&&!comptes.some(c=>c.id===p.one))p.one=comptes.some(c=>c.id===formCpt)?formCpt:comptes[0].id;
+  if(p.one)formCpt=p.one;
+  payRender('add');
 }
-function selFormCpt(id){formCpt=id;renderFormComptes();}
-function compteFormulaire(){return(modules.comptes&&comptes.some(c=>c.id===formCpt))?formCpt:null;}
-function cptNote(){
-  const el=document.getElementById('f-cpt-note');if(!el)return;
-  const c=comptes.find(x=>x.id===formCpt);if(!c){el.textContent='';return;}
-  const a=parseAmt(document.getElementById('f-amt')?.value);const s=soldeCompte(c);
-  el.textContent=(a>0)?`${c.nom} : ${fmtSigne(s)} → ${fmtSigne(s+(selCatVal==='Revenu'?a:-a))}`:`${c.nom} : ${fmtSigne(s)}`;
-}
-
+function cptNote(){payRefresh('add');}
 
 // ═══════════════ MODULE « OBJECTIFS D'ÉPARGNE » ═══════════════
 // Objectifs dans les réglages : {id, nom, cible, echeance 'AAAA-MM' ou '', depart, date0}.
@@ -1361,13 +1490,14 @@ function optionsDepenses(sel){
 function openAddDette(editId){
   const d=editId?dettes.find(x=>x.id===editId):null;
   ndSens=d?d.sens:'pret';ndCredit=false;
-  ndCpt=(modules.comptes&&comptes.length)?(comptes.some(c=>c.id===formCpt)?formCpt:comptes[0].id):null;
+  if(!d&&modules.comptes&&comptes.length)payInit('nd',{el:'nd-cpt-wrap',allowNone:true,sortie:()=>ndSens==='pret',hidden:()=>ndCredit,label:s=>s?'Sorti de':'Reçu sur',total:()=>parseAmt(document.getElementById('nd-amt')?.value)||0,retry:()=>saveDette(),init:{compte:comptes.some(c=>c.id===formCpt)?formCpt:comptes[0].id}});
+  else delete PAY.nd;
   const fa=v=>v?Number(v).toLocaleString('fr-FR').replace(/ /g,' '):'';
   openSheet(sheetHead(d?'Modifier':'Nouveau')+`
     ${d?'':`<div id="nd-seg" style="display:grid;grid-template-columns:1fr 1fr;background:var(--surf2);border-radius:10px;padding:3px;gap:3px;margin-bottom:12px"></div>`}
     <div class="fgrp"><div class="flbl" id="nd-lp">À qui</div><input class="finp" id="nd-pers" maxlength="40" value="${esc(d?d.personne:'')}" placeholder="Moussa, Tata Awa, Boutique Lamine…"></div>
     <div class="frow">
-      <div class="fgrp"><div class="flbl">Montant (FCFA)</div><input class="finp" id="nd-amt" inputmode="numeric" value="${fa(d&&d.montant)}" oninput="fmtAmtInput(this)"></div>
+      <div class="fgrp"><div class="flbl">Montant (FCFA)</div><input class="finp" id="nd-amt" inputmode="numeric" value="${fa(d&&d.montant)}" oninput="fmtAmtInput(this);payRefresh('nd');renderNdNote()"></div>
       <div class="fgrp"><div class="flbl">À rendre le (facultatif)</div><input class="finp" type="date" id="nd-ech" value="${d?esc(d.echeance||''):''}"></div>
     </div>
     <div class="frow">
@@ -1389,13 +1519,17 @@ function renderNd(edit){
   const cw=document.getElementById('nd-credit-wrap'),kw=document.getElementById('nd-cpt-wrap');
   cw.innerHTML=(!p&&!edit)?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin-bottom:10px;cursor:pointer"><input type="checkbox" ${ndCredit?'checked':''} onchange="ndCredit=this.checked;renderNd()" style="width:18px;height:18px;accent-color:var(--green)"> C'est un achat à crédit</label>
     ${ndCredit?`<div class="fgrp"><div class="flbl">Ce que tu as acheté</div><select class="fsel" id="nd-poste">${optionsDepenses(getAllPostes('Dépenses variables').includes('Alimentation')?'Dépenses variables|Alimentation':'')}</select></div>`:''}`:'';
-  const avec=modules.comptes&&comptes.length&&!ndCredit&&!edit;
-  kw.innerHTML=avec?`<div class="fgrp"><div class="flbl">${p?'Sorti de':'Reçu sur'}</div><div style="display:flex;flex-wrap:wrap;gap:6px">${comptes.map(c=>`<button type="button" class="cpt-ch ${c.id===ndCpt?'on':''}" onclick="ndCpt=${jsa(c.id)};renderNd()">${esc(c.nom)}</button>`).join('')}<button type="button" class="cpt-ch ${ndCpt===null?'on':''}" onclick="ndCpt=null;renderNd()">Aucun compte</button></div></div>`:'';
-  const nomC=ndCpt?nomCpt(ndCpt):'';
-  document.getElementById('nd-note').textContent=edit?'Le montant et la personne peuvent être corrigés ; les remboursements déjà notés sont conservés.'
+  if(PAY.nd)payRender('nd');else kw.innerHTML='';
+  ndEdit=!!edit;renderNdNote();
+}
+let ndEdit=false;
+function renderNdNote(){
+  const p=ndSens==='pret',pr=PAY.nd?payResult('nd'):{},avec=!!(PAY.nd&&!ndCredit&&(pr.compte||pr.parts));
+  const nomC=pr.parts?pr.parts.map(x=>nomCpt(x.compte)).join(' et '):(pr.compte?nomCpt(pr.compte):'');
+  document.getElementById('nd-note').textContent=ndEdit?'Le montant et la personne peuvent être corrigés ; les remboursements déjà notés sont conservés.'
     :ndCredit?'L\'achat compte comme une dépense aujourd\'hui, dans le poste choisi. Tu le paieras plus tard : ce paiement ne sera pas recompté.'
-    :p?`Ni dépense ni revenu : cet argent doit te revenir.${avec&&nomC?' Il sort de '+nomC+' et':' Il'} apparaît dans « On me doit ».`
-    :`Ni revenu ni dépense : tu devras le rendre.${avec&&nomC?' Il arrive sur '+nomC+' et':' Il'} apparaît dans « Je dois ».`;
+    :p?`Ni dépense ni revenu : cet argent doit te revenir.${avec?' Il sort '+deNom(nomC)+' et':' Il'} apparaît dans « On me doit ».`
+    :`Ni revenu ni dépense : tu devras le rendre.${avec?' Il arrive sur '+nomC+' et':' Il'} apparaît dans « Je dois ».`;
 }
 function normTel(t){const n=String(t||'').replace(/\D/g,'');return n.length===9?'221'+n:n;}
 async function saveDette(editId){
@@ -1415,8 +1549,10 @@ async function saveDette(editId){
     try{await saveSettings();}catch(e){err.textContent='Non enregistré : '+e.message;return;}
     closeSheet();renderCurrent();toast('Modifié');return;
   }
+  let pr={compte:null,parts:null};
+  if(PAY.nd&&!ndCredit){pr=payResult('nd');if(pr.err){err.textContent=pr.err;return;}if(!payOk('nd'))return;}
   const id='d'+Date.now().toString(36);
-  const d={id,sens:ndSens,personne,tel,montant,date,echeance,compte:(ndCredit?null:ndCpt)||null,credit:!!ndCredit};
+  const d={id,sens:ndSens,personne,tel,montant,date,echeance,compte:pr.compte||null,credit:!!ndCredit};if(pr.parts)d.parts=pr.parts;
   document.getElementById('nd-go').disabled=true;
   try{
     if(ndCredit){
@@ -1433,8 +1569,8 @@ async function saveDette(editId){
 function openDetteDetail(id){
   const d=dettes.find(x=>x.id===id);if(!d)return;
   const p=d.sens==='pret',r=resteDette(d),pct=d.montant>0?Math.round((d.montant-r)/d.montant*100):0;
-  const lignes=[{date:d.date,lib:p?'Prêté':(d.credit?'Acheté à crédit':'Emprunté'),sub:d.compte?nomCpt(d.compte):'',v:d.montant,init:true}];
-  mouvs.forEach(m=>{if(m.type==='remb'&&m.dette===id)lignes.push({date:m.date,lib:'Remboursé',sub:m.compte?nomCpt(m.compte):'',v:m.amt||0});});
+  const lignes=[{date:d.date,lib:p?'Prêté':(d.credit?'Acheté à crédit':'Emprunté'),sub:partsLabel(d,d.montant),v:d.montant,init:true}];
+  mouvs.forEach(m=>{if(m.type==='remb'&&m.dette===id)lignes.push({date:m.date,lib:'Remboursé',sub:partsLabel(m,m.amt),v:m.amt||0});});
   if(d.abandonne)lignes.push({date:d.dateAbandon||'',lib:'Abandonné',sub:'compté en dépense',v:d.abandonne});
   lignes.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const btn='padding:10px;border-radius:var(--rs);border:0.5px solid var(--border2);background:var(--surf2);color:var(--text);font-size:12.5px;cursor:pointer;font-family:var(--font)';
@@ -1471,28 +1607,24 @@ async function supprimerDette(id){
 }
 
 // ── Remboursement (+ intérêts facultatifs : dépense « Frais » ou revenu « Autres revenus »)
-let rbCpt=null;
 function openRemb(id){
   const d=dettes.find(x=>x.id===id);if(!d)return;
   const p=d.sens==='pret',r=resteDette(d);
-  rbCpt=(modules.comptes&&comptes.length)?(comptes.some(c=>c.id===d.compte)?d.compte:(comptes.some(c=>c.id===formCpt)?formCpt:comptes[0].id)):null;
+  const dp=partsOf(d,d.montant);
+  if(modules.comptes&&comptes.length)payInit('rb',{el:'rb-pay',allowNone:true,sortie:!p,total:()=>parseAmt(document.getElementById('rb-amt')?.value)||0,retry:()=>saveRemb(id),init:{compte:(dp[0]&&comptes.some(c=>c.id===dp[0].compte))?dp[0].compte:(comptes.some(c=>c.id===formCpt)?formCpt:comptes[0].id)}});
+  else delete PAY.rb;
   openSheet(sheetHead('Remboursement')+`
     <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${p?esc(d.personne)+' te doit':'Tu dois à '+esc(d.personne)} : <b style="color:var(--text)">${fmt(r)} F</b></div>
     <div class="frow">
-      <div class="fgrp"><div class="flbl">Montant remboursé</div><input class="finp" id="rb-amt" inputmode="numeric" value="${fmtSansMasque(r)}" oninput="fmtAmtInput(this)"></div>
+      <div class="fgrp"><div class="flbl">Montant remboursé</div><input class="finp" id="rb-amt" inputmode="numeric" value="${fmtSansMasque(r)}" oninput="fmtAmtInput(this);payRefresh('rb')"></div>
       <div class="fgrp"><div class="flbl">Intérêts (facultatif)</div><input class="finp" id="rb-int" inputmode="numeric" placeholder="0" oninput="fmtAmtInput(this)"></div>
     </div>
     <div class="fgrp"><div class="flbl">Date</div><input class="finp" type="date" id="rb-date" value="${todayStr()}"></div>
-    ${rbCpt!==null?`<div class="fgrp"><div class="flbl">${p?'Reçu sur':'Payé avec'}</div><div id="rb-cpts" style="display:flex;flex-wrap:wrap;gap:6px"></div></div>`:''}
+    <div class="fgrp" id="rb-pay" style="display:none"></div>
     <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:8px">Le remboursement n'est ni un revenu ni une dépense. Les intérêts, eux, comptent en ${p?'revenu':'dépense'}.</div>
     <div id="rb-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
     <button class="btn-p" id="rb-go" onclick="saveRemb(${jsa(id)})">Enregistrer</button>`);
-  renderRbCpts();
-}
-function renderRbCpts(){
-  const el=document.getElementById('rb-cpts');if(!el)return;
-  el.innerHTML=comptes.map(c=>`<button type="button" class="cpt-ch ${c.id===rbCpt?'on':''}" onclick="rbCpt=${jsa(c.id)};renderRbCpts()">${esc(c.nom)}</button>`).join('')
-    +`<button type="button" class="cpt-ch ${rbCpt===''?'on':''}" onclick="rbCpt='';renderRbCpts()">Aucun compte</button>`;
+  if(PAY.rb)payRender('rb');
 }
 async function saveRemb(id){
   const d=dettes.find(x=>x.id===id);if(!d)return;
@@ -1502,15 +1634,17 @@ async function saveRemb(id){
   if(!(a>0)){err.textContent='Saisis le montant remboursé.';return;}
   if(a>resteDette(d)){err.textContent='C\'est plus que ce qui reste dû ('+fmt(resteDette(d))+' F). Mets le surplus en intérêts.';return;}
   if(it<0){err.textContent='Intérêts invalides.';return;}
-  const cpt=rbCpt||null,p=d.sens==='pret',restait=resteDette(d);
+  let pr={compte:null,parts:null};
+  if(PAY.rb){pr=payResult('rb');if(pr.err){err.textContent=pr.err;return;}if(!payOk('rb'))return;}
+  const cpt=pr.compte||(pr.parts?pr.parts[0].compte:null),p=d.sens==='pret',restait=resteDette(d);
   const{db,collection,addDoc}=window._fb;const ts=new Date().toISOString();
   document.getElementById('rb-go').disabled=true;
   try{
-    await addDoc(collection(db,dataPath()+'/mouvements'),{type:'remb',dette:id,amt:a,compte:cpt,date,ts});
+    await addDoc(collection(db,dataPath()+'/mouvements'),Object.assign({type:'remb',dette:id,amt:a,date,ts},pr.parts?{parts:pr.parts,compte:null}:{compte:cpt}));
     if(it>0){
       const cat=p?'Revenu':'Dépenses variables',poste=p?'Autres revenus':'Frais';
       if(!getAllPostes(cat).includes(poste)){(CATS[cat]=CATS[cat]||[]).push(poste);await saveSettings();}
-      const t={amt:it,date,cat,poste,cmt:'Intérêts — '+d.personne,dette:id,ts,createdBy:userName,createdById:uid};if(cpt)t.compte=cpt;
+      const t={amt:it,date,cat,poste,cmt:'Intérêts — '+d.personne,dette:id,ts:ts+'i',createdBy:userName,createdById:uid};if(cpt)t.compte=cpt;
       await addDoc(collection(db,dataPath()+'/transactions'),t);
     }
   }catch(e){document.getElementById('rb-go').disabled=false;err.textContent='Non enregistré : '+e.message;return;}
@@ -1699,7 +1833,7 @@ function subscribe(){
     const newTxs=snap.docs.map(d=>({id:d.id,...d.data()}));
     // Ne re-rendre que si les données ont changé
     // Empreinte complète : une modification de poste, date ou commentaire est aussi prise en compte
-    const h=l=>l.map(t=>[t.id,t.amt,t.ts,t.date,t.cat,t.poste,t.cmt].join('|')).join(',');
+    const h=l=>l.map(t=>[t.id,t.amt,t.ts,t.date,t.cat,t.poste,t.cmt,t.compte,JSON.stringify(t.parts||null),t.objectif,t.dette].join('|')).join(',');
     const newHash=h(newTxs),oldHash=h(txs);
     txs=newTxs;
     if(firstLoad||newHash!==oldHash)renderCurrent();
@@ -2183,6 +2317,7 @@ async function saveTx(){
   if(!amt||isNaN(amt)||!date||!poste){msg.textContent='Montant et date obligatoires.';return;}
   if(amt<=0){msg.textContent='Le montant doit être positif (choisis la catégorie pour le sens).';return;}
   msg.textContent='';
+  if(PAY.add&&modules.comptes&&comptes.length){const pr=payResult('add');if(pr.err){msg.textContent=pr.err;return;}if(!payOk('add'))return;}
   const btn=document.getElementById('bsave');
   const inner=document.getElementById('bsave-inner');
   btn.disabled=true;
@@ -2190,7 +2325,8 @@ async function saveTx(){
   const{db,collection,addDoc}=window._fb;
   const data={amt:Math.round(amt),date,cat:selCatVal,poste,cmt,ts:new Date().toISOString(),createdBy:userName,createdById:uid};
   const objChoisi=objetFormulaire();if(objChoisi)data.objectif=objChoisi;
-  const cptChoisi=compteFormulaire();if(cptChoisi){data.compte=cptChoisi;try{localStorage.setItem('fiinas-dernier-cpt',cptChoisi);}catch(e){}}
+  if(PAY.add&&modules.comptes&&comptes.length){const pr=payResult('add');
+    if(pr.parts)data.parts=pr.parts;else if(pr.compte){data.compte=pr.compte;try{localStorage.setItem('fiinas-dernier-cpt',pr.compte);}catch(e){}}}
   const alertInfo=budgetStatus(selCatVal,poste,date.slice(0,7),amt);
   try{
     await addDoc(collection(db,dataPath()+'/transactions'),data);
@@ -2204,6 +2340,7 @@ async function saveTx(){
   }
   document.getElementById('f-amt').value='';
   document.getElementById('f-cmt').value='';
+  if(PAY.add){PAY.add.mode='one';PAY.add.parts=[];PAY.add.force=false;PAY.add.warn=false;}
   document.getElementById('f-date').value=new Date().toISOString().split('T')[0];
   btn.disabled=false;
   if(inner)inner.innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12l5 5L20 7"/></svg> Enregistrer';
@@ -2342,6 +2479,8 @@ async function undoDelete(id){
   if(!tx)return;
   const{db,collection,addDoc}=window._fb;
   const data={amt:tx.amt,date:tx.date,cat:tx.cat,poste:tx.poste,cmt:tx.cmt||'',ts:tx.ts||new Date().toISOString()};
+  // Liens des modules conservés (compte, répartition, objectif, dette)
+  ['compte','parts','objectif','dette','createdBy','createdById'].forEach(k=>{if(tx[k]!=null)data[k]=tx[k];});
   addDoc(collection(db,dataPath()+'/transactions'),data);
   const idx=trashBin.findIndex(t=>t.id===id);
   if(idx>-1)trashBin.splice(idx,1);
@@ -2434,7 +2573,7 @@ function renderTX(){
       const cl=CCLS[x.cat]||'v';
       const isR=x.cat==='Revenu',isE=x.cat==='Epargne';
       const ac=isR?'g':isE?'p':'r';
-      const meta=[x.cmt?hi(x.cmt,q):'',CAT_COURT[x.cat]||esc(x.cat||'')].filter(Boolean).join(' · ');
+      const meta=[x.cmt?hi(x.cmt,q):'',CAT_COURT[x.cat]||esc(x.cat||''),(modules.comptes&&(x.compte||x.parts))?esc(partsLabel(x,x.amt)):''].filter(Boolean).join(' · ');
       const badge=sharedSpaceId?getTxBadge(x):'';
       return `<div class="txi" onclick="openEditTx('${x.id}')">
         <div class="txic ${cl}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICO[x.cat]||'<circle cx="12" cy="12" r="4"/>'}</svg></div>
@@ -3511,9 +3650,9 @@ function openEditTx(id){
   } else eo.style.display='none';
   const ew=document.getElementById('e-cpt-wrap');
   if(modules.comptes&&comptes.length){
-    ew.style.display='block';
-    document.getElementById('e-cpt').innerHTML='<option value="">Aucun compte</option>'+comptes.map(c=>`<option value="${esc(c.id)}" ${c.id===tx.compte?'selected':''}>${esc(c.nom)}</option>`).join('');
-  } else ew.style.display='none';
+    payInit('edit',{el:'e-cpt-wrap',allowNone:true,excl:tx.id,sortie:()=>document.getElementById('e-cat').value!=='Revenu',total:()=>parseAmt(document.getElementById('e-amt').value)||0,retry:()=>saveEditTx(),init:{compte:tx.compte||null,parts:tx.parts}});
+    payRender('edit');
+  } else {ew.style.display='none';delete PAY.edit;}
   const modal=document.getElementById('edit-modal');
   modal.style.display='flex';
   document.body.style.overflow='hidden';
@@ -3538,10 +3677,12 @@ async function saveEditTx(){
   const cmt=document.getElementById('e-cmt').value.trim();
   if(!amt||!date){toast('Montant et date obligatoires');return;}
   if(amt<=0){toast('Le montant doit être positif');return;}
+  let payObj={};
+  if(PAY.edit&&modules.comptes&&comptes.length){const pr=payResult('edit');if(pr.err){toast(pr.err);return;}if(!payOk('edit'))return;payObj=pr.parts?{parts:pr.parts,compte:null}:{compte:pr.compte||null,parts:null};}
   const{db,doc,setDoc}=window._fb;
   try{
     // merge : on garde ts (ordre d'origine), createdBy, source… ; on note la date de modification
-    await setDoc(doc(db,dataPath()+'/transactions/'+editingId),Object.assign({amt:Math.round(amt),date,cat,poste,cmt,updatedAt:new Date().toISOString()},(modules.comptes&&comptes.length)?{compte:document.getElementById('e-cpt').value||null}:{},(modules.objectifs&&objectifs.length)?{objectif:cat==='Epargne'?(document.getElementById('e-obj').value||null):null}:{}),{merge:true});
+    await setDoc(doc(db,dataPath()+'/transactions/'+editingId),Object.assign({amt:Math.round(amt),date,cat,poste,cmt,updatedAt:new Date().toISOString()},payObj,(modules.objectifs&&objectifs.length)?{objectif:cat==='Epargne'?(document.getElementById('e-obj').value||null):null}:{}),{merge:true});
   }catch(e){toast('⚠ Modification non enregistrée : '+e.message);return;}
   closeEditTx();
   toast('Transaction modifiée ✓');

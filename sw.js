@@ -1,4 +1,4 @@
-const CACHE = 'fiinas-sn-v7';
+const CACHE = 'fiinas-sn-v8';
 const ASSETS = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
 // Librairies versionnées (ne changent jamais) : gardées en cache pour l'usage hors ligne
 const LIBS = [
