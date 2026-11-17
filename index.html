@@ -329,9 +329,9 @@ select option{background:#1F2840;color:#F1F4FA}
     <div class="mnav"><button class="mnav-a" onclick="shiftMonth(-1)" aria-label="Mois précédent">‹</button><div class="mnav-slot"></div><button class="mnav-a" onclick="shiftMonth(1)" aria-label="Mois suivant">›</button></div>
     <div class="hero" id="hero"></div>
     <div id="cpt-dash"></div>
-    <div id="watch"></div>
     <div id="tiles" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div id="obj-dash"></div><div id="det-dash"></div></div>
     <div class="mgrid" id="dm"></div>
+    <div id="watch"></div>
     <div id="detail-wrap" style="display:none">
     <div class="tabs" id="dtabs">
       <button class="tab active" onclick="setDTab(this,'all')">Vue globale</button>
@@ -2091,12 +2091,13 @@ waitFB(()=>{
   });
 });
 
+function nomPropre(v){v=String(v||'').trim();return v&&v===v.toLowerCase()?v.replace(/(^|[\s'-])(\p{L})/gu,(m,a,b)=>a+b.toUpperCase()):v;}
 function setUserUI(u){
   const ps=pseudoDeEmail(u.email);
-  const n=(u.displayName||window.__nouveauCompte||ps||(estCompteNumero(u.email)?'Utilisateur':u.email)||'Utilisateur').split(' ')[0];
-  userName=u.displayName||window.__nouveauCompte||n;
+  const n=nomPropre((u.displayName||window.__nouveauCompte||ps||(estCompteNumero(u.email)?'Utilisateur':u.email)||'Utilisateur').split(' ')[0]);
+  userName=nomPropre(u.displayName||window.__nouveauCompte||n);
   document.getElementById('uname').textContent=n;
-  document.getElementById('pname').textContent=u.displayName||window.__nouveauCompte||ps||'Utilisateur';
+  document.getElementById('pname').textContent=nomPropre(u.displayName||window.__nouveauCompte||ps||'Utilisateur');
   document.getElementById('pemail').textContent=ps?'@'+ps:estCompteNumero(u.email)?(monNumero?fmtNumero(monNumero):''):(u.email||'');
   if(estCompteNumero(u.email))lierNumero(u);
   ['uav','pav'].forEach(id=>{
@@ -2390,7 +2391,7 @@ async function renderDash(){
     ${pctB!==null?`<div style="height:6px;border-radius:3px;background:var(--surf2);margin:10px 0 5px"><div style="height:100%;width:${Math.min(100,pctB)}%;border-radius:3px;background:${pctB>100?'var(--red)':pctB>=ALERT_PCT*100?'var(--amber)':'var(--blue)'}"></div></div>
       <div style="font-size:11.5px;color:${pctB>100?'var(--red)':'var(--text2)'}">Budget dépensé à ${pctB} % · ${budDep>=dep?'reste '+fmt(budDep-dep)+' F':'dépassé de '+fmt(dep-budDep)+' F'}</div>`
      :`<div style="font-size:11.5px;color:var(--text3);margin-top:9px">Pas de budget ce mois · <span style="color:var(--blue);cursor:pointer" onclick="goP('bud',document.querySelectorAll('.ni')[3])">En préparer un</span></div>`}
-    ${!avecComptes&&(epaCumul||solCumul)?`<div style="font-size:11.5px;color:var(--text3);margin-top:10px;padding-top:9px;border-top:0.5px solid var(--border)">Depuis le début : ${solCumul<0?'−':''}${fmt(solCumul)} F disponibles · ${fmt(epaCumul)} F épargnés</div>`:''}`;
+    ${!avecComptes&&solCumul>0?`<div style="font-size:11.5px;color:var(--text3);margin-top:10px;padding-top:9px;border-top:0.5px solid var(--border)">Depuis le début : ${solCumul<0?'−':''}${fmt(solCumul)} F disponibles · ${fmt(epaCumul)} F épargnés</div>`:''}`;
   if(avecComptes){
     // « Mes comptes » actif : l'argent réellement disponible en tête, le mois en dessous
     heroEl.className='hero';heroEl.style.cursor='pointer';heroEl.onclick=()=>goP('cpt',null);
@@ -2426,22 +2427,22 @@ function renderWatch(ym,t){
   const items=[];const bud=budget[ym]||{};
   ['Dépenses fixes','Dépenses variables'].forEach(cat=>getAllPostes(cat).forEach(p=>{
     const r=t.filter(x=>x.cat===cat&&x.poste===p).reduce((s,x)=>s+(x.amt||0),0),bb=bud[p]||0;
-    if(bb>0&&r>bb)items.push({g:0,txt:`${esc(p)} : ${Math.round(r/bb*100)} % du budget`,go:`goP('bud',document.querySelectorAll('.ni')[3])`});
+    if(bb>0&&r>bb)items.push({g:0,poids:r-bb,txt:`${esc(p)} : +${fmt(r-bb)} F (${Math.round(r/bb*100)} %)`,go:`goP('bud',document.querySelectorAll('.ni')[3])`});
     else if(bb>0&&r>=bb*ALERT_PCT&&cat==='Dépenses variables')items.push({g:2,txt:`${esc(p)} : ${Math.round(r/bb*100)} % du budget`,go:`goP('bud',document.querySelectorAll('.ni')[3])`});
   }));
   if(ym===todayStr().slice(0,7)){
-    if(modules.comptes)comptes.forEach(c=>{if(c.type!=='banque'){const sc=soldeCompte(c);if(sc<0)items.push({g:0,txt:`${esc(c.nom)} : solde négatif (${fmtSigne(sc)})`,go:`goP('cpt',null)`});}});
-    if(modules.dettes)dettes.filter(enRetard).forEach(d=>items.push({g:d.sens==='pret'?1:0,txt:`${esc(d.personne)} : ${fmt(resteDette(d))} F ${d.sens==='pret'?'à récupérer, en retard':'à rendre, en retard'}`,go:`openDetteDetail(${jsa(d.id)})`}));
+    if(modules.comptes)comptes.forEach(c=>{if(c.type!=='banque'){const sc=soldeCompte(c);if(sc<0)items.push({g:0,poids:-sc,txt:`${esc(c.nom)} : solde négatif (${fmtSigne(sc)})`,go:`goP('cpt',null)`});}});
+    if(modules.dettes)dettes.filter(enRetard).forEach(d=>items.push({g:d.sens==='pret'?1:0,poids:resteDette(d),txt:`${esc(d.personne)} : ${fmt(resteDette(d))} F ${d.sens==='pret'?'à récupérer, en retard':'à rendre, en retard'}`,go:`openDetteDetail(${jsa(d.id)})`}));
     if(modules.objectifs)objectifs.forEach(o=>{const e=effortObj(o);if(e.etat==='date'&&e.encore>0)items.push({g:3,txt:`${esc(o.nom)} : mets encore ${fmt(e.encore)} F ce mois`,go:`openObjDetail(${jsa(o.id)})`});});
   }
   if(!items.length){el.innerHTML='';return;}
-  items.sort((a,c)=>a.g-c.g);
+  items.sort((a,c)=>a.g-c.g||(c.poids||0)-(a.poids||0));
   const col=g=>g===0?'var(--red)':g===3?'var(--blue)':'var(--amber)';
-  const vis=items.slice(0,5);
+  const vis=items.slice(0,3);
   el.innerHTML=`<div class="card" style="border-color:rgba(242,179,61,.35)">
     <div class="ct" style="color:var(--amber)">À surveiller</div>
     ${vis.map(i=>`<div onclick="${i.go}" style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text);padding:5px 0;cursor:pointer"><span style="width:7px;height:7px;border-radius:50%;background:${col(i.g)};flex-shrink:0"></span><span style="flex:1">${i.txt}</span><span style="color:var(--text3)">›</span></div>`).join('')}
-    ${items.length>5?`<div style="font-size:11.5px;color:var(--text3);margin-top:4px">et ${items.length-5} autre${items.length-5>1?'s':''}</div>`:''}
+    ${items.length>3?`<div onclick="goP('bud',document.querySelectorAll('.ni')[3])" style="font-size:11.5px;color:var(--text3);margin-top:4px;cursor:pointer">et ${items.length-3} autre${items.length-3>1?'s':''} ›</div>`:''}
   </div>`;
 }
 // Tuiles Objectifs / Dettes : côte à côte, ou pleine largeur si une seule (ou une suggestion)
