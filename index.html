@@ -335,6 +335,7 @@ select option{background:#2c2c2e;color:#f5f5f7}
     <div class="hero" id="hero"></div>
     <div id="cpt-dash"></div>
     <div id="obj-dash"></div>
+    <div id="det-dash"></div>
     <div class="mgrid" id="dm"></div>
     <div class="tabs" id="dtabs">
       <button class="tab active" onclick="setDTab(this,'all')">Vue globale</button>
@@ -415,6 +416,15 @@ select option{background:#2c2c2e;color:#f5f5f7}
       Accueil
     </button>
     <div id="obj-page"></div>
+  </div>
+
+  <!-- PAGE DETTES ET PRÊTS -->
+  <div id="page-det" class="page">
+    <button onclick="goP('dash',document.querySelectorAll('.ni')[0])" style="display:flex;align-items:center;gap:6px;background:transparent;border:none;color:var(--text2);font-size:13px;cursor:pointer;padding:0 0 12px;font-family:var(--font)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      Accueil
+    </button>
+    <div id="det-page"></div>
   </div>
 
   <!-- PAGE HISTORIQUE -->
@@ -681,12 +691,18 @@ function renderModulesUI(){
       <div style="flex:1;min-width:0;padding-right:12px"><div class="slbl">Objectifs d'épargne</div>
       <div class="ssub">Un but pour ton épargne (Tabaski, moto, fonds d'urgence…) et combien mettre de côté chaque mois</div></div>
       <button class="sw ${modules.objectifs?'on':''}" role="switch" aria-checked="${!!modules.objectifs}" aria-label="Objectifs d'épargne" onclick="toggleModule('objectifs')"></button>
+    </div>
+    <div class="srow">
+      <div style="flex:1;min-width:0;padding-right:12px"><div class="slbl">Dettes et prêts</div>
+      <div class="ssub">Qui te doit quoi, ce que tu dois, les remboursements et les retards</div></div>
+      <button class="sw ${modules.dettes?'on':''}" role="switch" aria-checked="${!!modules.dettes}" aria-label="Dettes et prêts" onclick="toggleModule('dettes')"></button>
     </div>`;
 }
 async function toggleModule(k){
   modules[k]=!modules[k];
-  renderModulesUI();renderCptDash();renderObjDash();
+  renderModulesUI();renderCptDash();renderObjDash();renderDetDash();
   try{await saveSettings();}catch(e){toast('⚠ Réglage non enregistré : '+e.message);}
+  if(k==='dettes'&&modules.dettes){toast('Dettes et prêts activé');if(!dettes.length){goP('det',null);openAddDette();}}
   if(k==='objectifs'&&modules.objectifs){toast('Objectifs d\'épargne activé');if(!objectifs.length){goP('obj',null);openAddObj();}}
   if(k==='comptes'&&modules.comptes){
     toast('Mes comptes activé');
@@ -724,11 +740,13 @@ function todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMo
 function signeTx(t){return t.cat==='Revenu'?1:-1;}
 function soldeCompte(c){
   let s=c.solde0||0;
+  dettes.forEach(d=>{if(d.compte===c.id)s+=d.sens==='pret'?-(d.montant||0):(d.montant||0);});
   txs.forEach(t=>{if(t.compte===c.id)s+=signeTx(t)*(t.amt||0);});
   mouvs.forEach(m=>{
     if(m.type==='virement'){if(m.de===c.id)s-=m.amt||0;if(m.vers===c.id)s+=m.amt||0;}
     else if(m.type==='ajustement'&&m.compte===c.id)s+=m.amt||0;
     else if(m.type==='retrait_obj'&&m.compte===c.id)s+=m.amt||0;
+    else if(m.type==='remb'&&m.compte===c.id){const d=dettes.find(x=>x.id===m.dette);if(d)s+=d.sens==='pret'?(m.amt||0):-(m.amt||0);}
   });
   return s;
 }
@@ -870,8 +888,10 @@ function openCompteDetail(id){
     if(m.type==='virement'&&m.de===id)lignes.push({date:m.date,lib:'Virement vers '+nomCpt(m.vers),sub:'',v:-(m.amt||0)});
     if(m.type==='virement'&&m.vers===id)lignes.push({date:m.date,lib:'Virement de '+nomCpt(m.de),sub:'',v:m.amt||0});
     if(m.type==='ajustement'&&m.compte===id)lignes.push({date:m.date,lib:'Ajustement du solde',sub:'',v:m.amt||0});
+    if(m.type==='remb'&&m.compte===id){const d=dettes.find(x=>x.id===m.dette);if(d)lignes.push({date:m.date,lib:(d.sens==='pret'?'Remboursé par ':'Remboursé à ')+d.personne,sub:'',v:d.sens==='pret'?(m.amt||0):-(m.amt||0)});}
     if(m.type==='retrait_obj'&&m.compte===id)lignes.push({date:m.date,lib:'Retrait objectif '+nomObj(m.objectif),sub:'',v:m.amt||0});
   });
+  dettes.forEach(d=>{if(d.compte===id)lignes.push({date:d.date,lib:(d.sens==='pret'?'Prêt à ':'Emprunt auprès de ')+d.personne,sub:'',v:d.sens==='pret'?-(d.montant||0):(d.montant||0)});});
   lignes.sort((a,b)=>b.date.localeCompare(a.date));
   const dFr=d=>d?new Date(d+'T12:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'';
   const liste=lignes.slice(0,40).map(l=>`<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:0.5px solid var(--border)">
@@ -1253,6 +1273,274 @@ function objNote(){
 }
 
 
+// ═══════════════ MODULE « DETTES ET PRÊTS » ═══════════════
+// Réglages : dettes = [{id, sens:'pret'|'emprunt', personne, tel, montant, date, echeance, compte|null,
+//   credit:bool, abandonne:montant}]. Remboursements = mouvements {type:'remb', dette, amt, compte|null}.
+// Prêter, emprunter et rembourser ne sont ni des revenus ni des dépenses (l'argent change de place).
+// Comptent vraiment : les intérêts, un prêt abandonné, et l'achat à crédit (dépense le jour de l'achat).
+const ICO_DET='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4-4 4"/><path d="M3 7h18"/><path d="M7 21l-4-4 4-4"/><path d="M21 17H3"/></svg>';
+const ICO_WA='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21l1.65-3.8a9 9 0 1 1 3.4 2.9L3 21"/><path d="M9 10a.5.5 0 0 0 1 0V9a.5.5 0 0 0-1 0v1a5 5 0 0 0 5 5h1a.5.5 0 0 0 0-1h-1a.5.5 0 0 0 0 1"/></svg>';
+function rembDette(d){return mouvs.filter(m=>m.type==='remb'&&m.dette===d.id).reduce((s,m)=>s+(m.amt||0),0);}
+function resteDette(d){return Math.max(0,(d.montant||0)-rembDette(d)-(d.abandonne||0));}
+function enRetard(d){return !!(d.echeance&&d.echeance<todayStr()&&resteDette(d)>0);}
+function totDettes(sens){return dettes.filter(d=>d.sens===sens).reduce((s,d)=>s+resteDette(d),0);}
+function dCourt(d){return d?new Date(d+'T12:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'';}
+function joursRetard(d){return Math.round((new Date(todayStr()+'T12:00')-new Date(d.echeance+'T12:00'))/86400000);}
+function avatar(d){const c=d.sens==='pret'?'var(--green)':'var(--red)',bg=d.sens==='pret'?'var(--gd)':'var(--rd)';
+  return `<div style="width:32px;height:32px;border-radius:50%;background:${bg};color:${c};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0">${esc((d.personne||'?').trim().charAt(0).toUpperCase())}</div>`;}
+
+// ── Accueil
+function renderDetDash(){
+  const el=document.getElementById('det-dash');if(!el)return;
+  if(modules.dettes){
+    if(!dettes.length){el.innerHTML=`<div class="card" style="cursor:pointer;display:flex;align-items:center;gap:12px" onclick="goP('det',null)"><div class="cpt-ic" style="background:var(--surf2);color:var(--text2)">${ICO_DET}</div><div style="flex:1;font-size:14px;font-weight:600;color:var(--text)">Note ton premier prêt ou ta première dette</div><div style="color:var(--text3);font-size:18px">›</div></div>`;return;}
+    const retard=dettes.filter(enRetard).length;
+    el.innerHTML=`<div class="card" style="cursor:pointer" onclick="goP('det',null)">
+      <div style="display:flex;justify-content:space-between;align-items:center"><div class="hlbl" style="margin:0">Dettes et prêts</div><div style="font-size:11px;color:${retard?'var(--red)':'var(--text3)'}">${retard?retard+' en retard ›':'›'}</div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+        <div><div style="font-size:11px;color:var(--text2)">On me doit</div><div style="font-size:16px;font-weight:600;color:var(--green)">${fmt(totDettes('pret'))} F</div></div>
+        <div><div style="font-size:11px;color:var(--text2)">Je dois</div><div style="font-size:16px;font-weight:600;color:var(--red)">${fmt(totDettes('emprunt'))} F</div></div>
+      </div></div>`;return;
+  }
+  if(document.querySelector('#cpt-dash [data-sugg], #obj-dash [data-sugg]')){el.innerHTML='';return;}
+  if(suggMasq.dettes&&Date.now()<suggMasq.dettes){el.innerHTML='';return;}
+  const re=/pr[eê]t|dette|rembours|cr[eé]dit/i;
+  if(!txs.slice(0,300).some(t=>re.test(t.poste||'')||re.test(t.cmt||''))){el.innerHTML='';return;}
+  el.innerHTML=`<div class="card" data-sugg style="border-color:var(--border2)"><div style="display:flex;gap:12px;align-items:flex-start">
+    <div class="cpt-ic" style="background:var(--surf2);color:var(--text2)">${ICO_DET}</div>
+    <div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--text)">Tu prêtes ou tu empruntes de l'argent ?</div>
+    <div style="font-size:12px;color:var(--text2);margin-top:2px">Active « Dettes et prêts » pour savoir qui te doit quoi, et ce que tu dois.</div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button onclick="toggleModule('dettes')" style="background:var(--green);color:#0b2a1a;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Activer</button>
+      <button onclick="plusTardDet()" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:7px 14px;font-size:12px;color:var(--text2);cursor:pointer;font-family:var(--font)">Plus tard</button>
+    </div></div></div></div>`;
+}
+async function plusTardDet(){suggMasq.dettes=Date.now()+14*86400000;renderDetDash();try{await saveSettings();}catch(e){}}
+
+// ── Page
+function ligneDette(d){
+  const r=resteDette(d),pct=d.montant>0?Math.round((d.montant-r)/d.montant*100):0;
+  const sous=r===0?(d.abandonne?'Abandonné':'Soldé'):enRetard(d)?`<span style="color:var(--red)">En retard · ${dCourt(d.echeance)}</span>`:d.echeance?`Pour le ${dCourt(d.echeance)}`:(d.credit?'Crédit · sans date':'Sans date');
+  return `<div class="card" style="cursor:pointer" onclick="openDetteDetail(${jsa(d.id)})">
+    <div style="display:flex;align-items:center;gap:10px">${avatar(d)}<div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.personne)}</div><div style="font-size:11.5px;color:var(--text3)">${sous}</div></div><div style="font-size:14px;font-weight:600;color:${r===0?'var(--text3)':'var(--text)'}">${fmt(r)}</div></div>
+    ${r>0&&pct>0?`<div style="height:5px;border-radius:3px;background:var(--surf2);margin:9px 0 4px"><div style="height:100%;width:${pct}%;border-radius:3px;background:${d.sens==='pret'?'var(--green)':'var(--red)'}"></div></div><div style="font-size:11px;color:var(--text3)">${fmt(d.montant-r)} remboursés sur ${fmt(d.montant)}</div>`:''}
+  </div>`;
+}
+function renderDetPage(){
+  const el=document.getElementById('det-page');if(!el)return;
+  if(!modules.dettes){
+    el.innerHTML=`<div class="card" style="text-align:center;padding:24px 18px"><div style="font-size:14px;color:var(--text);font-weight:500;margin-bottom:6px">Le module Dettes et prêts est désactivé</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Tes données sont conservées.</div>
+      <button class="btn-p" onclick="toggleModule('dettes')">Activer</button></div>`;return;
+  }
+  if(!dettes.length){
+    el.innerHTML=`<div class="card" style="text-align:center;padding:26px 18px">
+      <div class="cpt-ic" style="background:var(--surf2);color:var(--text2);margin:0 auto 12px;width:44px;height:44px">${ICO_DET}</div>
+      <div style="font-size:15px;color:var(--text);font-weight:600;margin-bottom:6px">Qui te doit quoi ?</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:16px">Note l'argent que tu prêtes et celui que tu empruntes, même un crédit à la boutique. L'appli suit les remboursements et te rappelle les retards.</div>
+      <button class="btn-p" onclick="openAddDette()">${ICO_CPT.plus} Nouveau</button></div>`;return;
+  }
+  const tri=l=>l.sort((a,b)=>(enRetard(b)-enRetard(a))||((a.echeance||'9999').localeCompare(b.echeance||'9999')));
+  const ouv=s=>tri(dettes.filter(d=>d.sens===s&&resteDette(d)>0));
+  const soldees=dettes.filter(d=>resteDette(d)===0);
+  const titre=t=>`<div class="ct" style="margin:14px 0 8px">${t}</div>`;
+  el.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">
+      <div class="card" style="margin:0"><div style="font-size:11px;color:var(--text2)">On me doit</div><div style="font-size:18px;font-weight:600;color:var(--green)">${fmt(totDettes('pret'))} F</div></div>
+      <div class="card" style="margin:0"><div style="font-size:11px;color:var(--text2)">Je dois</div><div style="font-size:18px;font-weight:600;color:var(--red)">${fmt(totDettes('emprunt'))} F</div></div></div>
+    ${ouv('pret').length?titre('On me doit')+ouv('pret').map(ligneDette).join(''):''}
+    ${ouv('emprunt').length?titre('Je dois')+ouv('emprunt').map(ligneDette).join(''):''}
+    ${soldees.length?titre('Soldées')+soldees.map(ligneDette).join(''):''}
+    <button class="btn-p" style="margin-top:6px" onclick="openAddDette()">${ICO_CPT.plus} Nouveau</button>`;
+}
+
+// ── Nouveau / modifier
+let ndSens='pret',ndCpt=null,ndCredit=false;
+function optionsDepenses(sel){
+  return ['Dépenses variables','Dépenses fixes'].map(cat=>`<optgroup label="${esc(cat)}">${getAllPostes(cat).map(p=>`<option value="${esc(cat+'|'+p)}" ${(cat+'|'+p)===sel?'selected':''}>${esc(p)}</option>`).join('')}</optgroup>`).join('');
+}
+function openAddDette(editId){
+  const d=editId?dettes.find(x=>x.id===editId):null;
+  ndSens=d?d.sens:'pret';ndCredit=false;
+  ndCpt=(modules.comptes&&comptes.length)?(comptes.some(c=>c.id===formCpt)?formCpt:comptes[0].id):null;
+  const fa=v=>v?Number(v).toLocaleString('fr-FR').replace(/ /g,' '):'';
+  openSheet(sheetHead(d?'Modifier':'Nouveau')+`
+    ${d?'':`<div id="nd-seg" style="display:grid;grid-template-columns:1fr 1fr;background:var(--surf2);border-radius:10px;padding:3px;gap:3px;margin-bottom:12px"></div>`}
+    <div class="fgrp"><div class="flbl" id="nd-lp">À qui</div><input class="finp" id="nd-pers" maxlength="40" value="${esc(d?d.personne:'')}" placeholder="Moussa, Tata Awa, Boutique Lamine…"></div>
+    <div class="frow">
+      <div class="fgrp"><div class="flbl">Montant (FCFA)</div><input class="finp" id="nd-amt" inputmode="numeric" value="${fa(d&&d.montant)}" oninput="fmtAmtInput(this)"></div>
+      <div class="fgrp"><div class="flbl">À rendre le (facultatif)</div><input class="finp" type="date" id="nd-ech" value="${d?esc(d.echeance||''):''}"></div>
+    </div>
+    <div class="frow">
+      <div class="fgrp"><div class="flbl">Date</div><input class="finp" type="date" id="nd-date" value="${d?esc(d.date):todayStr()}"></div>
+      <div class="fgrp"><div class="flbl">Téléphone (facultatif)</div><input class="finp" id="nd-tel" inputmode="tel" value="${esc(d?d.tel||'':'')}" placeholder="77 123 45 67"></div>
+    </div>
+    <div id="nd-credit-wrap"></div>
+    <div id="nd-cpt-wrap"></div>
+    <div id="nd-note" style="font-size:11px;color:var(--text2);line-height:1.5;background:var(--surf2);border-radius:var(--rs);padding:9px 12px;margin-bottom:8px"></div>
+    <div id="nd-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
+    <button class="btn-p" id="nd-go" onclick="saveDette(${d?jsa(d.id):''})">Enregistrer</button>`);
+  renderNd(!!d);
+}
+function renderNd(edit){
+  const p=ndSens==='pret';
+  const seg=document.getElementById('nd-seg');
+  if(seg)seg.innerHTML=[['pret','J\'ai prêté'],['emprunt','J\'ai emprunté']].map(([k,l])=>`<button type="button" onclick="ndSens='${k}';ndCredit=false;renderNd()" style="padding:9px 4px;border-radius:8px;border:none;font-size:12.5px;cursor:pointer;font-family:var(--font);background:${ndSens===k?'var(--surf)':'transparent'};color:${ndSens===k?'var(--text)':'var(--text2)'};font-weight:${ndSens===k?600:400}">${l}</button>`).join('');
+  document.getElementById('nd-lp').textContent=p?'À qui':'Auprès de qui';
+  const cw=document.getElementById('nd-credit-wrap'),kw=document.getElementById('nd-cpt-wrap');
+  cw.innerHTML=(!p&&!edit)?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin-bottom:10px;cursor:pointer"><input type="checkbox" ${ndCredit?'checked':''} onchange="ndCredit=this.checked;renderNd()" style="width:18px;height:18px;accent-color:var(--green)"> C'est un achat à crédit</label>
+    ${ndCredit?`<div class="fgrp"><div class="flbl">Ce que tu as acheté</div><select class="fsel" id="nd-poste">${optionsDepenses(getAllPostes('Dépenses variables').includes('Alimentation')?'Dépenses variables|Alimentation':'')}</select></div>`:''}`:'';
+  const avec=modules.comptes&&comptes.length&&!ndCredit&&!edit;
+  kw.innerHTML=avec?`<div class="fgrp"><div class="flbl">${p?'Sorti de':'Reçu sur'}</div><div style="display:flex;flex-wrap:wrap;gap:6px">${comptes.map(c=>`<button type="button" class="cpt-ch ${c.id===ndCpt?'on':''}" onclick="ndCpt=${jsa(c.id)};renderNd()">${esc(c.nom)}</button>`).join('')}<button type="button" class="cpt-ch ${ndCpt===null?'on':''}" onclick="ndCpt=null;renderNd()">Aucun compte</button></div></div>`:'';
+  const nomC=ndCpt?nomCpt(ndCpt):'';
+  document.getElementById('nd-note').textContent=edit?'Le montant et la personne peuvent être corrigés ; les remboursements déjà notés sont conservés.'
+    :ndCredit?'L\'achat compte comme une dépense aujourd\'hui, dans le poste choisi. Tu le paieras plus tard : ce paiement ne sera pas recompté.'
+    :p?`Ni dépense ni revenu : cet argent doit te revenir.${avec&&nomC?' Il sort de '+nomC+' et':' Il'} apparaît dans « On me doit ».`
+    :`Ni revenu ni dépense : tu devras le rendre.${avec&&nomC?' Il arrive sur '+nomC+' et':' Il'} apparaît dans « Je dois ».`;
+}
+function normTel(t){const n=String(t||'').replace(/\D/g,'');return n.length===9?'221'+n:n;}
+async function saveDette(editId){
+  const err=document.getElementById('nd-err');
+  const personne=(document.getElementById('nd-pers').value||'').trim();
+  const montant=parseAmt(document.getElementById('nd-amt').value);
+  const date=document.getElementById('nd-date').value||todayStr();
+  const echeance=document.getElementById('nd-ech').value||'';
+  const tel=(document.getElementById('nd-tel').value||'').trim();
+  if(!personne){err.textContent=ndSens==='pret'?'À qui as-tu prêté ?':'Auprès de qui as-tu emprunté ?';return;}
+  if(!(montant>0)){err.textContent='Saisis le montant.';return;}
+  if(echeance&&echeance<date){err.textContent='La date de remboursement est avant la date du prêt.';return;}
+  if(editId){
+    const d=dettes.find(x=>x.id===editId);if(!d)return;
+    if(montant<rembDette(d)+(d.abandonne||0)){err.textContent='Le montant est inférieur à ce qui a déjà été remboursé.';return;}
+    Object.assign(d,{personne,montant,date,echeance,tel});
+    try{await saveSettings();}catch(e){err.textContent='Non enregistré : '+e.message;return;}
+    closeSheet();renderCurrent();toast('Modifié');return;
+  }
+  const id='d'+Date.now().toString(36);
+  const d={id,sens:ndSens,personne,tel,montant,date,echeance,compte:(ndCredit?null:ndCpt)||null,credit:!!ndCredit};
+  document.getElementById('nd-go').disabled=true;
+  try{
+    if(ndCredit){
+      const[cat,poste]=(document.getElementById('nd-poste').value||'Dépenses variables|Achats').split('|');
+      const{db,collection,addDoc}=window._fb;
+      await addDoc(collection(db,dataPath()+'/transactions'),{amt:montant,date,cat,poste,cmt:'À crédit — '+personne,dette:id,ts:new Date().toISOString(),createdBy:userName,createdById:uid});
+    }
+    dettes.push(d);await saveSettings();
+  }catch(e){document.getElementById('nd-go').disabled=false;err.textContent='Non enregistré : '+e.message;return;}
+  closeSheet();renderCurrent();toast(ndSens==='pret'?'Prêt noté':'Dette notée');
+}
+
+// ── Détail
+function openDetteDetail(id){
+  const d=dettes.find(x=>x.id===id);if(!d)return;
+  const p=d.sens==='pret',r=resteDette(d),pct=d.montant>0?Math.round((d.montant-r)/d.montant*100):0;
+  const lignes=[{date:d.date,lib:p?'Prêté':(d.credit?'Acheté à crédit':'Emprunté'),sub:d.compte?nomCpt(d.compte):'',v:d.montant,init:true}];
+  mouvs.forEach(m=>{if(m.type==='remb'&&m.dette===id)lignes.push({date:m.date,lib:'Remboursé',sub:m.compte?nomCpt(m.compte):'',v:m.amt||0});});
+  if(d.abandonne)lignes.push({date:d.dateAbandon||'',lib:'Abandonné',sub:'compté en dépense',v:d.abandonne});
+  lignes.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const btn='padding:10px;border-radius:var(--rs);border:0.5px solid var(--border2);background:var(--surf2);color:var(--text);font-size:12.5px;cursor:pointer;font-family:var(--font)';
+  openSheet(sheetHead(esc(d.personne))+`
+    <div style="font-size:11.5px;color:var(--text2)">${r===0?(d.abandonne?'Abandonné':'Soldé'):p?'Te doit encore':'Tu dois encore'}</div>
+    <div style="font-size:24px;font-weight:600;color:var(--text)">${fmt(r)} F</div>
+    <div style="height:7px;border-radius:4px;background:var(--surf2);margin:8px 0 6px"><div style="height:100%;width:${pct}%;border-radius:4px;background:${p?'var(--green)':'var(--red)'}"></div></div>
+    <div style="font-size:11.5px;color:var(--text2)">${p?'Prêté':'Emprunté'} ${fmt(d.montant)} F le ${dCourt(d.date)}${d.echeance?' · à rendre le '+dCourt(d.echeance):''}</div>
+    ${enRetard(d)?`<div style="font-size:11.5px;color:var(--red);margin-top:3px">En retard de ${joursRetard(d)} jour${joursRetard(d)>1?'s':''}</div>`:''}
+    <div style="height:12px"></div>
+    ${r>0?`<button class="btn-p" style="background:${p?'var(--green)':'var(--blue)'};color:${p?'#0b2a1a':'#fff'};margin-bottom:8px" onclick="openRemb(${jsa(id)})">Enregistrer un remboursement</button>`:''}
+    ${r>0&&p?`<button onclick="rappelWhatsApp(${jsa(id)})" style="${btn};width:100%;display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:8px"><span style="color:var(--green);display:flex">${ICO_WA}</span>Lui rappeler sur WhatsApp</button>`:''}
+    <button onclick="openAddDette(${jsa(id)})" style="${btn};width:100%;margin-bottom:14px">Modifier</button>
+    <div class="ct" style="margin-bottom:4px">Historique</div>
+    ${lignes.map(l=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--border)">
+      <div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text)">${l.lib}</div><div style="font-size:11px;color:var(--text3)">${dCourt(l.date)}${l.sub?' · '+esc(l.sub):''}</div></div>
+      <div style="font-size:13px;font-weight:600;color:${l.init?'var(--text)':(l.lib==='Abandonné'?'var(--text3)':(p?'var(--green)':'var(--text)'))}">${fmt(l.v)}</div></div>`).join('')}
+    ${r>0&&p?`<button onclick="openAbandon(${jsa(id)})" style="width:100%;margin-top:14px;padding:9px;border:none;background:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:var(--font);text-decoration:underline">Je ne récupérerai pas cet argent</button>`:''}
+    <button onclick="supprimerDette(${jsa(id)})" style="width:100%;margin-top:8px;padding:11px;border-radius:var(--rs);border:0.5px solid rgba(255,69,58,.4);background:transparent;color:var(--red);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">Supprimer</button>`);
+}
+function rappelWhatsApp(id){
+  const d=dettes.find(x=>x.id===id);if(!d)return;
+  const msg=`Salut ${d.personne}, petit rappel pour les ${fmtSansMasque(resteDette(d))} F${d.echeance?' (prévu pour le '+dCourt(d.echeance)+')':''}. Merci !`;
+  const tel=normTel(d.tel);
+  window.open('https://wa.me/'+(tel?tel:'')+'?text='+encodeURIComponent(msg),'_blank');
+}
+function fmtSansMasque(v){return new Intl.NumberFormat('fr-FR').format(Math.round(Math.abs(v))).replace(/ /g,' ');}
+async function supprimerDette(id){
+  const d=dettes.find(x=>x.id===id);if(!d)return;
+  if(!confirm(`Supprimer « ${d.personne} » ?\n\nLe prêt et ses remboursements disparaissent aussi des soldes de tes comptes.${d.credit?' L\'achat à crédit reste dans tes dépenses.':''}`))return;
+  dettes=dettes.filter(x=>x.id!==id);
+  try{await saveSettings();}catch(e){toast('⚠ '+e.message);return;}
+  closeSheet();renderCurrent();toast('Supprimé');
+}
+
+// ── Remboursement (+ intérêts facultatifs : dépense « Frais » ou revenu « Autres revenus »)
+let rbCpt=null;
+function openRemb(id){
+  const d=dettes.find(x=>x.id===id);if(!d)return;
+  const p=d.sens==='pret',r=resteDette(d);
+  rbCpt=(modules.comptes&&comptes.length)?(comptes.some(c=>c.id===d.compte)?d.compte:(comptes.some(c=>c.id===formCpt)?formCpt:comptes[0].id)):null;
+  openSheet(sheetHead('Remboursement')+`
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${p?esc(d.personne)+' te doit':'Tu dois à '+esc(d.personne)} : <b style="color:var(--text)">${fmt(r)} F</b></div>
+    <div class="frow">
+      <div class="fgrp"><div class="flbl">Montant remboursé</div><input class="finp" id="rb-amt" inputmode="numeric" value="${fmtSansMasque(r)}" oninput="fmtAmtInput(this)"></div>
+      <div class="fgrp"><div class="flbl">Intérêts (facultatif)</div><input class="finp" id="rb-int" inputmode="numeric" placeholder="0" oninput="fmtAmtInput(this)"></div>
+    </div>
+    <div class="fgrp"><div class="flbl">Date</div><input class="finp" type="date" id="rb-date" value="${todayStr()}"></div>
+    ${rbCpt!==null?`<div class="fgrp"><div class="flbl">${p?'Reçu sur':'Payé avec'}</div><div id="rb-cpts" style="display:flex;flex-wrap:wrap;gap:6px"></div></div>`:''}
+    <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:8px">Le remboursement n'est ni un revenu ni une dépense. Les intérêts, eux, comptent en ${p?'revenu':'dépense'}.</div>
+    <div id="rb-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
+    <button class="btn-p" id="rb-go" onclick="saveRemb(${jsa(id)})">Enregistrer</button>`);
+  renderRbCpts();
+}
+function renderRbCpts(){
+  const el=document.getElementById('rb-cpts');if(!el)return;
+  el.innerHTML=comptes.map(c=>`<button type="button" class="cpt-ch ${c.id===rbCpt?'on':''}" onclick="rbCpt=${jsa(c.id)};renderRbCpts()">${esc(c.nom)}</button>`).join('')
+    +`<button type="button" class="cpt-ch ${rbCpt===''?'on':''}" onclick="rbCpt='';renderRbCpts()">Aucun compte</button>`;
+}
+async function saveRemb(id){
+  const d=dettes.find(x=>x.id===id);if(!d)return;
+  const err=document.getElementById('rb-err');
+  const a=parseAmt(document.getElementById('rb-amt').value),it=parseAmt(document.getElementById('rb-int').value)||0;
+  const date=document.getElementById('rb-date').value||todayStr();
+  if(!(a>0)){err.textContent='Saisis le montant remboursé.';return;}
+  if(a>resteDette(d)){err.textContent='C\'est plus que ce qui reste dû ('+fmt(resteDette(d))+' F). Mets le surplus en intérêts.';return;}
+  if(it<0){err.textContent='Intérêts invalides.';return;}
+  const cpt=rbCpt||null,p=d.sens==='pret',restait=resteDette(d);
+  const{db,collection,addDoc}=window._fb;const ts=new Date().toISOString();
+  document.getElementById('rb-go').disabled=true;
+  try{
+    await addDoc(collection(db,dataPath()+'/mouvements'),{type:'remb',dette:id,amt:a,compte:cpt,date,ts});
+    if(it>0){
+      const cat=p?'Revenu':'Dépenses variables',poste=p?'Autres revenus':'Frais';
+      if(!getAllPostes(cat).includes(poste)){(CATS[cat]=CATS[cat]||[]).push(poste);await saveSettings();}
+      const t={amt:it,date,cat,poste,cmt:'Intérêts — '+d.personne,dette:id,ts,createdBy:userName,createdById:uid};if(cpt)t.compte=cpt;
+      await addDoc(collection(db,dataPath()+'/transactions'),t);
+    }
+  }catch(e){document.getElementById('rb-go').disabled=false;err.textContent='Non enregistré : '+e.message;return;}
+  closeSheet();renderCurrent();
+  toast(restait-a===0?'Entièrement remboursé':'Remboursement noté');
+}
+
+// ── Abandon d'un prêt : le reste devient une dépense
+function openAbandon(id){
+  const d=dettes.find(x=>x.id===id);if(!d)return;
+  const def=getAllPostes('Dépenses variables').includes('Famille et dons')?'Dépenses variables|Famille et dons':'';
+  openSheet(sheetHead('Ne pas récupérer cet argent')+`
+    <div style="font-size:12.5px;color:var(--text2);line-height:1.55;margin-bottom:12px">Les <b style="color:var(--text)">${fmt(resteDette(d))} F</b> que ${esc(d.personne)} te doit encore deviennent une dépense d'aujourd'hui. Le prêt passe dans « Soldées ».</div>
+    <div class="fgrp"><div class="flbl">Poste de la dépense</div><select class="fsel" id="ab-poste">${optionsDepenses(def)}</select></div>
+    <button class="btn-p" id="ab-go" style="background:var(--red)" onclick="saveAbandon(${jsa(id)})">Confirmer</button>`);
+}
+async function saveAbandon(id){
+  const d=dettes.find(x=>x.id===id);if(!d)return;
+  const r=resteDette(d);if(!(r>0)){closeSheet();return;}
+  const[cat,poste]=(document.getElementById('ab-poste').value||'Dépenses variables|Imprévus').split('|');
+  const{db,collection,addDoc}=window._fb;
+  document.getElementById('ab-go').disabled=true;
+  try{
+    await addDoc(collection(db,dataPath()+'/transactions'),{amt:r,date:todayStr(),cat,poste,cmt:'Prêt non récupéré — '+d.personne,dette:id,ts:new Date().toISOString(),createdBy:userName,createdById:uid});
+    d.abandonne=(d.abandonne||0)+r;d.dateAbandon=todayStr();await saveSettings();
+  }catch(e){document.getElementById('ab-go').disabled=false;toast('⚠ '+e.message);return;}
+  closeSheet();renderCurrent();toast('Prêt passé en dépense');
+}
+
+
 // ═══════════════ ACCUEIL (premier lancement) ═══════════════
 // Une seule question : d'où viennent les revenus. Elle crée les postes de revenus ;
 // les dépenses courantes sont les mêmes pour tous et restent modifiables.
@@ -1312,7 +1600,7 @@ const MFR=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','S
 const MS=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
 
 let pendingSaves=0,lastSettingsHash='';
-let modules={},comptes=[],objectifs=[],suggMasq={},mouvs=[],unsub3=null;
+let modules={},comptes=[],objectifs=[],dettes=[],suggMasq={},mouvs=[],unsub3=null;
 let uid=null,txs=[],budget={},custom={},unsub1=null,unsub2=null;
 let formDirty=false;
 let budDirty=false; // montants du budget saisis mais pas encore enregistrés
@@ -1419,7 +1707,7 @@ function subscribe(){
   if(unsub3)unsub3();
   unsub3=onSnapshot(collection(db,dataPath()+'/mouvements'),snap=>{
     mouvs=snap.docs.map(d=>({id:d.id,...d.data()}));
-    if(modules.comptes||modules.objectifs)renderCurrent();
+    if(modules.comptes||modules.objectifs||modules.dettes)renderCurrent();
   },err=>loadError('comptes',err));
   if(unsub2)unsub2();
   // includeMetadataChanges : sans lui, Firebase ne signale pas la confirmation du serveur
@@ -1431,13 +1719,13 @@ function subscribe(){
       const d=snap.data();
       // Empreinte de tous les réglages (budgets, détails, postes) : un changement fait sur
       // un autre appareil est toujours appliqué
-      const newHash=JSON.stringify([d.budget||{},d.budgetDetails||{},d.custom||{},d.cats||null,d.modules||{},d.comptes||[],d.suggMasq||{},d.objectifs||[]]);
+      const newHash=JSON.stringify([d.budget||{},d.budgetDetails||{},d.custom||{},d.cats||null,d.modules||{},d.comptes||[],d.suggMasq||{},d.objectifs||[],d.dettes||[]]);
       if(newHash!==lastSettingsHash){
         lastSettingsHash=newHash;
         budget=d.budget||{};
         budgetDetails=d.budgetDetails||{};
         custom=d.custom||{};
-        modules=d.modules||{};comptes=d.comptes||[];suggMasq=d.suggMasq||{};objectifs=d.objectifs||[];
+        modules=d.modules||{};comptes=d.comptes||[];suggMasq=d.suggMasq||{};objectifs=d.objectifs||[];dettes=d.dettes||[];
         loadCatsFromSettings(d);
       }
     } else {
@@ -1459,10 +1747,10 @@ function loadError(what,err){
 
 async function saveSettings(){
   const{db,doc,setDoc}=window._fb;
-  lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,CATS,modules,comptes,suggMasq,objectifs]);
+  lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,CATS,modules,comptes,suggMasq,objectifs,dettes]);
   // mergeFields : ces 4 champs sont remplacés en entier. Avec {merge:true}, Firestore fusionnait
   // les sous-niveaux et ne supprimait jamais un poste ramené à 0 : l'ancien montant revenait.
-  await setDoc(doc(db,dataPath()+'/data/settings'),{budget,budgetDetails,custom,cats:CATS,modules,comptes,suggMasq,objectifs},{mergeFields:['budget','budgetDetails','custom','cats','modules','comptes','suggMasq','objectifs']});
+  await setDoc(doc(db,dataPath()+'/data/settings'),{budget,budgetDetails,custom,cats:CATS,modules,comptes,suggMasq,objectifs,dettes},{mergeFields:['budget','budgetDetails','custom','cats','modules','comptes','suggMasq','objectifs','dettes']});
   budDirty=false;
 }
 
@@ -1559,6 +1847,7 @@ function renderCurrent(){
   else if(id==='page-pro'){renderCPUI();renderModulesUI();}
   else if(id==='page-cpt')renderComptesPage();
   else if(id==='page-obj')renderObjPage();
+  else if(id==='page-det')renderDetPage();
   else if(id==='page-add'){renderFormComptes();renderFormObjectifs();}
 }
 
@@ -1578,13 +1867,14 @@ function goP(p,btn){
   if(btn)btn.classList.add('active');
   placeMonthSel(p);
   // Bandeau : ton nom sur l'accueil, le nom de l'écran ailleurs
-  const TITRES={tx:'Historique',add:'Ajouter',bud:'Budget',pro:'Profil',imp:'Importer',cpt:'Mes comptes',obj:'Objectifs'};
+  const TITRES={tx:'Historique',add:'Ajouter',bud:'Budget',pro:'Profil',imp:'Importer',cpt:'Mes comptes',obj:'Objectifs',det:'Dettes et prêts'};
   const un=document.getElementById('uname');if(un)un.textContent=p==='dash'?(userName||'—'):(TITRES[p]||'');
   if(p==='dash')renderDash();
   else if(p==='tx')renderTX();
   else if(p==='bud')renderBudPage();
   else if(p==='cpt')renderComptesPage();
   else if(p==='obj')renderObjPage();
+  else if(p==='det')renderDetPage();
   else if(p==='pro'){renderModulesUI();renderCPUI();renderTrash();renderSecurityUI();renderSpacesUI();renderBackupUI();}
   else if(p==='add'){syncPostes();renderFormComptes();renderFormObjectifs();document.getElementById('fmsg').textContent='';}
   else if(p==='imp'){document.getElementById('imp-log').style.display='none';document.getElementById('imp-pb').style.width='0%';document.getElementById('imp-pt').textContent='En attente';}
@@ -1620,7 +1910,7 @@ function computePatrimoineToday(){
 
 async function renderDash(){
   renderBackupBanner();
-  renderCptDash();renderObjDash();
+  renderCptDash();renderObjDash();renderDetDash();
   if(isAnnual()){const h=document.getElementById('hero');h.className='hero';h.onclick=null;h.style.cursor='';renderDashAnnual();return;}
   const ym=curYM();const t=txYM(ym);
   const rev=sumC(t,'Revenu');const fix=sumC(t,'Dépenses fixes');
@@ -1665,7 +1955,7 @@ async function renderDash(){
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><div class="hlbl" style="margin:0">Bilan ${deMois}</div><div style="font-size:18px;font-weight:600;color:var(--text)">${fmtS(sol)} F</div></div>
       <div style="font-size:11.5px;color:var(--text2);margin-top:3px">Entrées − sorties enregistrées ce mois${cmp?' · '+cmp:''}</div>
       ${metaBilan}</div>`;
-    renderObjDash();
+    renderObjDash();renderDetDash();
   } else {
     heroEl.className='hero'+(sol<0?' hero-neg':'');heroEl.style.cursor='';heroEl.onclick=null;
     heroEl.innerHTML=`
@@ -4222,11 +4512,11 @@ async function restoreBackup(input){
     }
     if(b.settings&&Object.keys(b.settings).length){
       await setDoc(doc(db,base+'/data/settings'),b.settings);
-      modules=b.settings.modules||{};comptes=b.settings.comptes||[];suggMasq=b.settings.suggMasq||{};objectifs=b.settings.objectifs||[];
+      modules=b.settings.modules||{};comptes=b.settings.comptes||[];suggMasq=b.settings.suggMasq||{};objectifs=b.settings.objectifs||[];dettes=b.settings.dettes||[];
       // Mise à jour immédiate de l'écran (l'écho local de cet enregistrement est ignoré)
       budget=b.settings.budget||{};budgetDetails=b.settings.budgetDetails||{};custom=b.settings.custom||{};
       loadCatsFromSettings(b.settings);
-      lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,b.settings.cats||null,modules,comptes,suggMasq,objectifs]);
+      lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,b.settings.cats||null,modules,comptes,suggMasq,objectifs,dettes]);
       renderCurrent();renderCPUI();
     }
     toast('Restauration terminée ✓ ('+n+' transactions)');
