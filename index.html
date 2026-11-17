@@ -1982,6 +1982,9 @@ waitFB(()=>{
       document.getElementById('f-date').value=new Date().toISOString().split('T')[0];
       syncPostes();
     } else {
+      // Déconnexion après une session : on recharge la page pour vider TOUTE la mémoire
+      // (comptes, objectifs, dettes, budget…) avant qu'un autre compte se connecte.
+      if(uid){try{sessionStorage.clear();}catch(e){}location.reload();return;}
       uid=null;
       document.getElementById('auth').style.display='flex';
       renderAuth('login');
