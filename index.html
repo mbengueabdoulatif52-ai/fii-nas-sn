@@ -265,6 +265,14 @@ select option{background:#2c2c2e;color:#f5f5f7}
 @keyframes sp{to{transform:rotate(360deg)}}
 
 /* SETTINGS */
+.sw{position:relative;width:44px;height:26px;border-radius:13px;background:var(--surf2);border:1px solid var(--border2);cursor:pointer;flex-shrink:0;transition:.2s}
+.sw::after{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--text2);transition:.2s}
+.sw.on{background:var(--green);border-color:var(--green)}.sw.on::after{left:20px;background:#fff}
+.cpt-ch{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:999px;font-size:12.5px;border:1px solid var(--border2);background:transparent;color:var(--text);cursor:pointer;font-family:var(--font)}
+.cpt-ch.on{border-color:var(--green);background:var(--gd);color:var(--green)}
+.cpt-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:0.5px solid var(--border);cursor:pointer}
+.cpt-row:last-child{border-bottom:none}
+.cpt-ic{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .srow{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--border)}
 .srow:last-child{border-bottom:none}
 .slbl{font-size:14px;color:var(--text)}
@@ -322,6 +330,7 @@ select option{background:#2c2c2e;color:#f5f5f7}
     <div id="backup-banner"></div>
     <div class="mnav"><button class="mnav-a" onclick="shiftMonth(-1)" aria-label="Mois précédent">‹</button><div class="mnav-slot"></div><button class="mnav-a" onclick="shiftMonth(1)" aria-label="Mois suivant">›</button></div>
     <div class="hero" id="hero"></div>
+    <div id="cpt-dash"></div>
     <div class="mgrid" id="dm"></div>
     <div class="tabs" id="dtabs">
       <button class="tab active" onclick="setDTab(this,'all')">Vue globale</button>
@@ -341,7 +350,7 @@ select option{background:#2c2c2e;color:#f5f5f7}
         <div class="flbl">Montant (FCFA)</div>
         <div class="amtwrap">
           <div class="amtcur">FCFA</div>
-          <input class="amtinp" type="text" id="f-amt" placeholder="0" inputmode="numeric" oninput="fmtAmtInput(this);setFormDirty(true);updReste()">
+          <input class="amtinp" type="text" id="f-amt" placeholder="0" inputmode="numeric" oninput="fmtAmtInput(this);setFormDirty(true);updReste();cptNote()">
         </div>
       </div>
       <div class="fgrp">
@@ -364,6 +373,10 @@ select option{background:#2c2c2e;color:#f5f5f7}
         </div>
       </div>
       <div id="f-reste"></div>
+      <div class="fgrp" id="f-cpt-wrap" style="display:none">
+        <div class="flbl" id="f-cpt-lbl">Payé avec</div>
+        <div id="f-cpt" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+      </div>
       <div class="fgrp">
         <div class="flbl">Commentaire (facultatif)</div>
         <input class="finp" type="text" id="f-cmt" placeholder="Wave, Yango, MAB Ibrahima...">
@@ -376,6 +389,15 @@ select option{background:#2c2c2e;color:#f5f5f7}
       </button>
       <div id="fmsg" style="font-size:11px;text-align:center;margin-top:7px;min-height:14px;color:var(--red)"></div>
     </div>
+  </div>
+
+  <!-- PAGE MES COMPTES -->
+  <div id="page-cpt" class="page">
+    <button onclick="goP('dash',document.querySelectorAll('.ni')[0])" style="display:flex;align-items:center;gap:6px;background:transparent;border:none;color:var(--text2);font-size:13px;cursor:pointer;padding:0 0 12px;font-family:var(--font)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      Accueil
+    </button>
+    <div id="cpt-page"></div>
   </div>
 
   <!-- PAGE HISTORIQUE -->
@@ -437,6 +459,10 @@ select option{background:#2c2c2e;color:#f5f5f7}
         </div>
         <div style="margin-left:auto;color:var(--text3);font-size:18px">›</div>
       </div>
+    </div>
+    <div class="card">
+      <div class="ct">Modules</div>
+      <div id="modules-ui"></div>
     </div>
     <div class="card" style="background:linear-gradient(135deg,#0f1a2e,#0d1520);border:1px solid rgba(59,130,246,.25);cursor:pointer" onclick="goP('imp',null)">
       <div style="display:flex;align-items:center;gap:14px">
@@ -568,6 +594,9 @@ select option{background:#2c2c2e;color:#f5f5f7}
         <input class="finp" type="text" id="e-cmt" placeholder="Facultatif">
       </div>
     </div>
+    <div class="fgrp" id="e-cpt-wrap" style="display:none;margin-bottom:11px"><div class="flbl">Compte</div>
+      <select class="fsel" id="e-cpt"></select>
+    </div>
     <button class="btn-p" onclick="saveEditTx()">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12l5 5L20 7"/></svg>
       Enregistrer les modifications
@@ -616,6 +645,329 @@ function loadCatsFromSettings(settings){
     });
   }
 }
+
+// ═══════════════ MODULES ═══════════════
+// Fonctions facultatives, activées depuis Profil → Modules ou par une suggestion sur l'accueil.
+// Désactiver un module masque ses écrans sans rien effacer.
+function renderModulesUI(){
+  const el=document.getElementById('modules-ui');if(!el)return;
+  const on=!!modules.comptes;
+  el.innerHTML=`<div class="srow">
+      <div style="flex:1;min-width:0;padding-right:12px"><div class="slbl">Mes comptes</div>
+      <div class="ssub">Solde de chaque moyen de paiement : Wave, Orange Money, banque, espèces…</div></div>
+      <button class="sw ${on?'on':''}" role="switch" aria-checked="${on}" aria-label="Mes comptes" onclick="toggleModule('comptes')"></button>
+    </div>`;
+}
+async function toggleModule(k){
+  modules[k]=!modules[k];
+  renderModulesUI();renderCptDash();
+  try{await saveSettings();}catch(e){toast('⚠ Réglage non enregistré : '+e.message);}
+  if(k==='comptes'&&modules.comptes){
+    toast('Mes comptes activé');
+    if(!comptes.length){goP('cpt',null);openAddCompte();}
+  }
+}
+
+// ═══════════════ MODULE « MES COMPTES » ═══════════════
+// Les comptes (nom, type, solde de départ) sont dans les réglages ; une transaction porte
+// le champ `compte`. Virements et corrections de solde sont dans users/{uid}/mouvements :
+// ils déplacent de l'argent sans compter comme revenu ni dépense.
+const ICO_CPT={
+  mob:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>',
+  bank:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>',
+  cash:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>',
+  wallet:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7V5a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2"/><path d="M3 6v12a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-3"/></svg>',
+  swap:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10h14l-4-4M17 14H3l4 4"/></svg>',
+  plus:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>'
+};
+const TYPES_CPT={
+  wave:   {l:'Wave',             g:'Mobile money',   c:'#4da3ff',i:'mob'},
+  om:     {l:'Orange Money',     g:'Mobile money',   c:'#ff9f0a',i:'mob'},
+  free:   {l:'Free Money (Mixx)',g:'Mobile money',   c:'#ff375f',i:'mob'},
+  wizall: {l:'Wizall',           g:'Mobile money',   c:'#64d2ff',i:'mob'},
+  banque: {l:'Banque, carte',    g:'Banque, carte',  c:'#bf5af2',i:'bank'},
+  especes:{l:'Espèces',          g:'Porte-monnaie',  c:'#30d158',i:'cash'},
+  autre:  {l:'Autre',            g:'Compte personnel',c:'#98989f',i:'wallet'}
+};
+const NOM_DEFAUT={wave:'Wave',om:'Orange Money',free:'Free Money',wizall:'Wizall',banque:'Banque',especes:'Espèces',autre:''};
+function typeCpt(c){return TYPES_CPT[c&&c.type]||TYPES_CPT.autre;}
+function icoCpt(c){const t=typeCpt(c);return `<div class="cpt-ic" style="background:${t.c}22;color:${t.c}">${ICO_CPT[t.i]}</div>`;}
+function nomCpt(id){const c=comptes.find(x=>x.id===id);return c?c.nom:'Compte supprimé';}
+function parseAmt(v){const n=parseFloat(String(v||'').replace(/[\s ]/g,'').replace(/,/g,'.'));return isNaN(n)?NaN:Math.round(n);}
+function todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function signeTx(t){return t.cat==='Revenu'?1:-1;}
+function soldeCompte(c){
+  let s=c.solde0||0;
+  txs.forEach(t=>{if(t.compte===c.id)s+=signeTx(t)*(t.amt||0);});
+  mouvs.forEach(m=>{
+    if(m.type==='virement'){if(m.de===c.id)s-=m.amt||0;if(m.vers===c.id)s+=m.amt||0;}
+    else if(m.type==='ajustement'&&m.compte===c.id)s+=m.amt||0;
+  });
+  return s;
+}
+function totalComptes(){return comptes.reduce((s,c)=>s+soldeCompte(c),0);}
+function fmtSigne(v){return (v<0?'−':'')+fmt(v)+' F';}
+
+// Fenêtre du bas, commune aux écrans du module
+function openSheet(html){
+  closeSheet();
+  const bg=document.createElement('div');bg.id='cpt-sheet';
+  bg.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:999;display:flex;align-items:flex-end;justify-content:center';
+  bg.innerHTML=`<div style="background:var(--surf);border-radius:16px 16px 0 0;padding:20px 18px 24px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto">${html}</div>`;
+  bg.addEventListener('click',e=>{if(e.target===bg)closeSheet();});
+  document.body.appendChild(bg);
+}
+function closeSheet(){document.getElementById('cpt-sheet')?.remove();}
+function sheetHead(t){return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span style="font-size:15px;font-weight:600;color:var(--text)">${t}</span><button onclick="closeSheet()" aria-label="Fermer" style="background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;padding:4px">✕</button></div>`;}
+
+// ── Accueil : total ou suggestion
+function moyensDetectes(){
+  const M=[[/\bwave\b/i,'Wave'],[/orange\s*money|\bom\b/i,'Orange Money'],[/free\s*money|\bmixx\b/i,'Free Money'],[/wizall/i,'Wizall'],[/esp[eè]ces|\bcash\b|liquide/i,'espèces'],[/\bcarte\b|\bbanque\b|\bcb\b/i,'carte bancaire']];
+  const vus=new Set();
+  txs.slice(0,300).forEach(t=>{const c=t.cmt||'';M.forEach(([r,n])=>{if(r.test(c))vus.add(n);});});
+  return [...vus];
+}
+function listeEt(l){return l.length<2?l.join(''):l.slice(0,-1).join(', ')+' et '+l[l.length-1];}
+function renderCptDash(){
+  const el=document.getElementById('cpt-dash');if(!el)return;
+  if(modules.comptes){
+    const n=comptes.length;
+    el.innerHTML=`<div class="card" style="cursor:pointer;display:flex;align-items:center;gap:12px" onclick="goP('cpt',null)">
+      <div class="cpt-ic" style="background:var(--bd);color:var(--blue)">${ICO_CPT.wallet}</div>
+      <div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text2)">${n?'Total disponible':'Mes comptes'}</div>
+      <div style="font-size:${n?'18':'14'}px;font-weight:600;color:var(--text)">${n?fmtSigne(totalComptes()):'Ajoute ton premier compte'}</div>
+      ${n?`<div style="font-size:11px;color:var(--text3)">${n} compte${n>1?'s':''}</div>`:''}</div>
+      <div style="color:var(--text3);font-size:18px">›</div></div>`;
+    return;
+  }
+  if(suggMasq.comptes&&Date.now()<suggMasq.comptes){el.innerHTML='';return;}
+  const vus=moyensDetectes();
+  let titre='';
+  if(vus.length>=1&&txs.length>=5)titre=vus.length===1?`Tu paies avec ${vus[0]==='espèces'?'des espèces':vus[0]} ?`:`Tu paies avec ${listeEt(vus.map(v=>v==='espèces'?'des espèces':v))} ?`;
+  else if(txs.length>=15)titre='Tu paies avec Wave, Orange Money ou en espèces ?';
+  if(!titre){el.innerHTML='';return;}
+  el.innerHTML=`<div class="card" style="border-color:rgba(10,132,255,.35)"><div style="display:flex;gap:12px;align-items:flex-start">
+    <div class="cpt-ic" style="background:var(--bd);color:var(--blue)">${ICO_CPT.wallet}</div>
+    <div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--text)">${esc(titre)}</div>
+    <div style="font-size:12px;color:var(--text2);margin-top:2px">Active « Mes comptes » pour voir le solde de chacun.</div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button onclick="toggleModule('comptes')" style="background:var(--green);color:#0b2a1a;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Activer</button>
+      <button onclick="plusTardCpt()" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:7px 14px;font-size:12px;color:var(--text2);cursor:pointer;font-family:var(--font)">Plus tard</button>
+    </div></div></div></div>`;
+}
+async function plusTardCpt(){
+  suggMasq.comptes=Date.now()+14*86400000; // reproposé dans 14 jours
+  renderCptDash();
+  try{await saveSettings();}catch(e){}
+}
+
+// ── Page Mes comptes
+function renderComptesPage(){
+  const el=document.getElementById('cpt-page');if(!el)return;
+  if(!modules.comptes){
+    el.innerHTML=`<div class="card" style="text-align:center;padding:24px 18px"><div style="font-size:14px;color:var(--text);font-weight:500;margin-bottom:6px">Le module Mes comptes est désactivé</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Tes comptes sont conservés.</div>
+      <button class="btn-p" onclick="toggleModule('comptes')">Activer</button></div>`;return;
+  }
+  if(!comptes.length){
+    el.innerHTML=`<div class="card" style="text-align:center;padding:26px 18px">
+      <div class="cpt-ic" style="background:var(--bd);color:var(--blue);margin:0 auto 12px;width:44px;height:44px">${ICO_CPT.wallet}</div>
+      <div style="font-size:15px;color:var(--text);font-weight:600;margin-bottom:6px">Ajoute tes comptes</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:16px">Wave, Orange Money, banque, espèces… Indique le solde que tu as aujourd'hui : l'appli le tiendra à jour.</div>
+      <button class="btn-p" onclick="openAddCompte()">${ICO_CPT.plus} Ajouter un compte</button></div>`;return;
+  }
+  const rows=comptes.map(c=>{const s=soldeCompte(c);return `<div class="cpt-row" onclick="openCompteDetail(${jsa(c.id)})">${icoCpt(c)}
+    <div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text)">${esc(c.nom)}</div><div style="font-size:11px;color:var(--text3)">${typeCpt(c).g}</div></div>
+    <div style="font-size:14px;font-weight:600;color:${s<0?'var(--red)':'var(--text)'}">${fmtSigne(s)}</div></div>`;}).join('');
+  el.innerHTML=`<div class="card"><div style="font-size:11px;color:var(--text2)">Total disponible</div>
+      <div style="font-size:26px;font-weight:600;color:var(--text);margin-top:2px">${fmtSigne(totalComptes())}</div>
+      <div style="font-size:11px;color:var(--text3)">${comptes.length} compte${comptes.length>1?'s':''}</div></div>
+    <div class="card" style="padding:4px 18px">${rows}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button onclick="openVirement()" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px;border-radius:var(--r);border:0.5px solid var(--border2);background:var(--surf2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font)">${ICO_CPT.swap} Virement</button>
+      <button onclick="openAddCompte()" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px;border-radius:var(--r);border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font)">${ICO_CPT.plus} Compte</button>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.5;text-align:center">Touche un compte pour voir ses mouvements ou corriger son solde.</div>`;
+}
+
+// ── Ajouter ou renommer un compte
+let addCptType='wave',addCptNomTouche=false;
+function openAddCompte(editId){
+  const c=editId?comptes.find(x=>x.id===editId):null;
+  addCptType=c?(c.type||'autre'):'wave';addCptNomTouche=!!c;
+  openSheet(sheetHead(c?'Modifier le compte':'Nouveau compte')+`
+    <div class="flbl">Type</div>
+    <div id="ac-types" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px"></div>
+    <div class="fgrp"><div class="flbl">Nom</div><input class="finp" id="ac-nom" maxlength="40" value="${esc(c?c.nom:NOM_DEFAUT[addCptType])}" oninput="addCptNomTouche=true" placeholder="CBAO, Caisse boutique, Tontine…"></div>
+    ${c?'':`<div class="fgrp"><div class="flbl">Solde actuel (FCFA)</div><input class="finp" id="ac-solde" inputmode="numeric" placeholder="0" oninput="fmtAmtInput(this)">
+      <div style="font-size:11px;color:var(--text3);margin-top:5px">Le montant que tu as aujourd'hui sur ce compte.</div></div>`}
+    <div id="ac-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
+    <button class="btn-p" id="ac-go" onclick="saveCompte(${c?jsa(c.id):''})">${c?'Enregistrer':'Ajouter le compte'}</button>`);
+  renderAddTypes();
+}
+function renderAddTypes(){
+  const el=document.getElementById('ac-types');if(!el)return;
+  el.innerHTML=Object.entries(TYPES_CPT).map(([k,t])=>`<button class="cpt-ch ${k===addCptType?'on':''}" onclick="pickCptType('${k}')">${t.l}</button>`).join('');
+}
+function pickCptType(k){
+  addCptType=k;renderAddTypes();
+  const n=document.getElementById('ac-nom');
+  if(n&&!addCptNomTouche)n.value=NOM_DEFAUT[k];
+}
+async function saveCompte(editId){
+  const err=document.getElementById('ac-err');
+  const nom=(document.getElementById('ac-nom').value||'').trim();
+  if(!nom){err.textContent='Donne un nom à ce compte.';return;}
+  if(comptes.some(c=>c.nom.toLowerCase()===nom.toLowerCase()&&c.id!==editId)){err.textContent='Tu as déjà un compte avec ce nom.';return;}
+  if(editId){
+    const c=comptes.find(x=>x.id===editId);if(!c)return;
+    c.nom=nom;c.type=addCptType;
+  } else {
+    const raw=document.getElementById('ac-solde').value;
+    const solde=raw.trim()===''?0:parseAmt(raw);
+    if(isNaN(solde)){err.textContent='Solde invalide.';return;}
+    comptes.push({id:'c'+Date.now().toString(36),nom,type:addCptType,solde0:solde,date0:todayStr()});
+  }
+  document.getElementById('ac-go').disabled=true;
+  try{await saveSettings();}catch(e){document.getElementById('ac-go').disabled=false;err.textContent='Non enregistré : '+e.message;return;}
+  closeSheet();renderCurrent();
+  toast(editId?'Compte modifié':'Compte ajouté');
+}
+
+// ── Détail d'un compte
+function openCompteDetail(id){
+  const c=comptes.find(x=>x.id===id);if(!c)return;
+  const lignes=[];
+  txs.forEach(t=>{if(t.compte===id)lignes.push({date:t.date||'',lib:t.poste||t.cat,sub:t.cmt||'',v:signeTx(t)*(t.amt||0)});});
+  mouvs.forEach(m=>{
+    if(m.type==='virement'&&m.de===id)lignes.push({date:m.date,lib:'Virement vers '+nomCpt(m.vers),sub:'',v:-(m.amt||0)});
+    if(m.type==='virement'&&m.vers===id)lignes.push({date:m.date,lib:'Virement de '+nomCpt(m.de),sub:'',v:m.amt||0});
+    if(m.type==='ajustement'&&m.compte===id)lignes.push({date:m.date,lib:'Ajustement du solde',sub:'',v:m.amt||0});
+  });
+  lignes.sort((a,b)=>b.date.localeCompare(a.date));
+  const dFr=d=>d?new Date(d+'T12:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'';
+  const liste=lignes.slice(0,40).map(l=>`<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:0.5px solid var(--border)">
+      <div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(l.lib)}</div>
+      <div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dFr(l.date)}${l.sub?' · '+esc(l.sub):''}</div></div>
+      <div style="font-size:13px;font-weight:600;color:${l.v>=0?'var(--green)':'var(--text)'}">${l.v>=0?'+':'−'}${fmt(l.v)}</div></div>`).join('');
+  const s=soldeCompte(c);
+  openSheet(sheetHead(esc(c.nom))+`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">${icoCpt(c)}
+      <div><div style="font-size:11px;color:var(--text2)">Solde</div><div style="font-size:22px;font-weight:600;color:${s<0?'var(--red)':'var(--text)'}">${fmtSigne(s)}</div></div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      <button onclick="openCorrection(${jsa(id)})" style="padding:10px;border-radius:var(--rs);border:0.5px solid var(--border2);background:var(--surf2);color:var(--text);font-size:12.5px;cursor:pointer;font-family:var(--font)">Corriger le solde</button>
+      <button onclick="openAddCompte(${jsa(id)})" style="padding:10px;border-radius:var(--rs);border:0.5px solid var(--border2);background:var(--surf2);color:var(--text);font-size:12.5px;cursor:pointer;font-family:var(--font)">Modifier</button>
+    </div>
+    <div class="ct" style="margin-bottom:4px">Mouvements</div>
+    ${liste||''}
+    <div style="display:flex;justify-content:space-between;padding:9px 0;font-size:12px;color:var(--text3)"><span>Solde de départ${c.date0?' · '+dFr(c.date0):''}</span><span>${fmtSigne(c.solde0||0)}</span></div>
+    <button onclick="supprimerCompte(${jsa(id)})" style="width:100%;margin-top:10px;padding:11px;border-radius:var(--rs);border:0.5px solid rgba(255,69,58,.4);background:transparent;color:var(--red);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">Supprimer ce compte</button>`);
+}
+async function supprimerCompte(id){
+  const c=comptes.find(x=>x.id===id);if(!c)return;
+  if(!confirm(`Supprimer le compte « ${c.nom} » ?\n\nLes transactions déjà enregistrées restent dans ton historique et ton budget.`))return;
+  comptes=comptes.filter(x=>x.id!==id);
+  try{await saveSettings();}catch(e){toast('⚠ '+e.message);return;}
+  closeSheet();renderCurrent();toast('Compte supprimé');
+}
+
+// ── Corriger le solde : ligne « Ajustement », sans effet sur le budget
+function openCorrection(id){
+  const c=comptes.find(x=>x.id===id);if(!c)return;
+  openSheet(sheetHead('Corriger le solde')+`
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5">${esc(c.nom)} affiche <b style="color:var(--text)">${fmtSigne(soldeCompte(c))}</b>. Saisis le solde réel, celui de ton appli ou de ton porte-monnaie.</div>
+    <div class="fgrp"><div class="flbl">Solde réel (FCFA)</div><input class="finp" id="co-val" inputmode="numeric" oninput="fmtAmtInput(this)"></div>
+    <div id="co-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
+    <button class="btn-p" id="co-go" onclick="saveCorrection(${jsa(id)})">Corriger</button>`);
+  setTimeout(()=>document.getElementById('co-val')?.focus(),50);
+}
+async function saveCorrection(id){
+  const c=comptes.find(x=>x.id===id);if(!c)return;
+  const v=parseAmt(document.getElementById('co-val').value);
+  if(isNaN(v)){document.getElementById('co-err').textContent='Saisis le solde réel.';return;}
+  const delta=v-soldeCompte(c);
+  if(delta===0){closeSheet();toast('Le solde était déjà juste');return;}
+  const{db,collection,addDoc}=window._fb;
+  document.getElementById('co-go').disabled=true;
+  try{await addDoc(collection(db,dataPath()+'/mouvements'),{type:'ajustement',compte:id,amt:delta,date:todayStr(),ts:new Date().toISOString()});}
+  catch(e){document.getElementById('co-go').disabled=false;document.getElementById('co-err').textContent='Non enregistré : '+e.message;return;}
+  closeSheet();toast('Solde corrigé');
+}
+
+// ── Virement entre comptes (+ frais facultatifs comptés en dépense)
+function openVirement(){
+  if(comptes.length<2){toast('Ajoute au moins deux comptes pour faire un virement');return;}
+  const opts=sel=>comptes.map(c=>`<option value="${esc(c.id)}" ${c.id===sel?'selected':''}>${esc(c.nom)}</option>`).join('');
+  openSheet(sheetHead('Virement')+`
+    <div class="fgrp"><div class="flbl">De</div><select class="fsel" id="vi-de" onchange="virPreview()">${opts(comptes[0].id)}</select></div>
+    <div class="fgrp"><div class="flbl">Vers</div><select class="fsel" id="vi-vers" onchange="virPreview()">${opts(comptes[1].id)}</select></div>
+    <div class="frow">
+      <div class="fgrp"><div class="flbl">Montant</div><input class="finp" id="vi-amt" inputmode="numeric" placeholder="0" oninput="fmtAmtInput(this);virPreview()"></div>
+      <div class="fgrp"><div class="flbl">Frais (facultatif)</div><input class="finp" id="vi-frais" inputmode="numeric" placeholder="0" oninput="fmtAmtInput(this);virPreview()"></div>
+    </div>
+    <div id="vi-prev" style="background:var(--surf2);border-radius:var(--rs);padding:11px 13px;font-size:12.5px;line-height:1.7;color:var(--text);margin-bottom:8px"></div>
+    <div id="vi-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
+    <button class="btn-p" id="vi-go" onclick="saveVirement()">Valider le virement</button>`);
+  virPreview();
+}
+function virLire(){
+  const de=document.getElementById('vi-de').value,vers=document.getElementById('vi-vers').value;
+  const a=parseAmt(document.getElementById('vi-amt').value),f=parseAmt(document.getElementById('vi-frais').value);
+  return{de,vers,amt:isNaN(a)?0:a,frais:isNaN(f)?0:f};
+}
+function virPreview(){
+  const el=document.getElementById('vi-prev');if(!el)return;
+  const{de,vers,amt,frais}=virLire();
+  const cDe=comptes.find(c=>c.id===de),cVers=comptes.find(c=>c.id===vers);
+  if(de===vers){el.innerHTML='<span style="color:var(--text2)">Choisis deux comptes différents.</span>';return;}
+  const sDe=soldeCompte(cDe),sVers=soldeCompte(cVers);
+  el.innerHTML=`<div>${esc(cDe.nom)} : ${fmtSigne(sDe)} → <b>${fmtSigne(sDe-amt-frais)}</b></div>
+    <div>${esc(cVers.nom)} : ${fmtSigne(sVers)} → <b>${fmtSigne(sVers+amt)}</b></div>
+    <div style="font-size:11px;color:var(--text2);margin-top:4px;line-height:1.5">${frais>0?`Les ${fmt(frais)} F de frais sont comptés en dépense « Frais ». `:''}Le virement, lui, n'est ni un revenu ni une dépense.</div>`;
+}
+async function saveVirement(){
+  const err=document.getElementById('vi-err');
+  const{de,vers,amt,frais}=virLire();
+  if(de===vers){err.textContent='Choisis deux comptes différents.';return;}
+  if(!(amt>0)){err.textContent='Saisis le montant du virement.';return;}
+  if(frais<0){err.textContent='Frais invalides.';return;}
+  const{db,collection,addDoc}=window._fb;
+  const date=todayStr(),ts=new Date().toISOString();
+  document.getElementById('vi-go').disabled=true;
+  try{
+    await addDoc(collection(db,dataPath()+'/mouvements'),{type:'virement',de,vers,amt,date,ts});
+    if(frais>0){
+      if(!getAllPostes('Dépenses variables').includes('Frais')){(CATS['Dépenses variables']=CATS['Dépenses variables']||[]).push('Frais');await saveSettings();}
+      await addDoc(collection(db,dataPath()+'/transactions'),{amt:frais,date,cat:'Dépenses variables',poste:'Frais',cmt:'Frais de virement '+nomCpt(de)+' → '+nomCpt(vers),compte:de,ts,createdBy:userName,createdById:uid});
+    }
+  }catch(e){document.getElementById('vi-go').disabled=false;err.textContent='Non enregistré : '+e.message;return;}
+  closeSheet();renderCurrent();toast('Virement enregistré');
+}
+
+// ── Formulaire d'ajout : « Payé avec » / « Reçu sur »
+let formCpt=null;
+function renderFormComptes(){
+  const w=document.getElementById('f-cpt-wrap');if(!w)return;
+  if(!modules.comptes||!comptes.length){w.style.display='none';return;}
+  w.style.display='block';
+  document.getElementById('f-cpt-lbl').textContent=selCatVal==='Revenu'?'Reçu sur':'Payé avec';
+  if(!comptes.some(c=>c.id===formCpt)){
+    let last=null;try{last=localStorage.getItem('fiinas-dernier-cpt');}catch(e){}
+    formCpt=comptes.some(c=>c.id===last)?last:comptes[0].id;
+  }
+  document.getElementById('f-cpt').innerHTML=comptes.map(c=>`<button type="button" class="cpt-ch ${c.id===formCpt?'on':''}" onclick="selFormCpt(${jsa(c.id)})">${esc(c.nom)}</button>`).join('')
+    +'<div id="f-cpt-note" style="width:100%;font-size:11px;color:var(--text3);margin-top:2px"></div>';
+  cptNote();
+}
+function selFormCpt(id){formCpt=id;renderFormComptes();}
+function compteFormulaire(){return(modules.comptes&&comptes.some(c=>c.id===formCpt))?formCpt:null;}
+function cptNote(){
+  const el=document.getElementById('f-cpt-note');if(!el)return;
+  const c=comptes.find(x=>x.id===formCpt);if(!c){el.textContent='';return;}
+  const a=parseAmt(document.getElementById('f-amt')?.value);const s=soldeCompte(c);
+  el.textContent=(a>0)?`${c.nom} : ${fmtSigne(s)} → ${fmtSigne(s+(selCatVal==='Revenu'?a:-a))}`:`${c.nom} : ${fmtSigne(s)}`;
+}
+
 
 // ═══════════════ ACCUEIL (premier lancement) ═══════════════
 // Une seule question : d'où viennent les revenus. Elle crée les postes de revenus ;
@@ -676,6 +1028,7 @@ const MFR=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','S
 const MS=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
 
 let pendingSaves=0,lastSettingsHash='';
+let modules={},comptes=[],suggMasq={},mouvs=[],unsub3=null;
 let uid=null,txs=[],budget={},custom={},unsub1=null,unsub2=null;
 let formDirty=false;
 let budDirty=false; // montants du budget saisis mais pas encore enregistrés
@@ -736,7 +1089,7 @@ waitFB(()=>{
       uid=null;
       document.getElementById('auth').style.display='flex';
       document.getElementById('app').style.display='none';
-      if(unsub1)unsub1();if(unsub2)unsub2();
+      if(unsub1)unsub1();if(unsub2)unsub2();if(unsub3)unsub3();
     }
   });
 });
@@ -779,6 +1132,11 @@ function subscribe(){
     txs=newTxs;
     if(firstLoad||newHash!==oldHash)renderCurrent();
   },err=>loadError('transactions',err));
+  if(unsub3)unsub3();
+  unsub3=onSnapshot(collection(db,dataPath()+'/mouvements'),snap=>{
+    mouvs=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(modules.comptes)renderCurrent();
+  },err=>loadError('comptes',err));
   if(unsub2)unsub2();
   unsub2=onSnapshot(doc(db,dataPath()+'/data/settings'),snap=>{
     // Écho de nos propres enregistrements : les données sont déjà à jour sur cet appareil
@@ -787,12 +1145,13 @@ function subscribe(){
       const d=snap.data();
       // Empreinte de tous les réglages (budgets, détails, postes) : un changement fait sur
       // un autre appareil est toujours appliqué
-      const newHash=JSON.stringify([d.budget||{},d.budgetDetails||{},d.custom||{},d.cats||null]);
+      const newHash=JSON.stringify([d.budget||{},d.budgetDetails||{},d.custom||{},d.cats||null,d.modules||{},d.comptes||[],d.suggMasq||{}]);
       if(newHash!==lastSettingsHash){
         lastSettingsHash=newHash;
         budget=d.budget||{};
         budgetDetails=d.budgetDetails||{};
         custom=d.custom||{};
+        modules=d.modules||{};comptes=d.comptes||[];suggMasq=d.suggMasq||{};
         loadCatsFromSettings(d);
       }
     } else {
@@ -814,10 +1173,10 @@ function loadError(what,err){
 
 async function saveSettings(){
   const{db,doc,setDoc}=window._fb;
-  lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,CATS]);
+  lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,CATS,modules,comptes,suggMasq]);
   // mergeFields : ces 4 champs sont remplacés en entier. Avec {merge:true}, Firestore fusionnait
   // les sous-niveaux et ne supprimait jamais un poste ramené à 0 : l'ancien montant revenait.
-  await setDoc(doc(db,dataPath()+'/data/settings'),{budget,budgetDetails,custom,cats:CATS},{mergeFields:['budget','budgetDetails','custom','cats']});
+  await setDoc(doc(db,dataPath()+'/data/settings'),{budget,budgetDetails,custom,cats:CATS,modules,comptes,suggMasq},{mergeFields:['budget','budgetDetails','custom','cats','modules','comptes','suggMasq']});
   budDirty=false;
 }
 
@@ -911,7 +1270,9 @@ function renderCurrent(){
   const id=document.querySelector('.page.active')?.id;
   if(id==='page-dash')renderDash();
   else if(id==='page-tx')renderTX();
-  else if(id==='page-pro'){renderCPUI();}
+  else if(id==='page-pro'){renderCPUI();renderModulesUI();}
+  else if(id==='page-cpt')renderComptesPage();
+  else if(id==='page-add')renderFormComptes();
 }
 
 function goP(p,btn){
@@ -930,13 +1291,14 @@ function goP(p,btn){
   if(btn)btn.classList.add('active');
   placeMonthSel(p);
   // Bandeau : ton nom sur l'accueil, le nom de l'écran ailleurs
-  const TITRES={tx:'Historique',add:'Ajouter',bud:'Budget',pro:'Profil',imp:'Importer'};
+  const TITRES={tx:'Historique',add:'Ajouter',bud:'Budget',pro:'Profil',imp:'Importer',cpt:'Mes comptes'};
   const un=document.getElementById('uname');if(un)un.textContent=p==='dash'?(userName||'—'):(TITRES[p]||'');
   if(p==='dash')renderDash();
   else if(p==='tx')renderTX();
   else if(p==='bud')renderBudPage();
-  else if(p==='pro'){renderCPUI();renderTrash();renderSecurityUI();renderSpacesUI();renderBackupUI();}
-  else if(p==='add'){syncPostes();document.getElementById('fmsg').textContent='';}
+  else if(p==='cpt')renderComptesPage();
+  else if(p==='pro'){renderModulesUI();renderCPUI();renderTrash();renderSecurityUI();renderSpacesUI();renderBackupUI();}
+  else if(p==='add'){syncPostes();renderFormComptes();document.getElementById('fmsg').textContent='';}
   else if(p==='imp'){document.getElementById('imp-log').style.display='none';document.getElementById('imp-pb').style.width='0%';document.getElementById('imp-pt').textContent='En attente';}
 }
 
@@ -970,6 +1332,7 @@ function computePatrimoineToday(){
 
 async function renderDash(){
   renderBackupBanner();
+  renderCptDash();
   if(isAnnual()){renderDashAnnual();return;}
   const ym=curYM();const t=txYM(ym);
   const rev=sumC(t,'Revenu');const fix=sumC(t,'Dépenses fixes');
@@ -1012,12 +1375,14 @@ async function renderDash(){
       <div class="pb"><div class="pbr" style="width:${budBar(val,bud)}%;background:${st||'var(--surf2)'}"></div></div>`;
   };
   const dm=document.getElementById('dm');dm.className='';
-  dm.innerHTML=`
+  // Avec « Mes comptes », le total des comptes (soldes réels) remplace ce calcul théorique
+  const avecComptes=modules.comptes&&comptes.length>0;
+  dm.innerHTML=(avecComptes?'':`
     <div class="card">
       <div class="ct">Patrimoine net · à aujourd'hui</div>
       <div class="pat-v" style="color:${patrimoine>=0?'var(--green)':'var(--red)'}">${patrimoine>=0?'+':''}${fmt(patrimoine)} F</div>
       <div class="pat-s">dont épargne ${fmt(epaCumul)} F · disponible ${solCumul>=0?'':'−'}${fmt(Math.abs(solCumul))} F</div>
-    </div>
+    </div>`)+`
     <div class="card">
       <div class="ct">Budget du mois</div>
       ${ligne('Dépenses fixes',fix,budTot(ym,'Dépenses fixes'),'exp','var(--red)')}
@@ -1205,7 +1570,7 @@ function renderDC(){
 // ADD
 function selCat(el,cat,cls){
   document.querySelectorAll('.chip').forEach(c=>{c.className='chip';});
-  el.classList.add(cls);selCatVal=cat;syncPostes();
+  el.classList.add(cls);selCatVal=cat;syncPostes();renderFormComptes();
 }
 function syncPostes(){
   const p=getAllPostes(selCatVal);
@@ -1228,6 +1593,7 @@ async function saveTx(){
   if(inner)inner.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" style="animation:sp .8s linear infinite" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Enregistrement…';
   const{db,collection,addDoc}=window._fb;
   const data={amt:Math.round(amt),date,cat:selCatVal,poste,cmt,ts:new Date().toISOString(),createdBy:userName,createdById:uid};
+  const cptChoisi=compteFormulaire();if(cptChoisi){data.compte=cptChoisi;try{localStorage.setItem('fiinas-dernier-cpt',cptChoisi);}catch(e){}}
   const alertInfo=budgetStatus(selCatVal,poste,date.slice(0,7),amt);
   try{
     await addDoc(collection(db,dataPath()+'/transactions'),data);
@@ -2541,6 +2907,11 @@ function openEditTx(id){
   const catSel=document.getElementById('e-cat');
   catSel.innerHTML=Object.keys(CATS).map(c=>`<option ${c===tx.cat?'selected':''}>${c}</option>`).join('');
   syncEditPostes(tx.poste);
+  const ew=document.getElementById('e-cpt-wrap');
+  if(modules.comptes&&comptes.length){
+    ew.style.display='block';
+    document.getElementById('e-cpt').innerHTML='<option value="">Aucun compte</option>'+comptes.map(c=>`<option value="${esc(c.id)}" ${c.id===tx.compte?'selected':''}>${esc(c.nom)}</option>`).join('');
+  } else ew.style.display='none';
   const modal=document.getElementById('edit-modal');
   modal.style.display='flex';
   document.body.style.overflow='hidden';
@@ -2568,7 +2939,7 @@ async function saveEditTx(){
   const{db,doc,setDoc}=window._fb;
   try{
     // merge : on garde ts (ordre d'origine), createdBy, source… ; on note la date de modification
-    await setDoc(doc(db,dataPath()+'/transactions/'+editingId),{amt:Math.round(amt),date,cat,poste,cmt,updatedAt:new Date().toISOString()},{merge:true});
+    await setDoc(doc(db,dataPath()+'/transactions/'+editingId),Object.assign({amt:Math.round(amt),date,cat,poste,cmt,updatedAt:new Date().toISOString()},(modules.comptes&&comptes.length)?{compte:document.getElementById('e-cpt').value||null}:{}),{merge:true});
   }catch(e){toast('⚠ Modification non enregistrée : '+e.message);return;}
   closeEditTx();
   toast('Transaction modifiée ✓');
@@ -3501,7 +3872,8 @@ async function downloadBackup(){
     toast('Préparation de la sauvegarde…');
     const tx=(await getDocs(collection(db,base+'/transactions'))).docs.map(d=>({id:d.id,...d.data()}));
     const st=await getDoc(doc(db,base+'/data/settings'));
-    const out={app:'FII\'NAS',version:1,date:new Date().toISOString(),transactions:tx,settings:st.exists()?st.data():{}};
+    const mv=(await getDocs(collection(db,base+'/mouvements'))).docs.map(d=>({id:d.id,...d.data()}));
+    const out={app:'FII\'NAS',version:1,date:new Date().toISOString(),transactions:tx,mouvements:mv,settings:st.exists()?st.data():{}};
     const blob=new Blob([JSON.stringify(out,null,1)],{type:'application/json'});
     const a=document.createElement('a');
     a.href=URL.createObjectURL(blob);
@@ -3533,12 +3905,16 @@ async function restoreBackup(input){
       await setDoc(doc(db,base+'/transactions/'+id),data);n++;
       if(n%50===0)toast('Restauration… '+n+' / '+b.transactions.length);
     }
+    for(const m of (Array.isArray(b.mouvements)?b.mouvements:[])){
+      const{id,...data}=m;if(id)await setDoc(doc(db,base+'/mouvements/'+id),data);
+    }
     if(b.settings&&Object.keys(b.settings).length){
       await setDoc(doc(db,base+'/data/settings'),b.settings);
+      modules=b.settings.modules||{};comptes=b.settings.comptes||[];suggMasq=b.settings.suggMasq||{};
       // Mise à jour immédiate de l'écran (l'écho local de cet enregistrement est ignoré)
       budget=b.settings.budget||{};budgetDetails=b.settings.budgetDetails||{};custom=b.settings.custom||{};
       loadCatsFromSettings(b.settings);
-      lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,b.settings.cats||null]);
+      lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,b.settings.cats||null,modules,comptes,suggMasq]);
       renderCurrent();renderCPUI();
     }
     toast('Restauration terminée ✓ ('+n+' transactions)');
