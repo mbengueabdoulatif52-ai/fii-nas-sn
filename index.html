@@ -271,6 +271,7 @@ select option{background:#2c2c2e;color:#f5f5f7}
 .sw::after{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--text2);transition:.2s}
 .sw.on{background:var(--green);border-color:var(--green)}.sw.on::after{left:20px;background:#fff}
 .cpt-ch{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:999px;font-size:12.5px;border:1px solid var(--border2);background:transparent;color:var(--text);cursor:pointer;font-family:var(--font)}
+.cpt-ch.obj.on{border-color:#a855f7;background:rgba(168,85,247,.14);color:#c58bff}
 .cpt-ch.on{border-color:var(--green);background:var(--gd);color:var(--green)}
 .cpt-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:0.5px solid var(--border);cursor:pointer}
 .cpt-row:last-child{border-bottom:none}
@@ -333,6 +334,7 @@ select option{background:#2c2c2e;color:#f5f5f7}
     <div class="mnav"><button class="mnav-a" onclick="shiftMonth(-1)" aria-label="Mois précédent">‹</button><div class="mnav-slot"></div><button class="mnav-a" onclick="shiftMonth(1)" aria-label="Mois suivant">›</button></div>
     <div class="hero" id="hero"></div>
     <div id="cpt-dash"></div>
+    <div id="obj-dash"></div>
     <div class="mgrid" id="dm"></div>
     <div class="tabs" id="dtabs">
       <button class="tab active" onclick="setDTab(this,'all')">Vue globale</button>
@@ -352,7 +354,7 @@ select option{background:#2c2c2e;color:#f5f5f7}
         <div class="flbl">Montant (FCFA)</div>
         <div class="amtwrap">
           <div class="amtcur">FCFA</div>
-          <input class="amtinp" type="text" id="f-amt" placeholder="0" inputmode="numeric" oninput="fmtAmtInput(this);setFormDirty(true);updReste();cptNote()">
+          <input class="amtinp" type="text" id="f-amt" placeholder="0" inputmode="numeric" oninput="fmtAmtInput(this);setFormDirty(true);updReste();cptNote();objNote()">
         </div>
       </div>
       <div class="fgrp">
@@ -379,6 +381,10 @@ select option{background:#2c2c2e;color:#f5f5f7}
         <div class="flbl" id="f-cpt-lbl">Payé avec</div>
         <div id="f-cpt" style="display:flex;flex-wrap:wrap;gap:6px"></div>
       </div>
+      <div class="fgrp" id="f-obj-wrap" style="display:none">
+        <div class="flbl">Pour l'objectif</div>
+        <div id="f-obj" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+      </div>
       <div class="fgrp">
         <div class="flbl">Commentaire (facultatif)</div>
         <input class="finp" type="text" id="f-cmt" placeholder="Wave, Yango, MAB Ibrahima...">
@@ -400,6 +406,15 @@ select option{background:#2c2c2e;color:#f5f5f7}
       Accueil
     </button>
     <div id="cpt-page"></div>
+  </div>
+
+  <!-- PAGE OBJECTIFS -->
+  <div id="page-obj" class="page">
+    <button onclick="goP('dash',document.querySelectorAll('.ni')[0])" style="display:flex;align-items:center;gap:6px;background:transparent;border:none;color:var(--text2);font-size:13px;cursor:pointer;padding:0 0 12px;font-family:var(--font)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      Accueil
+    </button>
+    <div id="obj-page"></div>
   </div>
 
   <!-- PAGE HISTORIQUE -->
@@ -582,7 +597,7 @@ select option{background:#2c2c2e;color:#f5f5f7}
     </div>
     <div class="frow" style="margin-bottom:11px">
       <div class="fgrp"><div class="flbl">Catégorie</div>
-        <select class="fsel" id="e-cat" onchange="syncEditPostes()"></select>
+        <select class="fsel" id="e-cat" onchange="syncEditPostes();document.getElementById('e-obj-wrap').style.display=(this.value==='Epargne'&&modules.objectifs&&objectifs.length)?'block':'none'"></select>
       </div>
       <div class="fgrp"><div class="flbl">Poste</div>
         <select class="fsel" id="e-poste"></select>
@@ -595,6 +610,9 @@ select option{background:#2c2c2e;color:#f5f5f7}
       <div class="fgrp"><div class="flbl">Commentaire</div>
         <input class="finp" type="text" id="e-cmt" placeholder="Facultatif">
       </div>
+    </div>
+    <div class="fgrp" id="e-obj-wrap" style="display:none;margin-bottom:11px"><div class="flbl">Pour l'objectif</div>
+      <select class="fsel" id="e-obj"></select>
     </div>
     <div class="fgrp" id="e-cpt-wrap" style="display:none;margin-bottom:11px"><div class="flbl">Compte</div>
       <select class="fsel" id="e-cpt"></select>
@@ -658,12 +676,18 @@ function renderModulesUI(){
       <div style="flex:1;min-width:0;padding-right:12px"><div class="slbl">Mes comptes</div>
       <div class="ssub">Solde de chaque moyen de paiement : Wave, Orange Money, banque, espèces…</div></div>
       <button class="sw ${on?'on':''}" role="switch" aria-checked="${on}" aria-label="Mes comptes" onclick="toggleModule('comptes')"></button>
+    </div>
+    <div class="srow">
+      <div style="flex:1;min-width:0;padding-right:12px"><div class="slbl">Objectifs d'épargne</div>
+      <div class="ssub">Un but pour ton épargne (Tabaski, moto, fonds d'urgence…) et combien mettre de côté chaque mois</div></div>
+      <button class="sw ${modules.objectifs?'on':''}" role="switch" aria-checked="${!!modules.objectifs}" aria-label="Objectifs d'épargne" onclick="toggleModule('objectifs')"></button>
     </div>`;
 }
 async function toggleModule(k){
   modules[k]=!modules[k];
-  renderModulesUI();renderCptDash();
+  renderModulesUI();renderCptDash();renderObjDash();
   try{await saveSettings();}catch(e){toast('⚠ Réglage non enregistré : '+e.message);}
+  if(k==='objectifs'&&modules.objectifs){toast('Objectifs d\'épargne activé');if(!objectifs.length){goP('obj',null);openAddObj();}}
   if(k==='comptes'&&modules.comptes){
     toast('Mes comptes activé');
     if(!comptes.length){goP('cpt',null);openAddCompte();}
@@ -704,6 +728,7 @@ function soldeCompte(c){
   mouvs.forEach(m=>{
     if(m.type==='virement'){if(m.de===c.id)s-=m.amt||0;if(m.vers===c.id)s+=m.amt||0;}
     else if(m.type==='ajustement'&&m.compte===c.id)s+=m.amt||0;
+    else if(m.type==='retrait_obj'&&m.compte===c.id)s+=m.amt||0;
   });
   return s;
 }
@@ -748,7 +773,7 @@ function renderCptDash(){
   if(vus.length>=1&&txs.length>=5)titre=vus.length===1?`Tu paies avec ${vus[0]==='espèces'?'des espèces':vus[0]} ?`:`Tu paies avec ${listeEt(vus.map(v=>v==='espèces'?'des espèces':v))} ?`;
   else if(txs.length>=15)titre='Tu paies avec Wave, Orange Money ou en espèces ?';
   if(!titre){el.innerHTML='';return;}
-  el.innerHTML=`<div class="card" style="border-color:rgba(10,132,255,.35)"><div style="display:flex;gap:12px;align-items:flex-start">
+  el.innerHTML=`<div class="card" data-sugg style="border-color:rgba(10,132,255,.35)"><div style="display:flex;gap:12px;align-items:flex-start">
     <div class="cpt-ic" style="background:var(--bd);color:var(--blue)">${ICO_CPT.wallet}</div>
     <div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--text)">${esc(titre)}</div>
     <div style="font-size:12px;color:var(--text2);margin-top:2px">Active « Mes comptes » pour voir le solde de chacun.</div>
@@ -845,6 +870,7 @@ function openCompteDetail(id){
     if(m.type==='virement'&&m.de===id)lignes.push({date:m.date,lib:'Virement vers '+nomCpt(m.vers),sub:'',v:-(m.amt||0)});
     if(m.type==='virement'&&m.vers===id)lignes.push({date:m.date,lib:'Virement de '+nomCpt(m.de),sub:'',v:m.amt||0});
     if(m.type==='ajustement'&&m.compte===id)lignes.push({date:m.date,lib:'Ajustement du solde',sub:'',v:m.amt||0});
+    if(m.type==='retrait_obj'&&m.compte===id)lignes.push({date:m.date,lib:'Retrait objectif '+nomObj(m.objectif),sub:'',v:m.amt||0});
   });
   lignes.sort((a,b)=>b.date.localeCompare(a.date));
   const dFr=d=>d?new Date(d+'T12:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'';
@@ -994,6 +1020,239 @@ function cptNote(){
 }
 
 
+// ═══════════════ MODULE « OBJECTIFS D'ÉPARGNE » ═══════════════
+// Objectifs dans les réglages : {id, nom, cible, echeance 'AAAA-MM' ou '', depart, date0}.
+// Un ajout = transaction de catégorie Épargne avec le champ `objectif`.
+// Un retrait = mouvement {type:'retrait_obj', objectif, amt, compte|null} : l'argent revient
+// sur un compte (si choisi) ou est simplement sorti de l'objectif ; ni revenu ni dépense.
+const VIOLET='#a855f7';
+function progObj(o){
+  let s=o.depart||0;
+  txs.forEach(t=>{if(t.cat==='Epargne'&&t.objectif===o.id)s+=t.amt||0;});
+  mouvs.forEach(m=>{if(m.type==='retrait_obj'&&m.objectif===o.id)s-=m.amt||0;});
+  return s;
+}
+function nomObj(id){const o=objectifs.find(x=>x.id===id);return o?o.nom:'Objectif supprimé';}
+function moisEntre(a,b){const[ya,ma]=a.split('-').map(Number),[yb,mb]=b.split('-').map(Number);return (yb-ya)*12+(mb-ma);}
+function moisCourt(ym){if(!ym)return'sans date';const[y,m]=ym.split('-');return MS[parseInt(m)-1].toLowerCase()+' '+y;}
+// Effort mensuel : ce qu'il reste à mettre au début du mois, réparti jusqu'à l'échéance incluse
+function effortObj(o){
+  const p=progObj(o);
+  if(p>=o.cible)return{etat:'atteint'};
+  if(!o.echeance)return{etat:'libre'};
+  const cur=todayStr().slice(0,7);
+  const n=moisEntre(cur,o.echeance)+1;
+  if(n<=0)return{etat:'depasse',reste:o.cible-p};
+  const ceMois=txs.filter(t=>t.cat==='Epargne'&&t.objectif===o.id&&(t.date||'').startsWith(cur)).reduce((s,t)=>s+(t.amt||0),0);
+  const parMois=Math.ceil((o.cible-(p-ceMois))/n);
+  return{etat:'date',parMois,ceMois,encore:Math.max(0,parMois-ceMois),n};
+}
+function barreObj(o,h){
+  const p=progObj(o),pct=o.cible>0?Math.max(0,Math.min(100,Math.round(p/o.cible*100))):0;
+  return `<div style="height:${h||7}px;border-radius:4px;background:var(--surf2);margin:7px 0 5px"><div style="height:100%;width:${pct}%;border-radius:4px;background:${p>=o.cible?'var(--green)':VIOLET}"></div></div>`;
+}
+function pctObj(o){return o.cible>0?Math.max(0,Math.round(progObj(o)/o.cible*100)):0;}
+
+// ── Accueil : résumé, ou suggestion
+function renderObjDash(){
+  const el=document.getElementById('obj-dash');if(!el)return;
+  if(modules.objectifs){
+    if(!objectifs.length){el.innerHTML=`<div class="card" style="cursor:pointer;display:flex;align-items:center;gap:12px" onclick="goP('obj',null)"><div class="cpt-ic" style="background:${VIOLET}22;color:${VIOLET}">${ICO_OBJ}</div><div style="flex:1;font-size:14px;font-weight:600;color:var(--text)">Crée ton premier objectif</div><div style="color:var(--text3);font-size:18px">›</div></div>`;return;}
+    const tot=objectifs.reduce((s,o)=>s+progObj(o),0);
+    const prochain=objectifs.filter(o=>progObj(o)<o.cible).sort((a,b)=>(a.echeance||'9999').localeCompare(b.echeance||'9999'))[0];
+    el.innerHTML=`<div class="card" style="cursor:pointer" onclick="goP('obj',null)">
+      <div style="display:flex;justify-content:space-between;align-items:center"><div class="hlbl" style="margin:0">Objectifs d'épargne</div><div style="font-size:11px;color:var(--text3)">${objectifs.length} ›</div></div>
+      <div style="font-size:18px;font-weight:600;color:var(--text);margin-top:4px">${fmt(tot)} F <span style="font-size:12px;font-weight:400;color:var(--text2)">mis de côté</span></div>
+      ${prochain?`<div style="margin-top:8px;font-size:12px;color:var(--text)">${esc(prochain.nom)} <span style="color:var(--text3)">· ${pctObj(prochain)} %</span></div>${barreObj(prochain,5)}`:''}
+    </div>`;return;
+  }
+  // Une seule suggestion à la fois : celle de « Mes comptes » passe d'abord
+  if(document.querySelector('#cpt-dash [data-sugg]')){el.innerHTML='';return;}
+  if(suggMasq.objectifs&&Date.now()<suggMasq.objectifs){el.innerHTML='';return;}
+  const prev=(()=>{const d=new Date();d.setMonth(d.getMonth()-1);return ymk(d.getFullYear(),d.getMonth()+1);})();
+  const tp=txYM(prev),bilanPrev=sumC(tp,'Revenu')-sumC(tp,'Dépenses fixes')-sumC(tp,'Dépenses variables')-sumC(tp,'Epargne');
+  const epargne=txs.some(t=>t.cat==='Epargne');
+  if(!epargne&&!(sumC(tp,'Revenu')>0&&bilanPrev>0)){el.innerHTML='';return;}
+  el.innerHTML=`<div class="card" data-sugg style="border-color:${VIOLET}55"><div style="display:flex;gap:12px;align-items:flex-start">
+    <div class="cpt-ic" style="background:${VIOLET}22;color:${VIOLET}">${ICO_OBJ}</div>
+    <div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--text)">${epargne?'Tu mets de l\'argent de côté ?':'Il te reste de l\'argent en fin de mois ?'}</div>
+    <div style="font-size:12px;color:var(--text2);margin-top:2px">Donne-lui un but : Tabaski, moto, fonds d'urgence… Active « Objectifs d'épargne ».</div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button onclick="toggleModule('objectifs')" style="background:var(--green);color:#0b2a1a;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Activer</button>
+      <button onclick="plusTardObj()" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:7px 14px;font-size:12px;color:var(--text2);cursor:pointer;font-family:var(--font)">Plus tard</button>
+    </div></div></div></div>`;
+}
+async function plusTardObj(){suggMasq.objectifs=Date.now()+14*86400000;renderObjDash();try{await saveSettings();}catch(e){}}
+const ICO_OBJ='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg>';
+
+// ── Page Objectifs
+function renderObjPage(){
+  const el=document.getElementById('obj-page');if(!el)return;
+  if(!modules.objectifs){
+    el.innerHTML=`<div class="card" style="text-align:center;padding:24px 18px"><div style="font-size:14px;color:var(--text);font-weight:500;margin-bottom:6px">Le module Objectifs d'épargne est désactivé</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Tes objectifs sont conservés.</div>
+      <button class="btn-p" onclick="toggleModule('objectifs')">Activer</button></div>`;return;
+  }
+  if(!objectifs.length){
+    el.innerHTML=`<div class="card" style="text-align:center;padding:26px 18px">
+      <div class="cpt-ic" style="background:${VIOLET}22;color:${VIOLET};margin:0 auto 12px;width:44px;height:44px">${ICO_OBJ}</div>
+      <div style="font-size:15px;color:var(--text);font-weight:600;margin-bottom:6px">Donne un but à ton épargne</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:16px">Tabaski, mariage, moto, fonds d'urgence… Indique le montant visé et, si tu veux, une date : l'appli te dira combien mettre de côté chaque mois.</div>
+      <button class="btn-p" onclick="openAddObj()">${ICO_CPT.plus} Nouvel objectif</button></div>`;return;
+  }
+  const tot=objectifs.reduce((s,o)=>s+progObj(o),0);
+  const tri=[...objectifs].sort((a,b)=>(progObj(a)>=a.cible)-(progObj(b)>=b.cible)||(a.echeance||'9999').localeCompare(b.echeance||'9999'));
+  el.innerHTML=`<div class="card"><div style="font-size:11px;color:var(--text2)">Total mis de côté</div>
+      <div style="font-size:24px;font-weight:600;color:var(--text);margin-top:2px">${fmt(tot)} F</div>
+      <div style="font-size:11px;color:var(--text3)">${objectifs.length} objectif${objectifs.length>1?'s':''}</div></div>
+    ${tri.map(o=>{const e=effortObj(o),p=progObj(o);
+      const droite=e.etat==='atteint'?'<span style="color:var(--green)">Atteint</span>':e.etat==='date'?`<span style="color:var(--amber)">${fmt(e.parMois)} F/mois</span>`:e.etat==='depasse'?'<span style="color:var(--red)">Échéance passée</span>':`${pctObj(o)} %`;
+      return `<div class="card" style="cursor:pointer" onclick="openObjDetail(${jsa(o.id)})">
+        <div style="display:flex;justify-content:space-between;gap:8px"><span style="font-size:14px;color:var(--text)">${esc(o.nom)}</span><span style="font-size:11.5px;color:var(--text3)">${moisCourt(o.echeance)}</span></div>
+        ${barreObj(o)}
+        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text2)"><span>${fmtSigne(p).replace(' F','')} / ${fmt(o.cible)} F</span><span>${droite}</span></div></div>`;}).join('')}
+    <button class="btn-p" onclick="openAddObj()">${ICO_CPT.plus} Nouvel objectif</button>`;
+}
+
+// ── Créer / modifier
+function openAddObj(editId){
+  const o=editId?objectifs.find(x=>x.id===editId):null;
+  const fa=v=>v?Number(v).toLocaleString('fr-FR').replace(/ /g,' '):'';
+  openSheet(sheetHead(o?'Modifier l\'objectif':'Nouvel objectif')+`
+    <div class="fgrp"><div class="flbl">Nom</div><input class="finp" id="ob-nom" maxlength="40" value="${esc(o?o.nom:'')}" placeholder="Tabaski 2027, Moto, Fonds d'urgence…"></div>
+    <div class="frow">
+      <div class="fgrp"><div class="flbl">Montant visé (FCFA)</div><input class="finp" id="ob-cible" inputmode="numeric" value="${fa(o&&o.cible)}" oninput="fmtAmtInput(this)"></div>
+      <div class="fgrp"><div class="flbl">Échéance (facultatif)</div><input class="finp" type="month" id="ob-ech" value="${o?esc(o.echeance||''):''}" min="${todayStr().slice(0,7)}"></div>
+    </div>
+    ${o?'':`<div class="fgrp"><div class="flbl">Déjà mis de côté (FCFA)</div><input class="finp" id="ob-dep" inputmode="numeric" placeholder="0" oninput="fmtAmtInput(this)">
+      <div style="font-size:11px;color:var(--text3);margin-top:5px">Ce que tu as déjà épargné pour ce but avant aujourd'hui.</div></div>`}
+    <div id="ob-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
+    <button class="btn-p" id="ob-go" onclick="saveObj(${o?jsa(o.id):''})">${o?'Enregistrer':'Créer l\'objectif'}</button>`);
+}
+async function saveObj(editId){
+  const err=document.getElementById('ob-err');
+  const nom=(document.getElementById('ob-nom').value||'').trim();
+  const cible=parseAmt(document.getElementById('ob-cible').value);
+  const ech=document.getElementById('ob-ech').value||'';
+  if(!nom){err.textContent='Donne un nom à cet objectif.';return;}
+  if(!(cible>0)){err.textContent='Indique le montant visé.';return;}
+  if(editId){
+    const o=objectifs.find(x=>x.id===editId);if(!o)return;
+    Object.assign(o,{nom,cible,echeance:ech});
+  } else {
+    const r=document.getElementById('ob-dep').value;const dep=r.trim()===''?0:parseAmt(r);
+    if(isNaN(dep)||dep<0){err.textContent='Montant déjà mis de côté invalide.';return;}
+    objectifs.push({id:'o'+Date.now().toString(36),nom,cible,echeance:ech,depart:dep,date0:todayStr()});
+  }
+  document.getElementById('ob-go').disabled=true;
+  try{await saveSettings();}catch(e){document.getElementById('ob-go').disabled=false;err.textContent='Non enregistré : '+e.message;return;}
+  closeSheet();renderCurrent();toast(editId?'Objectif modifié':'Objectif créé');
+}
+
+// ── Détail
+function openObjDetail(id){
+  const o=objectifs.find(x=>x.id===id);if(!o)return;
+  const p=progObj(o),e=effortObj(o),pct=pctObj(o);
+  const dFr=d=>d?new Date(d+'T12:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'';
+  const lignes=[];
+  txs.forEach(t=>{if(t.cat==='Epargne'&&t.objectif===id)lignes.push({date:t.date||'',lib:'Ajout',sub:t.cmt||'',v:t.amt||0});});
+  mouvs.forEach(m=>{if(m.type==='retrait_obj'&&m.objectif===id)lignes.push({date:m.date,lib:'Retrait',sub:m.compte?'remis sur '+nomCpt(m.compte):'',v:-(m.amt||0)});});
+  lignes.sort((a,b)=>b.date.localeCompare(a.date));
+  let conseil='';
+  if(e.etat==='atteint')conseil=`<div class="card" style="border-color:rgba(48,209,88,.4);margin-bottom:10px"><div style="font-size:13px;font-weight:600;color:var(--green)">Objectif atteint</div><div style="font-size:12px;color:var(--text2);margin-top:2px">Bravo. Tu peux retirer l'argent quand tu en as besoin.</div></div>`;
+  else if(e.etat==='date')conseil=`<div class="card" style="border-color:rgba(255,159,10,.4);margin-bottom:10px"><div style="font-size:13px;font-weight:600;color:var(--text)">Mets ${fmt(e.parMois)} F par mois</div><div style="font-size:12px;color:var(--text2);margin-top:2px;line-height:1.5">pour y arriver en ${moisCourt(o.echeance)}. Ce mois-ci : ${fmt(e.ceMois)} F mis de côté${e.encore>0?`, encore ${fmt(e.encore)} F`:', c\'est fait'}.</div></div>`;
+  else if(e.etat==='depasse')conseil=`<div class="card" style="border-color:rgba(255,69,58,.4);margin-bottom:10px"><div style="font-size:13px;font-weight:600;color:var(--text)">Échéance passée</div><div style="font-size:12px;color:var(--text2);margin-top:2px">Il manque ${fmt(e.reste)} F. Modifie la date pour recalculer l'effort mensuel.</div></div>`;
+  const btn='padding:10px;border-radius:var(--rs);border:0.5px solid var(--border2);background:var(--surf2);color:var(--text);font-size:12.5px;cursor:pointer;font-family:var(--font)';
+  openSheet(sheetHead(esc(o.nom))+`
+    <div style="font-size:22px;font-weight:600;color:var(--text)">${fmtSigne(p).replace(' F','')} <span style="font-size:13px;font-weight:400;color:var(--text2)">/ ${fmt(o.cible)} F</span></div>
+    ${barreObj(o,8)}
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:12px">${pct} %${p<o.cible?` · reste ${fmt(o.cible-p)} F`:''}${o.echeance?' · échéance '+moisCourt(o.echeance):''}</div>
+    ${conseil}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <button onclick="ajouterAObj(${jsa(id)})" style="padding:11px;border-radius:var(--rs);border:none;background:${VIOLET};color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">Ajouter</button>
+      <button onclick="openRetraitObj(${jsa(id)})" style="${btn};font-weight:600;font-size:13px">Retirer</button>
+    </div>
+    <button onclick="openAddObj(${jsa(id)})" style="${btn};width:100%;margin-bottom:14px">Modifier</button>
+    <div class="ct" style="margin-bottom:4px">Mouvements</div>
+    ${lignes.slice(0,40).map(l=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--border)">
+      <div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text)">${l.lib}</div><div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dFr(l.date)}${l.sub?' · '+esc(l.sub):''}</div></div>
+      <div style="font-size:13px;font-weight:600;color:${l.v>=0?VIOLET:'var(--text)'}">${l.v>=0?'+':'−'}${fmt(l.v)}</div></div>`).join('')}
+    <div style="display:flex;justify-content:space-between;padding:9px 0;font-size:12px;color:var(--text3)"><span>Déjà épargné au départ</span><span>${fmt(o.depart||0)}</span></div>
+    <button onclick="supprimerObj(${jsa(id)})" style="width:100%;margin-top:10px;padding:11px;border-radius:var(--rs);border:0.5px solid rgba(255,69,58,.4);background:transparent;color:var(--red);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">Supprimer cet objectif</button>`);
+}
+// « Ajouter » : formulaire prérempli (catégorie Épargne + objectif)
+function ajouterAObj(id){
+  closeSheet();formObj=id;
+  goP('add',document.querySelectorAll('.ni')[2]);
+  const b=[...document.querySelectorAll('.cat-chips .chip')].find(x=>(x.getAttribute('onclick')||'').includes("'Epargne'"));
+  if(b)b.click();
+  setTimeout(()=>document.getElementById('f-amt')?.focus(),50);
+}
+async function supprimerObj(id){
+  const o=objectifs.find(x=>x.id===id);if(!o)return;
+  if(!confirm(`Supprimer l'objectif « ${o.nom} » ?\n\nTon épargne déjà enregistrée reste dans ton historique et ton budget.`))return;
+  objectifs=objectifs.filter(x=>x.id!==id);
+  try{await saveSettings();}catch(e){toast('⚠ '+e.message);return;}
+  closeSheet();renderCurrent();toast('Objectif supprimé');
+}
+
+// ── Retirer
+let retObjCpt=null;
+function openRetraitObj(id){
+  const o=objectifs.find(x=>x.id===id);if(!o)return;
+  const avec=modules.comptes&&comptes.length;
+  retObjCpt=avec?(comptes.some(c=>c.id===formCpt)?formCpt:comptes[0].id):null;
+  openSheet(sheetHead('Retirer de « '+esc(o.nom)+' »')+`
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Disponible dans cet objectif : <b style="color:var(--text)">${fmt(Math.max(0,progObj(o)))} F</b></div>
+    <div class="fgrp"><div class="flbl">Montant</div><input class="finp" id="ro-amt" inputmode="numeric" oninput="fmtAmtInput(this)"></div>
+    ${avec?`<div class="fgrp"><div class="flbl">L'argent revient sur</div><div id="ro-cpts" style="display:flex;flex-wrap:wrap;gap:6px"></div></div>`:''}
+    <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:8px">Ce montant a déjà été compté en épargne : le retirer n'est ni un revenu ni une dépense.${avec?' Si tu l\'as dépensé directement, choisis « Aucun compte » et enregistre la dépense normalement si elle n\'est pas déjà saisie.':''}</div>
+    <div id="ro-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
+    <button class="btn-p" id="ro-go" onclick="saveRetraitObj(${jsa(id)})">Retirer</button>`);
+  renderRetCpts();
+}
+function renderRetCpts(){
+  const el=document.getElementById('ro-cpts');if(!el)return;
+  el.innerHTML=comptes.map(c=>`<button type="button" class="cpt-ch ${c.id===retObjCpt?'on':''}" onclick="retObjCpt=${jsa(c.id)};renderRetCpts()">${esc(c.nom)}</button>`).join('')
+    +`<button type="button" class="cpt-ch ${retObjCpt===null?'on':''}" onclick="retObjCpt=null;renderRetCpts()">Aucun compte</button>`;
+}
+async function saveRetraitObj(id){
+  const o=objectifs.find(x=>x.id===id);if(!o)return;
+  const a=parseAmt(document.getElementById('ro-amt').value),err=document.getElementById('ro-err');
+  if(!(a>0)){err.textContent='Saisis le montant à retirer.';return;}
+  if(a>progObj(o)){err.textContent='C\'est plus que ce que contient cet objectif.';return;}
+  const{db,collection,addDoc}=window._fb;
+  document.getElementById('ro-go').disabled=true;
+  try{await addDoc(collection(db,dataPath()+'/mouvements'),{type:'retrait_obj',objectif:id,amt:a,compte:retObjCpt||null,date:todayStr(),ts:new Date().toISOString()});}
+  catch(e){document.getElementById('ro-go').disabled=false;err.textContent='Non enregistré : '+e.message;return;}
+  closeSheet();renderCurrent();toast('Retrait enregistré');
+}
+
+// ── Formulaire : « Pour l'objectif » (catégorie Épargne)
+let formObj=null;
+function renderFormObjectifs(){
+  const w=document.getElementById('f-obj-wrap');if(!w)return;
+  if(!modules.objectifs||!objectifs.length||selCatVal!=='Epargne'){w.style.display='none';return;}
+  w.style.display='block';
+  if(formObj!==''&&!objectifs.some(o=>o.id===formObj)){
+    const ouvert=objectifs.find(o=>progObj(o)<o.cible);formObj=(ouvert||objectifs[0]).id;
+  }
+  document.getElementById('f-obj').innerHTML=objectifs.map(o=>`<button type="button" class="cpt-ch obj ${o.id===formObj?'on':''}" onclick="formObj=${jsa(o.id)};renderFormObjectifs()">${esc(o.nom)}</button>`).join('')
+    +`<button type="button" class="cpt-ch obj ${formObj===''?'on':''}" onclick="formObj='';renderFormObjectifs()">Aucun</button>`
+    +'<div id="f-obj-note" style="width:100%;font-size:11px;color:var(--text3);margin-top:2px"></div>';
+  objNote();
+}
+function objetFormulaire(){return(modules.objectifs&&selCatVal==='Epargne'&&objectifs.some(o=>o.id===formObj))?formObj:null;}
+function objNote(){
+  const el=document.getElementById('f-obj-note');if(!el)return;
+  const o=objectifs.find(x=>x.id===formObj);
+  if(!o){el.textContent='Épargne libre, sans objectif.';return;}
+  const a=parseAmt(document.getElementById('f-amt')?.value),p=progObj(o);
+  const apres=p+(a>0?a:0);
+  el.textContent=a>0?`${o.nom} : ${fmt(p)} → ${fmt(apres)} F (${o.cible>0?Math.round(apres/o.cible*100):0} %)`:`${o.nom} : ${fmt(p)} / ${fmt(o.cible)} F`;
+}
+
+
 // ═══════════════ ACCUEIL (premier lancement) ═══════════════
 // Une seule question : d'où viennent les revenus. Elle crée les postes de revenus ;
 // les dépenses courantes sont les mêmes pour tous et restent modifiables.
@@ -1053,7 +1312,7 @@ const MFR=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','S
 const MS=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
 
 let pendingSaves=0,lastSettingsHash='';
-let modules={},comptes=[],suggMasq={},mouvs=[],unsub3=null;
+let modules={},comptes=[],objectifs=[],suggMasq={},mouvs=[],unsub3=null;
 let uid=null,txs=[],budget={},custom={},unsub1=null,unsub2=null;
 let formDirty=false;
 let budDirty=false; // montants du budget saisis mais pas encore enregistrés
@@ -1160,7 +1419,7 @@ function subscribe(){
   if(unsub3)unsub3();
   unsub3=onSnapshot(collection(db,dataPath()+'/mouvements'),snap=>{
     mouvs=snap.docs.map(d=>({id:d.id,...d.data()}));
-    if(modules.comptes)renderCurrent();
+    if(modules.comptes||modules.objectifs)renderCurrent();
   },err=>loadError('comptes',err));
   if(unsub2)unsub2();
   // includeMetadataChanges : sans lui, Firebase ne signale pas la confirmation du serveur
@@ -1172,13 +1431,13 @@ function subscribe(){
       const d=snap.data();
       // Empreinte de tous les réglages (budgets, détails, postes) : un changement fait sur
       // un autre appareil est toujours appliqué
-      const newHash=JSON.stringify([d.budget||{},d.budgetDetails||{},d.custom||{},d.cats||null,d.modules||{},d.comptes||[],d.suggMasq||{}]);
+      const newHash=JSON.stringify([d.budget||{},d.budgetDetails||{},d.custom||{},d.cats||null,d.modules||{},d.comptes||[],d.suggMasq||{},d.objectifs||[]]);
       if(newHash!==lastSettingsHash){
         lastSettingsHash=newHash;
         budget=d.budget||{};
         budgetDetails=d.budgetDetails||{};
         custom=d.custom||{};
-        modules=d.modules||{};comptes=d.comptes||[];suggMasq=d.suggMasq||{};
+        modules=d.modules||{};comptes=d.comptes||[];suggMasq=d.suggMasq||{};objectifs=d.objectifs||[];
         loadCatsFromSettings(d);
       }
     } else {
@@ -1200,10 +1459,10 @@ function loadError(what,err){
 
 async function saveSettings(){
   const{db,doc,setDoc}=window._fb;
-  lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,CATS,modules,comptes,suggMasq]);
+  lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,CATS,modules,comptes,suggMasq,objectifs]);
   // mergeFields : ces 4 champs sont remplacés en entier. Avec {merge:true}, Firestore fusionnait
   // les sous-niveaux et ne supprimait jamais un poste ramené à 0 : l'ancien montant revenait.
-  await setDoc(doc(db,dataPath()+'/data/settings'),{budget,budgetDetails,custom,cats:CATS,modules,comptes,suggMasq},{mergeFields:['budget','budgetDetails','custom','cats','modules','comptes','suggMasq']});
+  await setDoc(doc(db,dataPath()+'/data/settings'),{budget,budgetDetails,custom,cats:CATS,modules,comptes,suggMasq,objectifs},{mergeFields:['budget','budgetDetails','custom','cats','modules','comptes','suggMasq','objectifs']});
   budDirty=false;
 }
 
@@ -1299,7 +1558,8 @@ function renderCurrent(){
   else if(id==='page-tx')renderTX();
   else if(id==='page-pro'){renderCPUI();renderModulesUI();}
   else if(id==='page-cpt')renderComptesPage();
-  else if(id==='page-add')renderFormComptes();
+  else if(id==='page-obj')renderObjPage();
+  else if(id==='page-add'){renderFormComptes();renderFormObjectifs();}
 }
 
 function goP(p,btn){
@@ -1318,14 +1578,15 @@ function goP(p,btn){
   if(btn)btn.classList.add('active');
   placeMonthSel(p);
   // Bandeau : ton nom sur l'accueil, le nom de l'écran ailleurs
-  const TITRES={tx:'Historique',add:'Ajouter',bud:'Budget',pro:'Profil',imp:'Importer',cpt:'Mes comptes'};
+  const TITRES={tx:'Historique',add:'Ajouter',bud:'Budget',pro:'Profil',imp:'Importer',cpt:'Mes comptes',obj:'Objectifs'};
   const un=document.getElementById('uname');if(un)un.textContent=p==='dash'?(userName||'—'):(TITRES[p]||'');
   if(p==='dash')renderDash();
   else if(p==='tx')renderTX();
   else if(p==='bud')renderBudPage();
   else if(p==='cpt')renderComptesPage();
+  else if(p==='obj')renderObjPage();
   else if(p==='pro'){renderModulesUI();renderCPUI();renderTrash();renderSecurityUI();renderSpacesUI();renderBackupUI();}
-  else if(p==='add'){syncPostes();renderFormComptes();document.getElementById('fmsg').textContent='';}
+  else if(p==='add'){syncPostes();renderFormComptes();renderFormObjectifs();document.getElementById('fmsg').textContent='';}
   else if(p==='imp'){document.getElementById('imp-log').style.display='none';document.getElementById('imp-pb').style.width='0%';document.getElementById('imp-pt').textContent='En attente';}
 }
 
@@ -1359,7 +1620,7 @@ function computePatrimoineToday(){
 
 async function renderDash(){
   renderBackupBanner();
-  renderCptDash();
+  renderCptDash();renderObjDash();
   if(isAnnual()){const h=document.getElementById('hero');h.className='hero';h.onclick=null;h.style.cursor='';renderDashAnnual();return;}
   const ym=curYM();const t=txYM(ym);
   const rev=sumC(t,'Revenu');const fix=sumC(t,'Dépenses fixes');
@@ -1404,6 +1665,7 @@ async function renderDash(){
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><div class="hlbl" style="margin:0">Bilan ${deMois}</div><div style="font-size:18px;font-weight:600;color:var(--text)">${fmtS(sol)} F</div></div>
       <div style="font-size:11.5px;color:var(--text2);margin-top:3px">Entrées − sorties enregistrées ce mois${cmp?' · '+cmp:''}</div>
       ${metaBilan}</div>`;
+    renderObjDash();
   } else {
     heroEl.className='hero'+(sol<0?' hero-neg':'');heroEl.style.cursor='';heroEl.onclick=null;
     heroEl.innerHTML=`
@@ -1614,7 +1876,7 @@ function renderDC(){
 // ADD
 function selCat(el,cat,cls){
   document.querySelectorAll('.chip').forEach(c=>{c.className='chip';});
-  el.classList.add(cls);selCatVal=cat;syncPostes();renderFormComptes();
+  el.classList.add(cls);selCatVal=cat;syncPostes();renderFormComptes();renderFormObjectifs();
 }
 function syncPostes(){
   const p=getAllPostes(selCatVal);
@@ -1637,6 +1899,7 @@ async function saveTx(){
   if(inner)inner.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" style="animation:sp .8s linear infinite" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Enregistrement…';
   const{db,collection,addDoc}=window._fb;
   const data={amt:Math.round(amt),date,cat:selCatVal,poste,cmt,ts:new Date().toISOString(),createdBy:userName,createdById:uid};
+  const objChoisi=objetFormulaire();if(objChoisi)data.objectif=objChoisi;
   const cptChoisi=compteFormulaire();if(cptChoisi){data.compte=cptChoisi;try{localStorage.setItem('fiinas-dernier-cpt',cptChoisi);}catch(e){}}
   const alertInfo=budgetStatus(selCatVal,poste,date.slice(0,7),amt);
   try{
@@ -2951,6 +3214,11 @@ function openEditTx(id){
   const catSel=document.getElementById('e-cat');
   catSel.innerHTML=Object.keys(CATS).map(c=>`<option ${c===tx.cat?'selected':''}>${c}</option>`).join('');
   syncEditPostes(tx.poste);
+  const eo=document.getElementById('e-obj-wrap');
+  if(modules.objectifs&&objectifs.length){
+    eo.style.display=tx.cat==='Epargne'?'block':'none';
+    document.getElementById('e-obj').innerHTML='<option value="">Aucun objectif</option>'+objectifs.map(o=>`<option value="${esc(o.id)}" ${o.id===tx.objectif?'selected':''}>${esc(o.nom)}</option>`).join('');
+  } else eo.style.display='none';
   const ew=document.getElementById('e-cpt-wrap');
   if(modules.comptes&&comptes.length){
     ew.style.display='block';
@@ -2983,7 +3251,7 @@ async function saveEditTx(){
   const{db,doc,setDoc}=window._fb;
   try{
     // merge : on garde ts (ordre d'origine), createdBy, source… ; on note la date de modification
-    await setDoc(doc(db,dataPath()+'/transactions/'+editingId),Object.assign({amt:Math.round(amt),date,cat,poste,cmt,updatedAt:new Date().toISOString()},(modules.comptes&&comptes.length)?{compte:document.getElementById('e-cpt').value||null}:{}),{merge:true});
+    await setDoc(doc(db,dataPath()+'/transactions/'+editingId),Object.assign({amt:Math.round(amt),date,cat,poste,cmt,updatedAt:new Date().toISOString()},(modules.comptes&&comptes.length)?{compte:document.getElementById('e-cpt').value||null}:{},(modules.objectifs&&objectifs.length)?{objectif:cat==='Epargne'?(document.getElementById('e-obj').value||null):null}:{}),{merge:true});
   }catch(e){toast('⚠ Modification non enregistrée : '+e.message);return;}
   closeEditTx();
   toast('Transaction modifiée ✓');
@@ -3954,11 +4222,11 @@ async function restoreBackup(input){
     }
     if(b.settings&&Object.keys(b.settings).length){
       await setDoc(doc(db,base+'/data/settings'),b.settings);
-      modules=b.settings.modules||{};comptes=b.settings.comptes||[];suggMasq=b.settings.suggMasq||{};
+      modules=b.settings.modules||{};comptes=b.settings.comptes||[];suggMasq=b.settings.suggMasq||{};objectifs=b.settings.objectifs||[];
       // Mise à jour immédiate de l'écran (l'écho local de cet enregistrement est ignoré)
       budget=b.settings.budget||{};budgetDetails=b.settings.budgetDetails||{};custom=b.settings.custom||{};
       loadCatsFromSettings(b.settings);
-      lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,b.settings.cats||null,modules,comptes,suggMasq]);
+      lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,b.settings.cats||null,modules,comptes,suggMasq,objectifs]);
       renderCurrent();renderCPUI();
     }
     toast('Restauration terminée ✓ ('+n+' transactions)');
