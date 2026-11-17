@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -146,6 +146,11 @@ body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin
 /* PAGES */
 .page{display:none;padding:14px 18px}
 .page.active{display:block}
+.save-dock{position:fixed;left:50%;transform:translateX(-50%);width:100%;max-width:480px;bottom:var(--navh,74px);padding:16px 18px 10px;background:linear-gradient(to bottom,transparent,var(--bg) 14px);z-index:90}
+#page-add{padding-bottom:96px}
+body.kbd #nav{display:none}
+body.kbd .save-dock{bottom:var(--kb,0px);padding-bottom:8px}
+#cpt-sheet .btn-p,#edit-modal .btn-p{position:sticky;bottom:0;z-index:2;box-shadow:0 10px 0 var(--surf),0 -10px 14px -2px var(--surf)}
 
 /* CARDS */
 
@@ -388,13 +393,15 @@ select option{background:#1F2840;color:#F1F4FA}
         <div class="flbl">Commentaire (facultatif)</div>
         <input class="finp" type="text" id="f-cmt" placeholder="Wave, Yango, MAB Ibrahima...">
       </div>
-      <button class="btn-p" id="bsave" onclick="saveTx()">
-        <span id="bsave-inner" style="display:flex;align-items:center;justify-content:center;gap:8px">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12l5 5L20 7"/></svg>
-          Enregistrer
-        </span>
-      </button>
-      <div id="fmsg" style="font-size:11px;text-align:center;margin-top:7px;min-height:14px;color:var(--red)"></div>
+      <div class="save-dock">
+        <div id="fmsg" style="font-size:12px;text-align:center;min-height:0;color:var(--red);margin-bottom:6px"></div>
+        <button class="btn-p" id="bsave" onclick="saveTx()">
+          <span id="bsave-inner" style="display:flex;align-items:center;justify-content:center;gap:8px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12l5 5L20 7"/></svg>
+            Enregistrer
+          </span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -592,8 +599,8 @@ select option{background:#1F2840;color:#F1F4FA}
 <div class="toast" id="toast"></div>
 
 <!-- EDIT MODAL -->
-<div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;padding:20px;align-items:flex-end">
-  <div style="background:var(--surf);border-radius:var(--r) var(--r) 0 0;padding:20px 18px;width:100%;max-width:480px;margin:0 auto;border-top:0.5px solid var(--border)">
+<div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;padding:20px 20px 0;align-items:flex-end">
+  <div style="background:var(--surf);border-radius:var(--r) var(--r) 0 0;padding:20px 18px;width:100%;max-width:480px;margin:0 auto;border-top:0.5px solid var(--border);max-height:92vh;max-height:92dvh;overflow-y:auto">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <span style="font-size:15px;font-weight:600">Modifier la transaction</span>
       <button onclick="closeEditTx()" style="background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;padding:4px">✕</button>
@@ -1111,6 +1118,23 @@ function calChoisir(iso){
   c.inp.dispatchEvent(new Event('input',{bubbles:true}));c.inp.dispatchEvent(new Event('change',{bubbles:true}));
 }
 
+// ═══════════════ CLAVIER ═══════════════
+// Clavier ouvert : la barre de navigation se cache et le bouton Enregistrer se pose juste au-dessus.
+(function(){
+  const nav=()=>{const n=document.getElementById('nav');if(n&&n.offsetHeight)document.documentElement.style.setProperty('--navh',n.offsetHeight+'px');};
+  const saisie=el=>el&&((el.tagName==='INPUT'&&!el.readOnly&&!/^(checkbox|radio|button|submit|file)$/.test(el.type))||el.tagName==='TEXTAREA');
+  let t=null;
+  document.addEventListener('focusin',e=>{if(saisie(e.target)){clearTimeout(t);document.body.classList.add('kbd');}});
+  document.addEventListener('focusout',()=>{clearTimeout(t);t=setTimeout(()=>{if(!saisie(document.activeElement))document.body.classList.remove('kbd');},120);});
+  const vv=window.visualViewport;
+  const maj=()=>{const kb=vv?Math.max(0,window.innerHeight-vv.height-vv.offsetTop):0;document.documentElement.style.setProperty('--kb',(kb>40?kb:0)+'px');};
+  if(vv){vv.addEventListener('resize',maj);vv.addEventListener('scroll',maj);}
+  window.addEventListener('resize',nav);
+  const go=()=>{nav();maj();};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',go);else go();
+  setTimeout(nav,800);
+})();
+
 // ═══════════════ CHOIX DU OU DES COMPTES (paiement simple ou réparti) ═══════════════
 // Composant commun : formulaire d'ajout, modification, prêts/emprunts, remboursements.
 // Une opération porte soit `compte` (un seul compte), soit `parts:[{compte,amt}]` (réparti).
@@ -1337,7 +1361,7 @@ function openSheet(html){
   closeSheet();
   const bg=document.createElement('div');bg.id='cpt-sheet';
   bg.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:999;display:flex;align-items:flex-end;justify-content:center';
-  bg.innerHTML=`<div style="background:var(--surf);border-radius:16px 16px 0 0;padding:20px 18px 24px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto">${html}</div>`;
+  bg.innerHTML=`<div style="background:var(--surf);border-radius:16px 16px 0 0;padding:20px 18px 24px;width:100%;max-width:480px;max-height:88vh;max-height:88dvh;overflow-y:auto">${html}</div>`;
   bg.addEventListener('click',e=>{if(e.target===bg)closeSheet();});
   document.body.appendChild(bg);
 }
