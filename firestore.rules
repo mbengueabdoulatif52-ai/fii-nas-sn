@@ -51,7 +51,7 @@ service cloud.firestore {
       match /demandes/{duid} {
         allow create, update: if connecte() && request.auth.uid == duid
           && request.resource.data.statut == 'attente'
-          && request.resource.data.keys().hasOnly(['nom', 'foyer', 'date', 'statut']);
+          && request.resource.data.keys().hasOnly(['nom', 'ident', 'foyer', 'date', 'statut']);
         allow read: if connecte() && (request.auth.uid == duid || resp(fid));
         allow update, delete: if resp(fid);
       }

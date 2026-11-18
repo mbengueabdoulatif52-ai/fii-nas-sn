@@ -767,6 +767,11 @@ const fmtNumero=n=>'+221 '+n.slice(3,5)+' '+n.slice(5,8)+' '+n.slice(8,10)+' '+n
 async function emailNumero(n,m){return 't'+(await sha256Hex('fiinas-sn:'+n+':'+m)).slice(0,40)+DOMAINE_NUM;}
 const estCompteNumero=e=>!!(e&&e.endsWith(DOMAINE_NUM));
 let monNumero=null;
+// Identifiant montré au responsable dans une demande de foyer (le prénom seul pourrait être emprunté)
+function identDemande(){const e=window._fb?.auth?.currentUser?.email||'';const ps=pseudoDeEmail(e);
+  if(ps)return'@'+ps;
+  if(estCompteNumero(e))return monNumero?'numéro finissant par '+String(monNumero).slice(-2):'compte par numéro';
+  const m=e.match(/^(.)[^@]*@(.+)$/);return m?m[1]+'•••@'+m[2]:'';}
 function identLabel(){const e=window._fb?.auth?.currentUser?.email;const ps=pseudoDeEmail(e);return ps?'@'+ps:(estCompteNumero(e)&&monNumero?fmtNumero(monNumero):'');}
 // Mot de passe : le numéro n'étant pas secret, on refuse les mots de passe évidents
 function motDePasseFaible(pw,num){
@@ -1389,7 +1394,7 @@ function htmlHistoPointage(){
 function renderPointBanner(){
   const el=document.getElementById('point-banner');if(!el)return;
   const d=new Date(),fin=new Date(d.getFullYear(),d.getMonth()+1,0).getDate(),ym=todayStr().slice(0,7);
-  if(!modules.comptes||!comptes.length||d.getDate()<fin-2||pointageFait(ym)||sharedSpaceId){el.innerHTML='';return;}
+  if(!modules.comptes||!comptes.length||d.getDate()<fin-2||pointageFait(ym)||!peutBudget()){el.innerHTML='';return;}
   el.innerHTML=`<div class="card" style="display:flex;gap:12px;align-items:center;border-color:rgba(52,113,255,.35)">
     <div class="cpt-ic" style="background:var(--bd);color:var(--blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h11"/></svg></div>
     <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--text)">Fin du mois : pointe tes comptes</div>
@@ -1667,7 +1672,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='43';
+const APP_VERSION='44';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1743,6 +1748,7 @@ const B_FIXE='Dépenses fixes',B_VAR='Dépenses variables',B_DEP=[B_FIXE,B_VAR];
 const finMois=ym=>{const[y,m]=ym.split('-').map(Number);return new Date(y,m,0).getDate();};
 const lundiDe=iso=>{const d=dJ(iso),w=(d.getDay()+6)%7;return addJ(iso,-w);};
 const jFr=iso=>dJ(iso).getDate()+(dJ(iso).getDate()===1?'er':'')+' '+MOIS_C[dJ(iso).getMonth()];
+const cleEsp=k=>k+(espace?'-'+espace.fid:'');
 const pctTxt=v=>(v>0?'+':'−')+Math.abs(Math.round(v))+' %';
 let bilanSemaine=null;
 
@@ -1835,11 +1841,11 @@ function bilanConseils(B){
 }
 function bilanConseil(B){
   const C=bilanConseils(B);if(!C.length)return null;
-  let mem={};try{mem=JSON.parse(localStorage.getItem('fiinas-conseils')||'{}');}catch(e){}
+  let mem={};try{mem=JSON.parse(localStorage.getItem(cleEsp('fiinas-conseils'))||'{}');}catch(e){}
   const prec=mem[addJ(B.lundi,-7)];
   const c=mem[B.lundi]&&C.find(x=>x.id===mem[B.lundi])||C.find(x=>x.id!==prec)||C[0];
   mem[B.lundi]=c.id;const k=Object.keys(mem).sort();while(k.length>12)delete mem[k.shift()];
-  try{localStorage.setItem('fiinas-conseils',JSON.stringify(mem));}catch(e){}
+  try{localStorage.setItem(cleEsp('fiinas-conseils'),JSON.stringify(mem));}catch(e){}
   return c.t;
 }
 
@@ -1848,7 +1854,7 @@ function bilanLundiCourant(){return addJ(lundiDe(todayStr()),-7);}
 function renderBilanDash(){
   const el=document.getElementById('bilan-dash');if(!el)return;
   const lundi=bilanLundiCourant();
-  let masque=null;try{masque=localStorage.getItem('fiinas-bilan-masque');}catch(e){}
+  let masque=null;try{masque=localStorage.getItem(cleEsp('fiinas-bilan-masque'));}catch(e){}
   // Il faut que l'espace ait déjà existé pendant cette semaine (pas de bilan pour un foyer tout neuf)
   const recent=txs.some(t=>t.date>=addJ(lundi,-14)),existait=txs.some(t=>t.date&&t.date<=addJ(lundi,6));
   if(!recent||!existait||masque===lundi){el.innerHTML='';return;}
@@ -1863,7 +1869,7 @@ function renderBilanDash(){
       <div style="font-size:12px;color:var(--text2);margin-top:2px">${esc(T.s)}</div></div><span style="color:var(--text3);font-size:18px">›</span></div>
   </div>`;
 }
-function masquerBilan(l){try{localStorage.setItem('fiinas-bilan-masque',l);}catch(e){}renderBilanDash();toast('Bilan masqué jusqu\'à lundi prochain',{lib:'Annuler',fn:()=>{try{localStorage.removeItem('fiinas-bilan-masque');}catch(e){}renderBilanDash();}});}
+function masquerBilan(l){try{localStorage.setItem(cleEsp('fiinas-bilan-masque'),l);}catch(e){}renderBilanDash();toast('Bilan masqué jusqu\'à lundi prochain',{lib:'Annuler',fn:()=>{try{localStorage.removeItem(cleEsp('fiinas-bilan-masque'));}catch(e){}renderBilanDash();}});}
 
 // ── Bilan complet
 function openBilan(lundi){
@@ -2062,7 +2068,7 @@ function propositionBudget(){
 function renderPrepDash(){
   const el=document.getElementById('prep-dash');if(!el)return;
   const auj=todayStr(),cur=auj.slice(0,7),next=moisDecal(cur,1);
-  let masque=null;try{masque=localStorage.getItem('fiinas-prep-masque');}catch(e){}
+  let masque=null;try{masque=localStorage.getItem(cleEsp('fiinas-prep-masque'));}catch(e){}
   const okJour=+auj.slice(8)>=25,curBud=Object.values(budget[cur]||{}).some(v=>v>0),nextBud=Object.values(budget[next]||{}).some(v=>v>0);
   if(!okJour||!curBud||nextBud||masque===next||!peutBudget()){el.innerHTML='';return;}
   const P=propositionBudget();
@@ -2070,7 +2076,7 @@ function renderPrepDash(){
     <div class="cpt-ic" style="background:var(--bd);color:var(--blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M12 13v5M9.5 15.5h5"/></svg></div>
     <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;color:var(--text)">Prépare ton budget ${deMois(next)}</div>
     <div style="font-size:11.5px;color:var(--text2)">${P.chg.length?P.chg.length+' ajustement'+(P.chg.length>1?'s':'')+' proposé'+(P.chg.length>1?'s':'')+' d\'après tes dépenses':'Repris de '+nomMois(cur)+', prêt à valider'}</div></div>
-    <button aria-label="Masquer" onclick="event.stopPropagation();try{localStorage.setItem('fiinas-prep-masque','${next}')}catch(e){};renderPrepDash()" style="background:none;border:none;color:var(--text3);font-size:15px;cursor:pointer;padding:0 2px">✕</button></div>`;
+    <button aria-label="Masquer" onclick="event.stopPropagation();try{localStorage.setItem(cleEsp('fiinas-prep-masque'),'${next}')}catch(e){};renderPrepDash()" style="background:none;border:none;color:var(--text3);font-size:15px;cursor:pointer;padding:0 2px">✕</button></div>`;
 }
 function openPrepBudget(){
   const P=propositionBudget();
@@ -2124,12 +2130,12 @@ function bilanMoisCalc(ym){
 function renderBilanMoisDash(){
   const el=document.getElementById('bilanm-dash');if(!el)return;
   const auj=todayStr(),prev=moisDecal(auj.slice(0,7),-1);
-  let masque=null;try{masque=localStorage.getItem('fiinas-bilanm-masque');}catch(e){}
+  let masque=null;try{masque=localStorage.getItem(cleEsp('fiinas-bilanm-masque'));}catch(e){}
   if(+auj.slice(8)>7||masque===prev||txYM(prev).length<5){el.innerHTML='';return;}
   const B=bilanMoisCalc(prev);
   el.innerHTML=`<div class="card" style="cursor:pointer;border-color:var(--purple)" onclick="openBilanMois('${prev}')">
     <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11.5px;color:var(--purple);font-weight:600">Bilan ${deMois(prev)}</span>
-    <button aria-label="Masquer" onclick="event.stopPropagation();try{localStorage.setItem('fiinas-bilanm-masque','${prev}')}catch(e){};renderBilanMoisDash()" style="background:none;border:none;color:var(--text3);font-size:15px;cursor:pointer;padding:0 2px">✕</button></div>
+    <button aria-label="Masquer" onclick="event.stopPropagation();try{localStorage.setItem(cleEsp('fiinas-bilanm-masque'),'${prev}')}catch(e){};renderBilanMoisDash()" style="background:none;border:none;color:var(--text3);font-size:15px;cursor:pointer;padding:0 2px">✕</button></div>
     <div style="display:flex;align-items:center;gap:10px;margin-top:5px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600;color:var(--text)">${MFR[+prev.slice(5)-1]} : ${B.solde<0?'−':'+'}${fmt(B.solde)} F</div>
     <div style="font-size:12px;color:var(--text2);margin-top:1px">${B.aBud?(B.derapes.length?B.derapes.length+' poste'+(B.derapes.length>1?'s':'')+' au-delà du budget':'Budget tenu sur tous les postes'):'Entrées − sorties du mois'}</div></div><span style="color:var(--text3);font-size:18px">›</span></div></div>`;
 }
@@ -2254,6 +2260,7 @@ function openConfidentialite(){
 // ═══════════════ SUPPRIMER MON COMPTE ═══════════════
 function openSupprimerCompte(){
   const u=window._fb?.auth?.currentUser;if(!u)return;
+  if(espace){changerEspace(null);setTimeout(()=>{goP('pro',null);openSupprimerCompte();},600);return;}
   const google=(u.providerData||[]).some(p=>p.providerId==='google.com');
   const n=txs.length;
   openSheet(`<div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:8px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg><div style="font-size:16px;font-weight:600;color:var(--text)">Supprimer ton compte ?</div></div>
@@ -2455,7 +2462,7 @@ async function rejoindreFoyer(){
     if(!s.exists()){go.disabled=false;err.textContent='Code inconnu ou remplacé. Demande le code actuel au responsable.';return;}
     const{fid,nom}=s.data();
     if(mesFoyers.some(f=>f.fid===fid)){go.disabled=false;err.textContent='Tu fais déjà partie de ce foyer.';return;}
-    await setDoc(doc(db,'foyers/'+fid+'/demandes/'+uid),{nom:userName||'Quelqu\'un',foyer:nom,date:new Date().toISOString(),statut:'attente'});
+    await setDoc(doc(db,'foyers/'+fid+'/demandes/'+uid),{nom:userName||'Quelqu\'un',ident:identDemande(),foyer:nom,date:new Date().toISOString(),statut:'attente'});
     const m=await lireMesFoyers();if(!m.demandes.includes(fid))m.demandes.push(fid);await ecrireMesFoyers(m);
     mesDemandes=m.demandes.slice();suivreMesDemandes();
     closeSheet();toast('Demande envoyée à '+nom+'. Tu seras prévenu dès qu\'elle est acceptée.');
@@ -2525,7 +2532,7 @@ function openFoyerMembres(){
       <span style="font-size:13.5px;color:var(--text)">${esc(m.nom)}${m.u===uid?' <span style="color:var(--text3);font-size:11.5px">(toi)</span>':''}</span>
       <span style="display:flex;align-items:center;gap:6px">${resp&&m.u!==uid?selR(m.u,m.r)+`<button aria-label="Retirer" onclick="retirerMembre(${jsa(m.u)})" style="background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:2px 4px">✕</button>`:`<span style="font-size:12px;color:${m.r==='resp'?'var(--blue)':'var(--text2)'}">${ROLES[m.r]}</span>`}</span></div>`).join('');
   const lignesD=resp?demandesFoyer.map(d=>`<div style="padding:10px 0;border-bottom:0.5px solid var(--border)">
-      <div style="font-size:13.5px;color:var(--text);margin-bottom:7px">${esc(d.nom)} <span style="font-size:11px;color:var(--text3)">· ${d.date?new Date(d.date).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):''}</span></div>
+      <div style="font-size:13.5px;color:var(--text);margin-bottom:7px">${esc(d.nom)}${d.ident?` <span style="font-size:11.5px;color:var(--text2)">${esc(d.ident)}</span>`:''} <span style="font-size:11px;color:var(--text3)">· ${d.date?new Date(d.date).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):''}</span></div>
       <div style="display:flex;gap:6px;align-items:center">${`<select class="fsel" id="dr-${esc(d.uid)}" style="flex:1;padding:7px 28px 7px 10px;font-size:12.5px">${Object.entries(ROLES).map(([k,l])=>`<option value="${k}" ${k==='membre'?'selected':''}>${l}</option>`).join('')}</select>`}
         <button onclick="repondreDemande(${jsa(d.uid)},true)" style="padding:8px 12px;border:none;border-radius:8px;background:var(--blue);color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--font)">Accepter</button>
         <button onclick="repondreDemande(${jsa(d.uid)},false)" style="padding:8px 10px;border:none;background:none;color:var(--red);font-size:12.5px;cursor:pointer;font-family:var(--font)">Refuser</button></div></div>`).join(''):'';
@@ -3764,10 +3771,6 @@ function budLeaveOk(suite){
   return false;
 }
 function setFormDirty(v){formDirty=v;}
-let sharedSpaceId=null; // ID de l'espace partagé (null = espace perso)
-// Partage désactivé : les règles Firestore n'autorisent que l'accès à ses propres données
-const SHARING_ENABLED=false;
-let userRole='admin';   // 'admin' ou 'reader'
 let userName='';        // Nom affiché sur les transactions
 let txFilt='all',txPosteFilter='',dTab='all',bYear=new Date().getFullYear().toString(),bMonth=new Date().getMonth()+1;
 let budgetDetails={};
@@ -4037,7 +4040,7 @@ function goP(p,btn){
   else if(p==='cpt')renderComptesPage();
   else if(p==='obj')renderObjPage();
   else if(p==='det')renderDetPage();
-  else if(p==='pro'){renderModulesUI();renderCPUI();renderRecurUI();renderFoyerUI();renderTrash();renderSecurityUI();renderSpacesUI();renderBackupUI();}
+  else if(p==='pro'){renderModulesUI();renderCPUI();renderRecurUI();renderFoyerUI();renderTrash();renderSecurityUI();renderBackupUI();}
   else if(p==='add'){syncPostes();renderFormComptes();renderFormObjectifs();renderFormRecur();document.getElementById('fmsg').textContent='';}
   else if(p==='imp'){document.getElementById('imp-log').style.display='none';document.getElementById('imp-pb').style.width='0%';document.getElementById('imp-pt').textContent='En attente';}
 }
@@ -4658,7 +4661,7 @@ function renderTX(){
   }
   const el=document.getElementById('txl');
   if(!t.length){
-    el.innerHTML=`<div class="empty">${q?'Aucun résultat pour "'+q+'"':'Aucune transaction'}</div>`;
+    el.innerHTML=`<div class="empty">${q?'Aucun résultat pour « '+esc(q)+' »':'Aucune transaction'}</div>`;
     return;
   }
   const hi=(s,q)=>{if(!q||!s)return esc(s||"");const i=s.toLowerCase().indexOf(q.toLowerCase());if(i<0)return esc(s);return esc(s.slice(0,i))+'<mark style="background:rgba(99,102,241,.3);color:#a5b4fc;border-radius:3px;padding:0 2px">'+esc(s.slice(i,i+q.length))+'</mark>'+esc(s.slice(i+q.length));};
@@ -5213,190 +5216,6 @@ async function doImport(txList){
 
 
 // ══════════════════════════════════════════
-// ESPACE PARTAGÉ — Phase 1
-// ══════════════════════════════════════════
-async function renderSharedSpaceUI(){
-  const el=document.getElementById('shared-space-ui');
-  if(!el)return;
-
-  // Mettre à jour le rôle affiché
-  const roleEl=document.getElementById('role-display');
-  if(roleEl){
-    if(sharedSpaceId){
-      roleEl.textContent=(userRole==='admin'?'Admin':'Lecteur')+' · Espace partagé';
-      roleEl.style.color=userRole==='admin'?'var(--green)':'var(--amber)';
-    } else {
-      roleEl.textContent='Admin · Espace personnel';
-      roleEl.style.color='var(--text3)';
-    }
-  }
-
-  if(!sharedSpaceId){
-    // Mode perso — proposer de créer ou rejoindre
-    el.innerHTML=`
-      <p style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6">
-        Partage tes finances avec un proche. Il pourra consulter ou modifier selon le rôle que tu lui donnes.
-      </p>
-      <button class="btn-p" onclick="createSharedSpace()" style="margin-bottom:10px">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
-        Créer un espace partagé
-      </button>
-      <div style="text-align:center;font-size:12px;color:var(--text3);margin:8px 0">ou</div>
-      <div style="display:flex;gap:8px">
-        <input id="invite-code-input" class="finp" type="text" placeholder="Colle le code d'invitation..." style="flex:1;font-size:13px;padding:10px 12px">
-        <button class="btn-o" onclick="joinSharedSpace()" style="white-space:nowrap">Rejoindre</button>
-      </div>
-      <div id="join-msg" style="font-size:11px;margin-top:6px;min-height:14px"></div>`;
-  } else {
-    // Mode partagé — afficher les membres et le lien
-    const{db,doc,getDoc}=window._fb;
-    const spaceDoc=await getDoc(doc(db,'spaces/'+sharedSpaceId));
-    const spaceData=spaceDoc.exists()?spaceDoc.data():{};
-    const members=spaceData.members||{};
-    const inviteCode=spaceData.inviteCode||sharedSpaceId.slice(0,8).toUpperCase();
-
-    el.innerHTML=`
-      <div style="margin-bottom:14px">
-        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.07em;font-weight:600">Code d'invitation</div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <div style="background:var(--surf2);border-radius:var(--rs);padding:10px 14px;font-size:15px;font-weight:600;font-family:var(--font);letter-spacing:.1em;color:var(--blue);flex:1;text-align:center">${inviteCode}</div>
-          <button onclick="copyInviteCode('${inviteCode}')" class="btn-o" style="white-space:nowrap">Copier</button>
-        </div>
-        <div style="font-size:11px;color:var(--text3);margin-top:6px">Partage ce code avec les personnes que tu veux inviter</div>
-      </div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.07em;font-weight:600">Membres (${Object.keys(members).length})</div>
-      ${Object.entries(members).map(([mid,m])=>`
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:0.5px solid var(--border)">
-          <div>
-            <div style="font-size:13px;font-weight:500;color:var(--text)">${esc(m.name||'Utilisateur')} ${mid===uid?'<span style="font-size:11px;color:var(--text3)">(moi)</span>':''}</div>
-            <div style="font-size:11px;color:var(--text3)">${esc(m.email||'')}</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:11px;padding:2px 8px;border-radius:20px;background:${m.role==='admin'?'var(--gd)':'rgba(245,158,11,.1)'};color:${m.role==='admin'?'var(--green)':'var(--amber)'}">${m.role==='admin'?'Admin':'Lecteur'}</span>
-            ${mid!==uid&&isAdmin()?`<button onclick="toggleMemberRole('${mid}','${m.role}')" class="btn-o" style="font-size:11px;padding:3px 8px">${m.role==='admin'?'→ Lecteur':'→ Admin'}</button>`:''}
-          </div>
-        </div>`).join('')}
-      <div style="margin-top:14px;display:flex;gap:8px">
-        <button onclick="leaveSharedSpace()" class="btn-o" style="flex:1;color:var(--red);border-color:var(--red)">
-          ${isAdmin()&&Object.keys(members).length<=1?'Supprimer l\'espace':'Quitter l\'espace'}
-        </button>
-        ${isAdmin()?`<button onclick="switchToPersonal()" class="btn-o" style="flex:1">Voir mon espace perso</button>`:''}
-      </div>`;
-  }
-}
-
-async function createSharedSpace(){
-  const{db,doc,setDoc,collection}=window._fb;
-  const spaceId='space_'+uid+'_'+Date.now();
-  const inviteCode=Math.random().toString(36).slice(2,8).toUpperCase();
-  const spaceData={
-    createdBy:uid,
-    createdAt:new Date().toISOString(),
-    inviteCode,
-    members:{
-      [uid]:{name:userName,email:window._fb.auth.currentUser?.email||'',role:'admin',joinedAt:new Date().toISOString()}
-    }
-  };
-  await setDoc(doc(db,'spaces/'+spaceId),spaceData);
-  await setDoc(doc(db,'spaces_invites/'+inviteCode),{spaceId});
-  // Save space reference in user profile
-  await setDoc(doc(db,'users/'+uid+'/data/profile'),{sharedSpaceId:spaceId,role:'admin'},{merge:true});
-  sharedSpaceId=spaceId;
-  userRole='admin';
-  // Re-subscribe to new data path
-  subscribe();
-  renderSharedSpaceUI();
-  toast('Espace partagé créé ✓ — partage le code d\'invitation');
-}
-
-async function joinSharedSpace(){
-  const code=document.getElementById('invite-code-input')?.value.trim().toUpperCase();
-  const msg=document.getElementById('join-msg');
-  if(!code){msg.style.color='var(--red)';msg.textContent='Entre un code d\'invitation';return;}
-  const{db,collection,onSnapshot,doc,setDoc,getDoc,query}=window._fb;
-  // Find space by invite code
-  msg.style.color='var(--text3)';msg.textContent='Recherche en cours...';
-  try{
-    // Search in known spaces
-    const snap=await getDoc(doc(db,'spaces_invites/'+code));
-    let spaceId=snap.exists()?snap.data().spaceId:null;
-    if(!spaceId){
-      // Try direct search — for now use code as prefix
-      msg.style.color='var(--red)';
-      msg.textContent='Code invalide ou expiré';
-      return;
-    }
-    const spaceDoc=await getDoc(doc(db,'spaces/'+spaceId));
-    if(!spaceDoc.exists()){msg.style.color='var(--red)';msg.textContent='Espace introuvable';return;}
-    // Add member
-    await setDoc(doc(db,'spaces/'+spaceId),{
-      members:{[uid]:{name:userName,email:window._fb.auth.currentUser?.email||'',role:'reader',joinedAt:new Date().toISOString()}}
-    },{merge:true});
-    await setDoc(doc(db,'users/'+uid+'/data/profile'),{sharedSpaceId:spaceId,role:'reader'},{merge:true});
-    sharedSpaceId=spaceId;
-    userRole='reader';
-    subscribe();
-    renderSharedSpaceUI();
-    toast('Espace rejoint en mode Lecteur ✓');
-  }catch(e){msg.style.color='var(--red)';msg.textContent='Erreur: '+e.message;}
-}
-
-function copyInviteCode(code){
-  navigator.clipboard.writeText(code).then(()=>toast('Code copié ✓')).catch(()=>{
-    // Fallback
-    const el=document.createElement('textarea');
-    el.value=code;document.body.appendChild(el);el.select();
-    document.execCommand('copy');document.body.removeChild(el);
-    toast('Code copié ✓');
-  });
-}
-
-// toggleMemberRole moved to spaces section
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-async function loadUserSpace_old(){
-  if(!uid)return;
-  const{db,doc,getDoc}=window._fb;
-  try{
-    const profileDoc=await getDoc(doc(db,'users/'+uid+'/data/profile'));
-    if(profileDoc.exists()){
-      const d=profileDoc.data();
-      if(d.sharedSpaceId){
-        sharedSpaceId=d.sharedSpaceId;
-        userRole=d.role||'admin';
-        subscribe();
-      }
-    }
-  }catch(e){console.warn('Profile load:',e);}
-}
-
-
-// ══════════════════════════════════════════
 // SNAPSHOTS — Patrimoine mensuel
 // ══════════════════════════════════════════
 
@@ -5734,19 +5553,6 @@ window.addEventListener('online', updateOnlineStatus);
 window.addEventListener('offline', updateOnlineStatus);
 
 
-function getTxBadge(x){
-  // If no createdBy — attribute to owner of current space or to me
-  const isMyTx=x.createdById===uid||(!x.createdById&&!sharedSpaceId);
-  const sp=mySpaces.find(s=>s.ownerUid===sharedSpaceId);
-  const ownerName=sp?.ownerName||'';
-  // Old tx without createdBy: if viewing someone's space → belongs to owner
-  const name=x.createdBy||(isMyTx?userName:ownerName);
-  if(!name)return '';
-  const color=isMyTx?'var(--blue)':'var(--green)';
-  return '<span style="padding:1px 7px;border-radius:10px;background:rgba(128,128,128,.1);color:'+color+';display:inline-flex;align-items:center;gap:4px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> '+name+'</span>';
-}
-
-// TRANSACTIONS RÉCURRENTES
 
 
 
@@ -6283,460 +6089,8 @@ async function exportPDF(){
 }
 
 
-function updateSpaceBtn(){
-  const icon=document.getElementById('space-icon');
-  const label=document.getElementById('space-label');
-  if(!icon||!label)return;
-  if(!sharedSpaceId){
-    icon.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';label.textContent='Perso';
-  } else {
-    const sp=mySpaces.find(s=>s.ownerUid===sharedSpaceId);
-    icon.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
-    label.textContent=sp?.ownerName||'Partagé';
-  }
-}
-
-function toggleSpaceMenu(){
-  const m=document.getElementById('space-menu');
-  if(!m)return;
-  if(m.style.display==='none'){
-    renderSpaceMenu();
-    m.style.display='block';
-    setTimeout(()=>document.addEventListener('click',closeSpaceMenuOutside),0);
-  } else {
-    m.style.display='none';
-  }
-}
-
-function closeSpaceMenuOutside(e){
-  const m=document.getElementById('space-menu');
-  const btn=document.getElementById('space-btn');
-  if(m&&!m.contains(e.target)&&btn&&!btn.contains(e.target)){
-    m.style.display='none';
-    document.removeEventListener('click',closeSpaceMenuOutside);
-  }
-}
-
-function renderSpaceMenu(){
-  const el=document.getElementById('space-menu-list');
-  if(!el)return;
-  let html='<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:600;padding:4px 8px 8px">Changer d\'espace</div>';
-  const isPerso=!sharedSpaceId;
-  html+=`<div onclick="switchSpace(null)" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--rs);cursor:pointer;background:${isPerso?'var(--surf2)':'transparent'};margin-bottom:4px">
-    <span style="display:flex;align-items:center;color:var(--text2)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
-    <div style="flex:1"><div style="font-size:13px;font-weight:500;color:var(--text)">Mon espace</div><div style="font-size:11px;color:var(--text3)">Mes données personnelles</div></div>
-    ${isPerso?'<span style="font-size:11px;color:var(--green)">✓</span>':''}
-  </div>`;
-  mySpaces.forEach(sp=>{
-    const isActive=sharedSpaceId===sp.ownerUid;
-    html+=`<div onclick="switchSpace('${sp.ownerUid}')" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--rs);cursor:pointer;background:${isActive?'var(--surf2)':'transparent'};margin-bottom:4px">
-      <span style="display:flex;align-items:center;color:var(--text2)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
-      <div style="flex:1"><div style="font-size:13px;font-weight:500;color:var(--text)">${esc(sp.ownerName)}</div><div style="font-size:11px;color:var(--text3)">${sp.role==='admin'?'Admin':'Lecteur'}</div></div>
-      ${isActive?'<span style="font-size:11px;color:var(--green)">✓</span>':''}
-    </div>`;
-  });
-  html+=`<div style="border-top:0.5px solid var(--border);margin-top:6px;padding-top:6px">
-    <div onclick="goP('pro',document.querySelectorAll('.ni')[4]);document.getElementById('space-menu').style.display='none';" style="font-size:12px;color:var(--blue);padding:6px 10px;cursor:pointer">Gérer les espaces →</div>
-  </div>`;
-  el.innerHTML=html;
-}
-
-async function switchSpace(ownerUid){
-  document.getElementById('space-menu').style.display='none';
-  sharedSpaceId=ownerUid;
-  if(ownerUid){
-    const sp=mySpaces.find(s=>s.ownerUid===ownerUid);
-    userRole=sp?.role||'reader';
-  } else {
-    userRole='admin';
-  }
-  updateSpaceBtn();
-  subscribe();
-  renderCurrent();
-  try{
-    const{db,doc,setDoc}=window._fb;
-    await setDoc(doc(db,'users/'+uid+'/data/profile'),{activeSpaceId:ownerUid||null},{merge:true});
-  }catch(e){}
-}
-
-let unsubProfile=null;
-
-let unsubJoinReq=null;
-
-async function watchJoinRequests(){
-  if(!uid)return;
-  const{db,collection,query,where,onSnapshot}=window._fb;
-  if(unsubJoinReq)unsubJoinReq();
-  unsubJoinReq=onSnapshot(
-    query(collection(db,'join_requests'),where('ownerUid','==',uid),where('status','==','pending')),
-    snap=>{
-      const count=snap.size;
-      // Update badge on profil nav button
-      const proBtn=document.querySelector('.ni[onclick*="pro"]');
-      if(proBtn){
-        const existing=proBtn.querySelector('.req-badge');
-        if(count>0){
-          if(!existing){
-            const badge=document.createElement('span');
-            badge.className='req-badge';
-            badge.style.cssText='position:absolute;top:-3px;right:-3px;width:8px;height:8px;background:var(--red);border-radius:50%;display:block';
-            proBtn.style.position='relative';
-            proBtn.appendChild(badge);
-          }
-        } else if(existing){
-          existing.remove();
-        }
-      }
-      // If on profil page, refresh spaces UI
-      const spacesEl=document.getElementById('spaces-ui');
-      if(spacesEl&&spacesEl.innerHTML){
-        renderSpacesUI();
-      }
-    }
-  );
-}
-
-async function loadUserSpaces(){
-  if(!uid)return;
-  if(!SHARING_ENABLED){
-    sharedSpaceId=null;userRole='admin';mySpaces=[];
-    const sb=document.getElementById('space-btn');if(sb)sb.style.display='none';
-    const su=document.getElementById('spaces-ui');if(su&&su.closest('.card'))su.closest('.card').style.display='none';
-    initEspaces();
-    return;
-  }
-  const{db,doc,onSnapshot}=window._fb;
-  watchJoinRequests();
-  // Real-time listener on profile — detects when someone grants access
-  if(unsubProfile)unsubProfile();
-  unsubProfile=onSnapshot(doc(db,'users/'+uid+'/data/profile'),snap=>{
-    const profile=snap.exists()?snap.data():{};
-    const accessList=profile.accessList||[];
-    mySpaces=accessList.map(e=>({
-      ownerUid:e.ownerUid,
-      ownerName:e.ownerName||'Utilisateur',
-      role:e.role||'reader'
-    }));
-    // Restore or update active space
-    if(profile.activeSpaceId&&mySpaces.find(s=>s.ownerUid===profile.activeSpaceId)){
-      const wasAlreadyActive=sharedSpaceId===profile.activeSpaceId;
-      sharedSpaceId=profile.activeSpaceId;
-      const sp=mySpaces.find(s=>s.ownerUid===sharedSpaceId);
-      userRole=sp?.role||'reader';
-      if(!wasAlreadyActive){subscribe();}
-    } else if(sharedSpaceId&&!mySpaces.find(s=>s.ownerUid===sharedSpaceId)){
-      // Space was revoked
-      sharedSpaceId=null;userRole='admin';
-      subscribe();
-      toast('Accès à l\'espace retiré');
-    }
-    updateSpaceBtn();
-    // If on profil page, refresh
-    if(document.getElementById('spaces-ui')&&document.getElementById('spaces-ui').innerHTML){
-      renderSpacesUI();
-    }
-  });
-  // Initial subscribe
-  subscribe();
-}
-
-async function renderSpacesUI(freshCode){
-  const el=document.getElementById('spaces-ui');
-  if(!el||!SHARING_ENABLED)return;
-
-  // Update role display
-  const roleEl=document.getElementById('role-display');
-  if(roleEl){
-    if(sharedSpaceId){
-      const sp=mySpaces.find(s=>s.ownerUid===sharedSpaceId);
-      roleEl.textContent=(userRole==='admin'?'Admin':'Lecteur')+' · Espace de '+sp?.ownerName;
-      roleEl.style.color=userRole==='admin'?'var(--green)':'var(--amber)';
-    } else {
-      roleEl.textContent='Admin · Mon espace';
-      roleEl.style.color='var(--text3)';
-    }
-  }
-
-  let html='';
-
-  // People who have access to MY space
-  const{db,doc,getDoc}=window._fb;
-  const myProfileDoc=await getDoc(doc(db,'users/'+uid+'/data/profile'));
-  const myProfile=myProfileDoc.exists()?myProfileDoc.data():{};
-  const sharedWith=myProfile.sharedWith||[];
-  const inviteCode=freshCode||myProfile.inviteCode||'';
-
-  html+=`<div style="margin-bottom:16px">
-    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:600;margin-bottom:10px">Mon espace — accès partagé</div>`;
-
-  if(sharedWith.length>0){
-    sharedWith.forEach(m=>{
-      html+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:0.5px solid var(--border)">
-        <div>
-          <div style="font-size:13px;font-weight:500;color:var(--text)">${esc(m.name||'Utilisateur')}</div>
-          <div style="font-size:11px;color:var(--text3)">${esc(m.email||'')}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <span style="font-size:11px;padding:2px 8px;border-radius:20px;background:${m.role==='admin'?'var(--gd)':'rgba(245,158,11,.1)'};color:${m.role==='admin'?'var(--green)':'var(--amber)'}">${m.role==='admin'?'Admin':'Lecteur'}</span>
-          <button onclick="toggleAccess('${m.uid}','${m.role}')" class="btn-o" style="font-size:11px;padding:2px 8px">${m.role==='admin'?'→ Lecteur':'→ Admin'}</button>
-          <button onclick="revokeAccess('${m.uid}')" class="btn-o" style="font-size:11px;padding:2px 8px;color:var(--red);border-color:var(--red)">Retirer</button>
-        </div>
-      </div>`;
-    });
-  } else {
-    html+=`<div style="font-size:12px;color:var(--text3);padding:8px 0">Personne n'a accès à ton espace pour l'instant.</div>`;
-  }
-
-  // Invite section
-  // Pending join requests
-  const{collection,query,where,getDocs}=window._fb;
-  let pendingHtml='';
-  try{
-    const reqQuery=query(collection(db,'join_requests'),where('ownerUid','==',uid),where('status','==','pending'));
-    const reqSnap=await getDocs(reqQuery);
-    if(!reqSnap.empty){
-      pendingHtml+=`<div style="background:rgba(10,132,255,.1);border:0.5px solid rgba(10,132,255,.25);border-radius:var(--rs);padding:12px;margin-bottom:14px">
-        <div style="font-size:11px;font-weight:600;color:var(--blue);margin-bottom:10px">🔔 Demandes d'accès en attente</div>`;
-      reqSnap.forEach(d=>{
-        const r=d.data();
-        pendingHtml+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:0.5px solid var(--border)">
-          <div>
-            <div style="font-size:13px;font-weight:500;color:var(--text)">${r.requesterName}</div>
-            <div style="font-size:11px;color:var(--text3)">${r.requesterEmail}</div>
-          </div>
-          <div style="display:flex;gap:6px">
-            <button onclick="approveRequest('${d.id}','${r.requesterUid}','${r.requesterName}','${r.requesterEmail}')" style="padding:5px 10px;font-size:11px;border:none;border-radius:var(--rs);background:var(--green);color:#fff;cursor:pointer;font-family:var(--font)">Accepter</button>
-            <button onclick="denyRequest('${d.id}')" style="padding:5px 10px;font-size:11px;border:0.5px solid var(--border);border-radius:var(--rs);background:transparent;color:var(--text3);cursor:pointer;font-family:var(--font)">Refuser</button>
-          </div>
-        </div>`;
-      });
-      pendingHtml+='</div>';
-    }
-  }catch(e){}
-  html+=pendingHtml;
-
-  if(inviteCode){
-    html+=`<div style="margin-top:12px;background:var(--surf2);border-radius:var(--rs);padding:12px">
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.07em;font-weight:600">Code d'invitation actif</div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <div style="font-size:16px;font-weight:600;letter-spacing:.15em;color:var(--blue);flex:1;text-align:center;padding:8px;background:var(--surf);border-radius:var(--rs)">${inviteCode}</div>
-        <button onclick="copyInviteCode('${inviteCode}')" class="btn-o">Copier</button>
-      </div>
-      <button onclick="generateInviteCode()" class="btn-o" style="width:100%;margin-top:8px;font-size:11px">Générer nouveau code</button>
-    </div>`;
-  } else {
-    html+=`<button class="btn-p" onclick="generateInviteCode()" style="margin-top:12px">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
-      Inviter quelqu'un dans mon espace
-    </button>`;
-  }
-
-  html+='</div>';
-
-  // Spaces I have access to
-  if(mySpaces.length>0){
-    html+=`<div style="border-top:0.5px solid var(--border);padding-top:14px;margin-bottom:14px">
-      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:600;margin-bottom:10px">Espaces auxquels j'ai accès</div>`;
-    mySpaces.forEach(sp=>{
-      const isActive=sharedSpaceId===sp.ownerUid;
-      html+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:0.5px solid var(--border)">
-        <div>
-          <div style="font-size:13px;font-weight:500;color:var(--text)">${esc(sp.ownerName)}</div>
-          <div style="font-size:11px;color:${sp.role==='admin'?'var(--green)':'var(--amber)'}">${sp.role==='admin'?'Admin':'Lecteur'}</div>
-        </div>
-        <div style="display:flex;gap:6px">
-          ${isActive
-            ?'<span style="font-size:11px;color:var(--green);padding:3px 8px;border-radius:20px;background:var(--gd)">Actif</span>'
-            :`<button onclick="switchSpace('${sp.ownerUid}')" style="font-size:11px;padding:4px 10px;border:0.5px solid var(--blue);border-radius:var(--rs);background:transparent;color:var(--blue);cursor:pointer;font-family:var(--font)">Activer</button>`
-          }
-          <button onclick="leaveSharedAccess('${sp.ownerUid}')" style="font-size:11px;padding:4px 10px;border:0.5px solid var(--border);border-radius:var(--rs);background:transparent;color:var(--text3);cursor:pointer;font-family:var(--font)">Quitter</button>
-        </div>
-      </div>`;
-    });
-    html+='</div>';
-  }
-
-  // Join section
-  html+=`<div style="border-top:0.5px solid var(--border);padding-top:14px">
-    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:600;margin-bottom:10px">Rejoindre un espace</div>
-    <div style="display:flex;gap:8px">
-      <input id="join-code-inp" class="finp" type="text" placeholder="Code d'invitation..." style="flex:1;padding:9px 12px;font-size:13px;text-transform:uppercase">
-      <button onclick="joinSpace()" class="btn-o" style="white-space:nowrap">Rejoindre</button>
-    </div>
-    <div id="spaces-msg" style="font-size:11px;margin-top:6px;min-height:14px;text-align:center"></div>
-  </div>`;
-
-  el.innerHTML=html;
-}
-
-
-async function approveRequest(reqId,requesterUid,requesterName,requesterEmail){
-  const{db,doc,getDoc,setDoc,deleteDoc}=window._fb;
-  // Add to MY sharedWith (I am the owner — writing to MY own profile — allowed)
-  const myProfileDoc=await getDoc(doc(db,'users/'+uid+'/data/profile'));
-  const myProfile=myProfileDoc.exists()?myProfileDoc.data():{};
-  const sharedWith=[...(myProfile.sharedWith||[]).filter(m=>m.uid!==requesterUid),
-    {uid:requesterUid,name:requesterName,email:requesterEmail,role:'reader'}];
-  await setDoc(doc(db,'users/'+uid+'/data/profile'),{sharedWith},{merge:true});
-  // Add to requester's accessList (write to THEIR profile — allowed by new rules)
-  const reqProfileDoc=await getDoc(doc(db,'users/'+requesterUid+'/data/profile'));
-  const reqProfile=reqProfileDoc.exists()?reqProfileDoc.data():{};
-  const accessList=[...(reqProfile.accessList||[]).filter(e=>e.ownerUid!==uid),
-    {ownerUid:uid,ownerName:userName,role:'reader'}];
-  await setDoc(doc(db,'users/'+requesterUid+'/data/profile'),{accessList,activeSpaceId:uid},{merge:true});
-  // Delete the request
-  await deleteDoc(doc(db,'join_requests/'+reqId));
-  await renderSpacesUI();
-  toast(requesterName+' a maintenant accès à ton espace ✓');
-}
-
-async function denyRequest(reqId){
-  const{db,doc,deleteDoc}=window._fb;
-  await deleteDoc(doc(db,'join_requests/'+reqId));
-  await renderSpacesUI();
-  toast('Demande refusée');
-}
-
-async function generateInviteCode(){
-  const code=Math.random().toString(36).slice(2,8).toUpperCase();
-  const{db,doc,setDoc}=window._fb;
-  // Store code pointing to owner uid
-  await setDoc(doc(db,'spaces_invites/'+code),{ownerUid:uid,ownerName:userName,ownerEmail:window._fb.auth.currentUser?.email||''});
-  await setDoc(doc(db,'users/'+uid+'/data/profile'),{inviteCode:code},{merge:true});
-  await renderSpacesUI();
-  toast('Code d\'invitation généré ✓');
-}
-
-async function joinSpace(){
-  const code=document.getElementById('join-code-inp')?.value.trim().toUpperCase();
-  const msg=document.getElementById('spaces-msg');
-  if(!code){msg.style.color='var(--red)';msg.textContent='Entre un code';return;}
-  msg.style.color='var(--text3)';msg.textContent='Recherche...';
-  const{db,doc,getDoc,setDoc}=window._fb;
-  try{
-    // Find invite
-    const invDoc=await getDoc(doc(db,'spaces_invites/'+code));
-    if(!invDoc.exists()){msg.style.color='var(--red)';msg.textContent='Code invalide';return;}
-    const{ownerUid:oUid,ownerName:oName}=invDoc.data();
-    if(oUid===uid){msg.style.color='var(--red)';msg.textContent='C\'est ton propre code';return;}
-    // Already in list — just activate
-    if(mySpaces.find(s=>s.ownerUid===oUid)){
-      await switchSpace(oUid);
-      msg.style.color='var(--green)';msg.textContent='Espace activé ✓';
-      return;
-    }
-    // Create a join request — only writes to join_requests collection (open to all)
-    const reqId=oUid+'_'+uid;
-    await setDoc(doc(db,'join_requests/'+reqId),{
-      requesterUid:uid,
-      requesterName:userName,
-      requesterEmail:window._fb.auth.currentUser?.email||'',
-      ownerUid:oUid,
-      ownerName:oName,
-      status:'pending',
-      createdAt:new Date().toISOString()
-    });
-    msg.style.color='var(--green)';
-    msg.textContent='Demande envoyée à '+oName+' — en attente d\'approbation';
-    document.getElementById('join-code-inp').value='';
-  }catch(e){msg.style.color='var(--red)';msg.textContent='Erreur: '+e.message;}
-}
-
-async function toggleAccess(memberId,currentRole){
-  const newRole=currentRole==='admin'?'reader':'admin';
-  const{db,doc,getDoc,setDoc}=window._fb;
-  // Update in my sharedWith
-  const myProfileDoc=await getDoc(doc(db,'users/'+uid+'/data/profile'));
-  const myProfile=myProfileDoc.exists()?myProfileDoc.data():{};
-  const sharedWith=(myProfile.sharedWith||[]).map(m=>m.uid===memberId?{...m,role:newRole}:m);
-  await setDoc(doc(db,'users/'+uid+'/data/profile'),{sharedWith},{merge:true});
-  // Update in member's accessList
-  const memberProfileDoc=await getDoc(doc(db,'users/'+memberId+'/data/profile'));
-  const memberProfile=memberProfileDoc.exists()?memberProfileDoc.data():{};
-  const accessList=(memberProfile.accessList||[]).map(e=>e.ownerUid===uid?{...e,role:newRole}:e);
-  await setDoc(doc(db,'users/'+memberId+'/data/profile'),{accessList},{merge:true});
-  await renderSpacesUI();
-  toast('Rôle mis à jour ✓');
-}
-
-async function revokeAccess(memberId){
-  const{db,doc,getDoc,setDoc}=window._fb;
-  const myProfileDoc=await getDoc(doc(db,'users/'+uid+'/data/profile'));
-  const myProfile=myProfileDoc.exists()?myProfileDoc.data():{};
-  const sharedWith=(myProfile.sharedWith||[]).filter(m=>m.uid!==memberId);
-  await setDoc(doc(db,'users/'+uid+'/data/profile'),{sharedWith},{merge:true});
-  // Remove from member's accessList
-  const memberProfileDoc=await getDoc(doc(db,'users/'+memberId+'/data/profile'));
-  const memberProfile=memberProfileDoc.exists()?memberProfileDoc.data():{};
-  const accessList=(memberProfile.accessList||[]).filter(e=>e.ownerUid!==uid);
-  const activeSpaceId=memberProfile.activeSpaceId===uid?null:memberProfile.activeSpaceId;
-  await setDoc(doc(db,'users/'+memberId+'/data/profile'),{accessList,activeSpaceId},{merge:true});
-  await renderSpacesUI();
-  toast('Accès retiré ✓');
-}
-
-async function leaveSharedAccess(ownerUid){
-  const{db,doc,getDoc,setDoc}=window._fb;
-  // Remove from my accessList
-  const myProfileDoc=await getDoc(doc(db,'users/'+uid+'/data/profile'));
-  const myProfile=myProfileDoc.exists()?myProfileDoc.data():{};
-  const accessList=(myProfile.accessList||[]).filter(e=>e.ownerUid!==ownerUid);
-  const activeSpaceId=myProfile.activeSpaceId===ownerUid?null:myProfile.activeSpaceId;
-  await setDoc(doc(db,'users/'+uid+'/data/profile'),{accessList,activeSpaceId},{merge:true});
-  // Remove from owner's sharedWith
-  const ownerProfileDoc=await getDoc(doc(db,'users/'+ownerUid+'/data/profile'));
-  const ownerProfile=ownerProfileDoc.exists()?ownerProfileDoc.data():{};
-  const sharedWith=(ownerProfile.sharedWith||[]).filter(m=>m.uid!==uid);
-  await setDoc(doc(db,'users/'+ownerUid+'/data/profile'),{sharedWith},{merge:true});
-  mySpaces=mySpaces.filter(s=>s.ownerUid!==ownerUid);
-  if(sharedSpaceId===ownerUid){sharedSpaceId=null;userRole='admin';subscribe();}
-  updateSpaceBtn();
-  await renderSpacesUI();
-  toast('Espace quitté');
-}
-
-async function leaveSharedSpace(){
-  if(!sharedSpaceId){
-    // Owner leaving their own space — delete it
-    if(!await confirmer('Supprimer cet espace partagé ?\nLes personnes invitées n\'y auront plus accès. Action définitive.','Supprimer'))return;
-    const{db,doc,setDoc,getDoc}=window._fb;
-    const profileDoc=await getDoc(doc(db,'users/'+uid+'/data/profile'));
-    const profile=profileDoc.exists()?profileDoc.data():{};
-    const sharedWith=profile.sharedWith||[];
-    // Remove access for all members
-    for(const m of sharedWith){
-      try{
-        const mProfileDoc=await getDoc(doc(db,'users/'+m.uid+'/data/profile'));
-        const mProfile=mProfileDoc.exists()?mProfileDoc.data():{};
-        const accessList=(mProfile.accessList||[]).filter(e=>e.ownerUid!==uid);
-        await setDoc(doc(db,'users/'+m.uid+'/data/profile'),{accessList},{merge:true});
-      }catch(e){}
-    }
-    await setDoc(doc(db,'users/'+uid+'/data/profile'),{sharedWith:[],inviteCode:null},{merge:true});
-    await renderSpacesUI();
-    toast('Espace supprimé');
-  } else {
-    // Guest leaving shared space
-    await leaveSharedAccess(sharedSpaceId);
-  }
-}
-
-async function toggleMemberRole(memberUid, currentRole){
-  const{db,doc,getDoc,setDoc}=window._fb;
-  const newRole=currentRole==='admin'?'lecteur':'admin';
-  const profileDoc=await getDoc(doc(db,'users/'+uid+'/data/profile'));
-  const profile=profileDoc.exists()?profileDoc.data():{};
-  const sharedWith=(profile.sharedWith||[]).map(m=>m.uid===memberUid?{...m,role:newRole}:m);
-  await setDoc(doc(db,'users/'+uid+'/data/profile'),{sharedWith},{merge:true});
-  await renderSpacesUI();
-  toast('Rôle modifié ✓');
-}
-
-function switchToPersonal(){
-  switchSpace(null);
-  document.getElementById('space-menu').style.display='none';
-}
-
+// Démarrage : foyers puis abonnement aux données de l'espace choisi
+async function loadUserSpaces(){if(!uid)return;initEspaces();}
 
 // ══════════ SAUVEGARDE COMPLÈTE (fichier .json) + RESTAURATION ══════════
 const BACKUP_JOURS=30,BACKUP_KEY='fiinas-last-backup';
@@ -6756,7 +6110,7 @@ function renderBackupBanner(){
   const j=joursDepuisSauvegarde();
   const plusAncienne=txs.reduce((m,t)=>{const v=Date.parse(t.ts||t.date||'')||Date.now();return Math.min(m,v);},Date.now());
   const oubli=j===null?(Date.now()-plusAncienne)/86400000>=BACKUP_JOURS:j>=BACKUP_JOURS;
-  if(!txs.length||!oubli||sharedSpaceId||document.getElementById('dc')?.closest('#detail-wrap')?.style.display==='block'&&false){el.innerHTML='';return;}
+  if(!txs.length||!oubli||espace||document.getElementById('dc')?.closest('#detail-wrap')?.style.display==='block'&&false){el.innerHTML='';return;}
   el.innerHTML=`<div style="margin:6px 0 10px;background:var(--surf);border:0.5px solid var(--border);border-radius:var(--r);padding:12px;display:flex;gap:10px;align-items:center">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" style="flex-shrink:0"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
     <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--text)">${j===null?'Aucune sauvegarde enregistrée':'Dernière sauvegarde il y a '+j+' jours'}</div>
