@@ -345,6 +345,7 @@ select option{background:#1F2840;color:#F1F4FA}
     <div id="maj-banner"></div>
     <div id="recur-dash"></div>
     <div id="point-banner"></div>
+    <div id="bilan-dash"></div>
     <div id="cpt-dash"></div>
     <div id="tiles" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div id="obj-dash"></div><div id="det-dash"></div></div>
     <div class="mgrid" id="dm"></div>
@@ -1613,8 +1614,12 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='29';
-const APP_NOTES=[]; // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
+const APP_VERSION='30';
+const APP_NOTES=[
+  ['M3 3v18h18M7 15l4-4 3 3 5-6','Chaque lundi, le bilan de ta semaine sur l\'accueil : ce qui était prévu, ce qui sort du budget'],
+  ['M3 17l6-6 4 4 8-8M14 7h7v7','Il prévient quand un poste va dépasser avant la fin du mois, et te dit combien dépenser par jour'],
+  ['M12 2a10 10 0 100 20 10 10 0 000-20zM9.5 9a2.5 2.5 0 114 2c-.9.6-1.5 1-1.5 2M12 17h.01','« Je peux me le permettre ? » : tape un achat, l\'appli te répond selon ton budget et tes comptes']
+]; // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
   try{
@@ -1678,6 +1683,247 @@ function confirmer(msg,ok='Confirmer',danger=true,non='Annuler'){
 }
 async function demanderDeconnexion(){
   if(await confirmer('Te déconnecter ?\nTu devras retaper ton identifiant et ton mot de passe pour revenir.','Me déconnecter',false,'Rester connecté'))doSignOut();
+}
+
+// ═══════════════ BILAN DE LA SEMAINE ═══════════════
+// Calculé dans l'appli (aucune donnée envoyée). Le budget est la référence : une grosse dépense
+// prévue n'est pas un problème ; le signal, c'est ce qui sort du prévu (poste dépassé, poste sans
+// budget, rythme qui fera dépasser avant la fin du mois).
+const B_FIXE='Dépenses fixes',B_VAR='Dépenses variables',B_DEP=[B_FIXE,B_VAR];
+const finMois=ym=>{const[y,m]=ym.split('-').map(Number);return new Date(y,m,0).getDate();};
+const lundiDe=iso=>{const d=dJ(iso),w=(d.getDay()+6)%7;return addJ(iso,-w);};
+const jFr=iso=>dJ(iso).getDate()+(dJ(iso).getDate()===1?'er':'')+' '+MOIS_C[dJ(iso).getMonth()];
+const pctTxt=v=>(v>0?'+':'−')+Math.abs(Math.round(v))+' %';
+let bilanSemaine=null;
+
+function bilanCalc(lundi){
+  const dim=addJ(lundi,6),auj=todayStr(),D=dim<auj?dim:auj,ym=D.slice(0,7),jour=+D.slice(8),nbJ=finMois(ym);
+  const semaine=txs.filter(t=>t.date>=lundi&&t.date<=dim);
+  const dep=semaine.filter(t=>B_DEP.includes(t.cat));
+  const totDep=dep.reduce((s,t)=>s+(t.amt||0),0),totRev=semaine.filter(t=>t.cat==='Revenu').reduce((s,t)=>s+(t.amt||0),0);
+  const totEpa=semaine.filter(t=>t.cat==='Epargne').reduce((s,t)=>s+(t.amt||0),0);
+  const bud=budget[ym]||{},aBudget=Object.values(bud).some(v=>v>0);
+  // Mois en cours jusqu'à D, par poste
+  const mtd={},sem={},catDe={};
+  txs.filter(t=>B_DEP.includes(t.cat)&&t.date&&t.date.startsWith(ym)&&t.date<=D).forEach(t=>{mtd[t.poste]=(mtd[t.poste]||0)+(t.amt||0);catDe[t.poste]=t.cat;});
+  dep.forEach(t=>{sem[t.poste]=(sem[t.poste]||0)+(t.amt||0);catDe[t.poste]=catDe[t.poste]||t.cat;});
+  // Analyse par poste
+  const postes=[];
+  B_DEP.forEach(cat=>getAllPostes(cat).forEach(p=>{
+    const b=bud[p]||0,m=mtd[p]||0,s=sem[p]||0;if(!b&&!m&&!s)return;
+    const o={p,cat,b,m,s,etat:'ok'};
+    if(b>0&&m>b){o.etat='depasse';o.exces=m-b;o.excesSem=Math.min(s,m-b);}
+    else if(!b&&s>0&&aBudget){o.etat='sansbud';}
+    else if(b>0&&cat===B_VAR&&jour>=5&&m>=b*0.3){
+      const rythme=m/jour,proj=rythme*nbJ;
+      if(proj>b*1.05){o.etat='rapide';o.jourDep=Math.min(nbJ,Math.ceil(b/rythme));o.parJour=Math.max(0,Math.floor((b-m)/Math.max(1,nbJ-jour)));}
+      else o.marge=Math.round(b-proj);
+    }
+    postes.push(o);
+  }));
+  const horsBudget=postes.reduce((s,o)=>s+(o.etat==='depasse'?o.excesSem:o.etat==='sansbud'?o.s:0),0);
+  const rapides=postes.filter(o=>o.etat==='rapide').sort((a,b)=>a.jourDep-b.jourDep);
+  // Ce qu'on peut encore dépenser par jour (postes variables budgétés)
+  const resteVar=postes.filter(o=>o.cat===B_VAR&&o.b>0).reduce((s,o)=>s+Math.max(0,o.b-o.m),0);
+  const joursRestants=nbJ-jour;
+  // Postes de la semaine
+  const top=Object.entries(sem).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([p,v])=>({p,v,o:postes.find(x=>x.p===p)}));
+  const grosse=dep.slice().sort((a,b)=>(b.amt||0)-(a.amt||0))[0];
+  // Petites dépenses
+  const petites=dep.filter(t=>t.cat===B_VAR&&(t.amt||0)<1500);
+  const totPetites=petites.reduce((s,t)=>s+(t.amt||0),0);
+  // Jours sans saisie (semaine passée entièrement écoulée)
+  const sansSaisie=[];for(let i=0;i<7;i++){const d=addJ(lundi,i);if(d>auj)break;if(!txs.some(t=>t.date===d))sansSaisie.push(d);}
+  // Jour le plus cher (8 semaines, dépenses variables)
+  const debut8=addJ(lundi,-49),parJS=[0,0,0,0,0,0,0];let n8=0;
+  txs.filter(t=>t.cat===B_VAR&&t.date>=debut8&&t.date<=dim).forEach(t=>{parJS[dJ(t.date).getDay()]+=t.amt||0;n8++;});
+  const semainesHist=new Set(txs.filter(t=>t.date>=debut8&&t.date<=dim).map(t=>lundiDe(t.date))).size;
+  let jourCher=null;if(n8>=15&&semainesHist>=4){const mx=Math.max(...parJS),tot=parJS.reduce((a,b)=>a+b,0);const j=parJS.indexOf(mx);if(mx>tot/7*1.4)jourCher={j,moy:Math.round(mx/semainesHist)};}
+  // Postes sans budget : comparaison avec les 4 semaines d'avant (information)
+  const avant={};txs.filter(t=>B_DEP.includes(t.cat)&&t.date>=addJ(lundi,-28)&&t.date<lundi).forEach(t=>{avant[t.poste]=(avant[t.poste]||0)+(t.amt||0)/4;});
+  // Semaine qui vient
+  const deb=addJ(dim,1),fin=addJ(dim,7),avenir=[];
+  recur.filter(r=>!r.pause).forEach(r=>{for(let d=deb>auj?deb:addJ(auj,1);d<=fin;d=addJ(d,1)){if(d>=r.debut&&recurTombe(r,d)&&r.amt>=5000){avenir.push({d,txt:`${r.poste} ${fmt(r.amt)} F`});break;}}});
+  if(modules.dettes)dettes.forEach(d=>{if(resteDette(d)>0&&d.echeance&&d.echeance<=fin)avenir.push({d:d.echeance,txt:d.sens==='pret'?`${d.personne} doit te rendre ${fmt(resteDette(d))} F`:`Rendre ${fmt(resteDette(d))} F à ${d.personne}`,retard:d.echeance<auj});});
+  avenir.sort((a,b)=>a.d.localeCompare(b.d));
+  const objRetard=modules.objectifs?objectifs.map(o=>({o,e:effortObj(o)})).filter(x=>x.e.etat==='date'&&x.e.encore>0):[];
+  return{lundi,dim,D,ym,jour,nbJ,semaine,dep,totDep,totRev,totEpa,aBudget,postes,horsBudget,rapides,resteVar,joursRestants,top,grosse,petites,totPetites,sansSaisie,jourCher,avant,avenir,objRetard};
+}
+
+// Titre de la carte selon la semaine
+function bilanTitre(B){
+  if(!B.semaine.length)return{t:'Semaine sans transaction notée',s:'Un oubli ? Le pointage de fin de mois te le dira',c:'amber'};
+  if(!B.aBudget)return{t:'Semaine sans budget de référence',s:`${fmt(B.totDep)} F dépensés · prépare ton budget pour un vrai bilan`,c:'blue'};
+  if(B.horsBudget>0){const l=B.postes.filter(o=>o.etat==='depasse'&&o.excesSem>0||o.etat==='sansbud').map(o=>o.p);
+    return{t:`${fmt(B.horsBudget)} F hors budget cette semaine`,s:`${l.slice(0,2).join(', ')}${l.length>2?'…':''} · ${fmt(B.totDep)} F dépensés au total`,c:'red'};}
+  if(B.rapides.length){const r=B.rapides[0];return{t:`Rythme trop rapide sur ${r.p}`,s:`Dépassement vers le ${r.jourDep}${r.jourDep===1?'er':''} si rien ne change`,c:'amber'};}
+  return{t:'Semaine dans les clous',s:`${fmt(B.totDep)} F dépensés, tout était prévu`,c:'green'};
+}
+
+// Conseil de la semaine : la règle la plus utile, pas la même que la semaine d'avant
+function bilanConseils(B){
+  const C=[];
+  const ymAv=(()=>{const[y,m]=B.ym.split('-').map(Number);return m===1?(y-1)+'-12':y+'-'+String(m-1).padStart(2,'0');})();
+  B.postes.filter(o=>o.etat==='depasse').forEach(o=>{
+    const bAv=gBud(ymAv,o.p),mAv=txYM(ymAv).filter(t=>t.poste===o.p&&B_DEP.includes(t.cat)).reduce((s,t)=>s+(t.amt||0),0);
+    if(bAv>0&&mAv>bAv)C.push({id:'rec_'+o.p,t:`${o.p} dépasse son budget deux mois de suite. Soit son budget est trop bas (passe-le à ${fmt(Math.ceil(Math.max(o.m,mAv)/1000)*1000)} F), soit c'est le poste où agir en premier.`});
+  });
+  const dv=B.postes.filter(o=>o.etat==='depasse'&&o.cat===B_VAR).sort((a,b)=>b.exces-a.exces)[0];
+  if(dv&&B.joursRestants>0){const marge=B.postes.filter(o=>o.cat===B_VAR&&o.b>0&&o.p!==dv.p&&o.etat==='ok').map(o=>({p:o.p,r:o.b-o.m})).filter(x=>x.r>0).sort((a,b)=>b.r-a.r)[0];
+    C.push({id:'dep_'+dv.p,t:`${dv.p} a déjà dépassé son budget de ${fmt(dv.exces)} F. D'ici la fin du mois, chaque dépense sur ce poste sort du prévu${marge?` : compense en réduisant ${marge.p}, où il reste ${fmt(marge.r)} F`:''}.`});}
+  if(B.rapides.length){const r=B.rapides[0];C.push({id:'rap_'+r.p,t:`Pour que ${r.p} tienne jusqu'au ${B.nbJ}, limite-toi à ${fmt(r.parJour)} F par jour sur ce poste.`});}
+  B.postes.filter(o=>o.etat==='depasse'&&o.cat===B_FIXE).forEach(o=>C.push({id:'fix_'+o.p,t:`${o.p} a coûté ${fmt(o.exces)} F de plus que prévu. Pour une dépense fixe, mets à jour son budget : les prochains mois seront plus justes.`}));
+  const sb=B.postes.filter(o=>o.etat==='sansbud').sort((a,b)=>b.s-a.s)[0];
+  if(sb)C.push({id:'sb_'+sb.p,t:`Tu as dépensé ${fmt(sb.s)} F en ${sb.p} sans budget prévu. Donne-lui un montant dans Budget : tu sauras quand t'arrêter.`});
+  if(B.petites.length>=8)C.push({id:'pet',t:`${B.petites.length} petites dépenses ont fait ${fmt(B.totPetites)} F cette semaine. Une par une elles ne pèsent rien, ensemble elles comptent : regarde lesquelles tu pourrais éviter.`});
+  B.objRetard.slice(0,1).forEach(({o,e})=>C.push({id:'obj_'+o.id,t:`Pour ${o.nom}, il manque ${fmt(e.encore)} F ce mois. Les verser dès cette semaine évite la course de fin de mois.`}));
+  if(B.sansSaisie.length>=3)C.push({id:'saisie',t:`${B.sansSaisie.length} jours sans rien noter. Note tes dépenses au moment de payer, même les petites : c'est ce qui rend ce bilan juste.`});
+  if(!B.aBudget)C.push({id:'nobud',t:`Prépare le budget de ${MFR[+B.ym.slice(5)-1].toLowerCase()} : cinq minutes suffisent, et ce bilan pourra te dire si tu es dans les clous.`});
+  if(B.jourCher)C.push({id:'jour',t:`Le ${JSEM[B.jourCher.j]} te coûte en moyenne ${fmt(B.jourCher.moy)} F. Fixe-toi un plafond pour ce jour-là.`});
+  if(B.aBudget&&!B.horsBudget&&!B.rapides.length&&B.resteVar>0)C.push({id:'bravo',t:`Tout est tenu. S'il te reste de la marge à la fin du mois, verse-la sur ton épargne plutôt que de la laisser filer.`});
+  return C;
+}
+function bilanConseil(B){
+  const C=bilanConseils(B);if(!C.length)return null;
+  let mem={};try{mem=JSON.parse(localStorage.getItem('fiinas-conseils')||'{}');}catch(e){}
+  const prec=mem[addJ(B.lundi,-7)];
+  const c=mem[B.lundi]&&C.find(x=>x.id===mem[B.lundi])||C.find(x=>x.id!==prec)||C[0];
+  mem[B.lundi]=c.id;const k=Object.keys(mem).sort();while(k.length>12)delete mem[k.shift()];
+  try{localStorage.setItem('fiinas-conseils',JSON.stringify(mem));}catch(e){}
+  return c.t;
+}
+
+// ── Carte de l'accueil
+function bilanLundiCourant(){return addJ(lundiDe(todayStr()),-7);}
+function renderBilanDash(){
+  const el=document.getElementById('bilan-dash');if(!el)return;
+  const lundi=bilanLundiCourant();
+  let masque=null;try{masque=localStorage.getItem('fiinas-bilan-masque');}catch(e){}
+  const recent=txs.some(t=>t.date>=addJ(lundi,-14));
+  if(!recent||masque===lundi){el.innerHTML='';return;}
+  const B=bilanCalc(lundi),T=bilanTitre(B);
+  const coul={red:'var(--red)',amber:'var(--amber)',green:'var(--green)',blue:'var(--blue)'}[T.c];
+  el.innerHTML=`<div class="card" style="cursor:pointer;border-color:var(--blue);position:relative" onclick="openBilan('${lundi}')">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <span style="font-size:11.5px;color:var(--blue);font-weight:600;display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>Bilan du ${jFr(lundi)} au ${jFr(B.dim)}</span>
+      <button aria-label="Masquer jusqu'à la semaine prochaine" onclick="event.stopPropagation();masquerBilan('${lundi}')" style="background:none;border:none;color:var(--text3);font-size:15px;cursor:pointer;padding:0 2px">✕</button></div>
+    <div style="display:flex;gap:9px;align-items:flex-start;margin-top:7px"><span style="width:8px;height:8px;border-radius:50%;background:${coul};margin-top:6px;flex-shrink:0"></span>
+      <div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600;color:var(--text);line-height:1.3">${esc(T.t)}</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:2px">${esc(T.s)}</div></div><span style="color:var(--text3);font-size:18px">›</span></div>
+  </div>`;
+}
+function masquerBilan(l){try{localStorage.setItem('fiinas-bilan-masque',l);}catch(e){}renderBilanDash();toast('Bilan masqué jusqu\'à lundi prochain',{lib:'Annuler',fn:()=>{try{localStorage.removeItem('fiinas-bilan-masque');}catch(e){}renderBilanDash();}});}
+
+// ── Bilan complet
+function openBilan(lundi){
+  const B=bilanCalc(lundi),T=bilanTitre(B),conseil=bilanConseil(B);
+  const sec=(titre,html)=>html?`<div style="margin-top:18px"><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:7px">${titre}</div>${html}</div>`:'';
+  const encart=(c,ic,titre,txt)=>`<div style="margin-top:16px;background:${c==='red'?'var(--rd)':c==='amber'?'rgba(242,179,61,.12)':c==='green'?'var(--gd)':'var(--bd)'};border-radius:var(--rs);padding:11px 13px">
+    <div style="font-size:12.5px;font-weight:600;color:${c==='red'?'var(--red)':c==='amber'?'var(--amber)':c==='green'?'var(--green)':'var(--blue)'};margin-bottom:3px">${ic} ${titre}</div><div style="font-size:12.5px;color:var(--text);line-height:1.55">${txt}</div></div>`;
+  const tag=x=>{const o=x.o;if(!o)return'';
+    if(o.etat==='depasse')return `<span style="color:var(--red);font-size:11px">budget dépassé de ${fmt(o.exces)}</span>`;
+    if(o.etat==='sansbud')return `<span style="color:var(--amber);font-size:11px">sans budget${B.avant[x.p]?` · d'habitude ${fmt(Math.round(B.avant[x.p]))}/sem.`:''}</span>`;
+    if(o.etat==='rapide')return `<span style="color:var(--amber);font-size:11px">rythme rapide</span>`;
+    if(o.b>0)return `<span style="color:var(--green);font-size:11px">prévu · ${Math.round(o.m/o.b*100)} % du mois</span>`;
+    return '';};
+  const kpi=(l,v,s,c)=>`<div style="background:var(--surf2);border-radius:var(--rs);padding:10px 11px"><div style="font-size:11px;color:var(--text2)">${l}</div><div style="font-size:17px;font-weight:600;color:var(--text);margin-top:1px">${v}</div>${s?`<div style="font-size:11px;color:${c||'var(--text3)'};margin-top:1px">${s}</div>`:''}</div>`;
+  const parJour=B.aBudget&&B.joursRestants>0&&B.resteVar>0?Math.floor(B.resteVar/B.joursRestants):null;
+  const suiv=addJ(lundi,7),prec=addJ(lundi,-7),peutSuiv=suiv<=bilanLundiCourant();
+  const coul={red:'var(--red)',amber:'var(--amber)',green:'var(--green)',blue:'var(--blue)'}[T.c];
+  let h=`<div style="display:flex;justify-content:space-between;align-items:center;margin:-4px 0 12px">
+      <button onclick="openBilan('${prec}')" aria-label="Semaine précédente" style="background:var(--surf2);border:none;color:var(--text);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px">‹</button>
+      <span style="font-size:13px;color:var(--text2)">Du ${jFr(lundi)} au ${jFr(B.dim)}</span>
+      <button onclick="${peutSuiv?`openBilan('${suiv}')`:''}" aria-label="Semaine suivante" style="background:var(--surf2);border:none;color:var(--text);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px;${peutSuiv?'':'opacity:.3;cursor:default'}">›</button></div>
+    <div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:14px"><span style="width:9px;height:9px;border-radius:50%;background:${coul};margin-top:6px;flex-shrink:0"></span><div><div style="font-size:16px;font-weight:600;color:var(--text);line-height:1.3">${esc(T.t)}</div><div style="font-size:12px;color:var(--text2);margin-top:2px">${esc(T.s)}</div></div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${kpi('Dépensé',fmt(B.totDep)+' F',B.horsBudget>0?fmt(B.horsBudget)+' F hors budget':B.aBudget&&B.totDep?'tout était prévu':'',B.horsBudget>0?'var(--red)':'var(--green)')}
+      ${parJour!==null?kpi('Tu peux encore dépenser',fmt(parJour)+' F / jour',`courant, jusqu'au ${B.nbJ} ${MOIS_C[+B.ym.slice(5)-1]}`):kpi('Entrées',fmt(B.totRev)+' F',B.totEpa?fmt(B.totEpa)+' F épargnés':'')}
+    </div>`;
+  // Où est parti l'argent
+  if(B.top.length)h+=sec('Où est parti l\'argent',B.top.map(x=>`<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:5px 0;border-bottom:0.5px solid var(--border)">
+      <div style="min-width:0"><div style="font-size:13px;color:var(--text)">${esc(x.p)}</div>${tag(x)}</div><div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap">${fmt(x.v)} F</div></div>`).join('')
+    +(B.grosse&&B.grosse.amt>=Math.max(5000,B.totDep*0.25)?`<div style="font-size:11.5px;color:var(--text2);margin-top:7px">Plus grosse dépense : ${esc(B.grosse.cmt||B.grosse.poste)}, ${fmt(B.grosse.amt)} F, ${JSEM[dJ(B.grosse.date).getDay()]}${(()=>{const o=B.postes.find(x=>x.p===B.grosse.poste);return o&&o.b>0&&o.etat!=='depasse'?' · prévue dans ton budget':'';})()}</div>`:''));
+  // Fin du mois
+  if(B.aBudget&&B.joursRestants>0){
+    const ok=B.postes.filter(o=>o.cat===B_VAR&&o.b>0&&o.etat==='ok'&&o.marge!=null).sort((a,b)=>a.marge-b.marge);
+    if(B.rapides.length)h+=encart('amber','<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="vertical-align:-2px"><path d="M3 17l6-6 4 4 8-8M14 7h7v7"/></svg>','D\'ici la fin du mois',
+      B.rapides.slice(0,3).map(r=>`À ce rythme, <b>${esc(r.p)}</b> dépassera son budget vers le ${r.jourDep}${r.jourDep===1?'er':''} ${MFR[+B.ym.slice(5)-1].toLowerCase()}. Pour tenir : ${fmt(r.parJour)} F par jour.`).join('<br>')+(ok.length?`<br><span style="color:var(--text2)">${esc(ok[0].p)} tiendra, avec environ ${fmt(ok[0].marge)} F de marge.</span>`:''));
+    else if(B.postes.some(o=>o.cat===B_VAR&&o.b>0))h+=encart('green','<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="vertical-align:-2px"><path d="M5 12l5 5L20 7"/></svg>','D\'ici la fin du mois','À ce rythme, tous tes postes variables tiendront leur budget.');
+  }
+  // Petites dépenses
+  if(B.petites.length>=5)h+=sec('Les petites dépenses',`<div style="font-size:12.5px;color:var(--text2);line-height:1.55">${B.petites.length} dépenses de moins de 1 500 F = <b style="color:var(--text)">${fmt(B.totPetites)} F</b>, soit ${Math.round(B.totPetites/Math.max(1,B.dep.filter(t=>t.cat===B_VAR).reduce((s,t)=>s+(t.amt||0),0))*100)} % de tes dépenses courantes de la semaine.</div>`);
+  // Habitudes
+  const hab=[];
+  if(B.jourCher)hab.push(`Le ${JSEM[B.jourCher.j]} est ton jour le plus cher : ${fmt(B.jourCher.moy)} F en moyenne.`);
+  if(B.sansSaisie.length>=2)hab.push(`${B.sansSaisie.length} jours sans rien noter (${B.sansSaisie.map(d=>JSEM[dJ(d).getDay()]).join(', ')}). Un oubli ?`);
+  h+=sec('Tes habitudes',hab.length?`<div style="font-size:12.5px;color:var(--text2);line-height:1.6">${hab.join('<br>')}</div>`:'');
+  // Semaine qui vient
+  const av=B.avenir.slice(0,4).map(a=>`<div style="font-size:12.5px;color:${a.retard?'var(--red)':'var(--text2)'};padding:2px 0">${a.retard?'En retard':jFr(a.d)} · ${esc(a.txt)}</div>`).join('')
+    +B.objRetard.slice(0,2).map(({o,e})=>`<div style="font-size:12.5px;color:var(--text2);padding:2px 0">${esc(o.nom)} : encore ${fmt(e.encore)} F à mettre de côté ce mois</div>`).join('');
+  h+=sec('La semaine qui vient',av);
+  if(conseil)h+=encart('blue','<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="vertical-align:-2px"><path d="M9 18h6M10 22h4M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2z"/></svg>','Le conseil de la semaine',esc(conseil));
+  // Je peux me le permettre ?
+  const opts=['<option value="">Poste (facultatif)</option>',...B_DEP.flatMap(c=>getAllPostes(c)).map(p=>`<option value="${esc(p)}">${esc(p)}</option>`)].join('');
+  h+=`<div style="margin-top:20px;padding-top:16px;border-top:0.5px solid var(--border)">
+    <div style="font-size:13.5px;font-weight:600;color:var(--text);margin-bottom:3px">Je peux me le permettre ?</div>
+    <div style="font-size:11.5px;color:var(--text3);margin-bottom:10px">Un achat que tu envisages : l'appli regarde ton budget, tes comptes et ce qui t'attend.</div>
+    <div style="display:flex;gap:8px;margin-bottom:8px"><input class="finp" id="pp-lib" placeholder="Téléphone, frigo…" style="flex:1;min-width:0"><input class="finp" id="pp-amt" inputmode="numeric" placeholder="Prix" oninput="fmtAmtInput(this)" style="width:110px;text-align:right"></div>
+    <select class="fsel" id="pp-poste" style="margin-bottom:10px">${opts}</select>
+    <button class="btn-p" onclick="peutPermettre()">Vérifier</button>
+    <div id="pp-rep" style="margin-top:10px"></div></div>`;
+  openSheet(sheetHead('Bilan de la semaine')+h);
+}
+
+// ── « Je peux me le permettre ? » (mois en cours)
+function peutPermettre(){
+  const amt=parseAmt(document.getElementById('pp-amt').value),lib=(document.getElementById('pp-lib').value||'').trim()||'cet achat',poste=document.getElementById('pp-poste').value;
+  const rep=document.getElementById('pp-rep');
+  if(!(amt>0)){rep.innerHTML='<div style="font-size:12px;color:var(--red)">Saisis le prix.</div>';return;}
+  const auj=todayStr(),ym=auj.slice(0,7),bud=budget[ym]||{},aBud=Object.values(bud).some(v=>v>0);
+  const mtd=p=>txYM(ym).filter(t=>t.poste===p&&t.date<=auj).reduce((s,t)=>s+(t.amt||0),0);
+  const out=(c,titre,txt)=>{rep.innerHTML=`<div style="background:${c==='green'?'var(--gd)':c==='amber'?'rgba(242,179,61,.12)':'var(--rd)'};border-radius:var(--rs);padding:11px 13px;font-size:12.5px;line-height:1.6;color:var(--text)"><b style="color:${c==='green'?'var(--green)':c==='amber'?'var(--amber)':'var(--red)'}">${titre}</b><br>${txt}</div>`;};
+  // 1. Poste avec de la marge : c'est prévu
+  if(poste&&bud[poste]>0){const reste=bud[poste]-mtd(poste);
+    if(amt<=reste)return out('green','Oui, c\'est prévu.',`Ton budget ${esc(poste)} a encore ${fmt(reste)} F ce mois. Après ${esc(lib)}, il restera ${fmt(reste-amt)} F.`);}
+  // 2. Marge du budget du mois : entrées prévues − sorties prévues (non affectée)
+  const rev=getAllPostes('Revenu').reduce((s,p)=>s+(bud[p]||0),0);
+  const sorties=[...B_DEP,'Epargne'].flatMap(c=>getAllPostes(c)).reduce((s,p)=>s+(bud[p]||0),0);
+  const libre=Math.max(0,rev-sorties);
+  // Marge des postes variables non encore dépensée (hors poste choisi)
+  const resteVar=getAllPostes(B_VAR).filter(p=>p!==poste).reduce((s,p)=>s+Math.max(0,(bud[p]||0)-mtd(p)),0);
+  const resteEpa=getAllPostes('Epargne').reduce((s,p)=>s+Math.max(0,(bud[p]||0)-mtd(p)),0);
+  const restePoste=poste&&bud[poste]>0?Math.max(0,bud[poste]-mtd(poste)):0;
+  // 3. Argent réellement disponible (comptes) moins ce qui doit encore sortir ce mois
+  let cash=null;
+  if(modules.comptes&&comptes.length){
+    const fixesRestants=getAllPostes(B_FIXE).reduce((s,p)=>s+Math.max(0,(bud[p]||0)-mtd(p)),0);
+    const dettesDues=modules.dettes?dettes.filter(d=>d.sens!=='pret'&&resteDette(d)>0&&d.echeance&&d.echeance.slice(0,7)<=ym).reduce((s,d)=>s+resteDette(d),0):0;
+    cash={total:totalComptes(),engag:fixesRestants+dettesDues};cash.dispo=cash.total-cash.engag;
+  }
+  if(cash&&amt>cash.dispo){
+    return out('red','Pas maintenant.',`Tes comptes ont ${fmtSigne(cash.total)}, mais ${fmt(cash.engag)} F doivent encore sortir ce mois (dépenses fixes${modules.dettes?', dettes':''}). Il ne reste que ${fmtSigne(Math.max(0,cash.dispo))} de vraiment libre.`+planEpargne(amt,Math.max(0,cash.dispo)));
+  }
+  if(!aBud){
+    return cash?out('amber','Possible, mais sans filet.',`Tu as ${fmtSigne(cash.dispo)} de libre sur tes comptes, mais pas de budget ce mois pour savoir ce qui t'attend encore. Prépare ton budget pour une réponse sûre.`)
+      :out('amber','Je ne peux pas répondre.','Il me faut un budget pour ce mois, ou le module Mes comptes, pour savoir ce qui te reste.');
+  }
+  if(amt<=libre+restePoste)return out('green','Oui.',`Ton budget du mois prévoit ${fmt(libre)} F non affectés${restePoste?` et ${fmt(restePoste)} F restent sur ${esc(poste)}`:''}. ${esc(lib[0].toUpperCase()+lib.slice(1))} passe sans toucher au reste.`);
+  if(amt<=libre+restePoste+resteVar)return out('amber','Oui, mais en te serrant ailleurs.',`Il faudrait prendre ${fmt(amt-libre-restePoste)} F sur tes autres dépenses courantes du mois (il y reste ${fmt(resteVar)} F). Faisable si tu réduis les sorties d'ici la fin du mois.`);
+  if(amt<=libre+restePoste+resteVar+resteEpa)return out('amber','Oui, mais ça prend sur ton épargne.',`Il faudrait renoncer à ${fmt(amt-libre-restePoste-resteVar)} F d'épargne prévue ce mois. À toi de voir si ${esc(lib)} vaut ce recul.`);
+  return out('red','Pas ce mois-ci.',`Ton budget du mois ne laisse pas assez de place : ${fmt(libre+restePoste+resteVar)} F au mieux.`+planEpargne(amt,libre+restePoste));
+}
+// Quand ce sera possible, en mettant de côté la marge mensuelle habituelle
+function planEpargne(amt,deja){
+  const ym=todayStr().slice(0,7);const mois=[];let y=+ym.slice(0,4),m=+ym.slice(5);
+  for(let i=0;i<3;i++){m--;if(!m){m=12;y--;}mois.push(y+'-'+String(m).padStart(2,'0'));}
+  const soldes=mois.map(k=>{const t=txYM(k);return sumC(t,'Revenu')-sumC(t,B_FIXE)-sumC(t,B_VAR);}).filter((v,i)=>txYM(mois[i]).length);
+  const bud=budget[ym]||{};
+  const margeBud=getAllPostes('Revenu').reduce((s,p)=>s+(bud[p]||0),0)-[...B_DEP].flatMap(c=>getAllPostes(c)).reduce((s,p)=>s+(bud[p]||0),0);
+  const cap=Math.round((soldes.length?Math.max(margeBud,soldes.reduce((a,b)=>a+b,0)/soldes.length):margeBud)*0.5/1000)*1000;
+  if(cap<=0)return `<br>Ces derniers mois, il ne te reste rien en fin de mois : pour y arriver, il faudra d'abord réduire un poste ou augmenter tes entrées.`;
+  const n=Math.ceil(Math.max(0,amt-deja)/cap);
+  const d=new Date();d.setMonth(d.getMonth()+n);
+  return `<br>En mettant <b>${fmt(cap)} F</b> de côté chaque mois (la moitié de ta marge habituelle), c'est possible <b>en ${MFR[d.getMonth()].toLowerCase()}${d.getFullYear()!==new Date().getFullYear()?' '+d.getFullYear():''}</b>.`;
 }
 
 // ═══════════════ CLAVIER ═══════════════
@@ -3138,8 +3384,8 @@ let _qdnFait=false;
 async function renderDash(){
   if(!_qdnFait){_qdnFait=true;setTimeout(quoiDeNeuf,600);}
   renderBackupBanner();
-  renderCptDash();renderObjDash();renderDetDash();renderPointBanner();renderRecurDash();renderMajBanner();
-  if(isAnnual()){const h=document.getElementById('hero');h.className='hero';h.onclick=null;h.style.cursor='';['watch','cpt-dash','obj-dash','det-dash','point-banner'].forEach(i=>{const e=document.getElementById(i);if(e)e.innerHTML='';});document.getElementById('detail-wrap').style.display='block';renderDashAnnual();return;}
+  renderCptDash();renderObjDash();renderDetDash();renderPointBanner();renderRecurDash();renderMajBanner();renderBilanDash();
+  if(isAnnual()){const h=document.getElementById('hero');h.className='hero';h.onclick=null;h.style.cursor='';['watch','cpt-dash','obj-dash','det-dash','point-banner','bilan-dash'].forEach(i=>{const e=document.getElementById(i);if(e)e.innerHTML='';});document.getElementById('detail-wrap').style.display='block';renderDashAnnual();return;}
   const ym=curYM();const t=txYM(ym);
   const rev=sumC(t,'Revenu');const fix=sumC(t,'Dépenses fixes');
   const vr=sumC(t,'Dépenses variables');const ep=sumC(t,'Epargne');
