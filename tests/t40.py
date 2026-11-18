@@ -7,7 +7,7 @@ srv=subprocess.Popen(['python3','-m','http.server','8790'],cwd=ROOT,stdout=subpr
 st={'users/u1/data/settings':{'cats':{'Revenu':['Salaire']},'budget':{},'custom':{},'modules':{}},
  'users/u1/data/foyers':{'liste':['F1'],'demandes':[]},
  'foyers/F1':{'nom':'Foyer Test','code':'ABC-DEF','roles':{'u9':'resp','u1':'membre'},'membres':{'u9':{'nom':'Abdou'},'u1':{'nom':'Awa'}}},
- 'foyers/F1/data/settings':{'cats':{'Revenu':['Apports'],'Dépenses variables':['Transport']},'budget':{},'custom':{},'modules':{}},
+ 'foyers/F1/data/settings':{'cats':{'Revenu':['Apports'],'Dépenses variables':['Transport']},'budget':{},'custom':{},'modules':{'comptes':True},'comptes':[{'id':'om','nom':'Orange Money','type':'om','solde0':0},{'id':'wv','nom':'Wave','type':'wave','solde0':0}]},'foyers/F1/mouvements/m1':{'type':'ajustement','compte':'om','amt':-50000,'date':'2026-11-18','ts':'x','createdById':'u9'},
  'foyers/F1/transactions/a1':{'amt':100000,'date':'2026-11-18','cat':'Revenu','poste':'Apports','ts':'2026-11-18T10:00:00Z','createdById':'u9','createdBy':'Abdou'},
  'foyers/F1/transactions/a2':{'amt':5000,'date':'2026-11-18','cat':'Dépenses variables','poste':'Transport','ts':'2026-11-18T11:00:00Z','createdById':'u1','createdBy':'Awa'}}
 with sync_playwright() as p:
@@ -23,5 +23,10 @@ with sync_playwright() as p:
     print('modale apport Abdou:',pg.evaluate("document.getElementById('edit-modal').style.display"),'| toast:',pg.evaluate("document.getElementById('toast').textContent"))
     pg.evaluate("closeEditTx()");pg.click(".txi >> text=Transport");pg.wait_for_timeout(300)
     print('modale ouverte (sa dépense):',pg.evaluate("document.getElementById('edit-modal').style.display"))
+    pg.evaluate("closeEditTx();goP('cpt',null)");pg.wait_for_timeout(300)
+    print('membre : boutons gestion visibles:',pg.evaluate("[...document.querySelectorAll('#page-cpt button')].filter(b=>b.offsetParent&&/open(AddCompte|Pointage)/.test(b.getAttribute('onclick')||'')).length"),'| virement visible:',pg.evaluate("[...document.querySelectorAll('#page-cpt button')].some(b=>b.offsetParent&&/openVirement/.test(b.getAttribute('onclick')||''))"))
+    pg.evaluate("openCompteDetail('om')");pg.wait_for_timeout(200)
+    print('détail OM:',pg.evaluate("document.getElementById('cpt-sheet').innerText.replace(/\\n/g,' | ').slice(0,160)"))
+    pg.evaluate("openCorrection('om')");print('correction bloquée:',pg.evaluate("document.getElementById('toast').textContent"))
     print(errs);b.close()
 srv.kill()

@@ -66,17 +66,22 @@ service cloud.firestore {
         allow delete: if resp(fid) || (ecrit(fid) && resource.data.createdById == request.auth.uid);
       }
 
+      // Mouvements : un membre fait des virements, remboursements et retraits d'objectif en son nom ;
+      // corrections de solde et pointages : responsables seulement
       match /mouvements/{mid} {
         allow read: if lit(fid);
-        allow write: if ecrit(fid);
+        allow write: if resp(fid);
+        allow create: if ecrit(fid)
+          && request.resource.data.type in ['virement', 'remb', 'retrait_obj']
+          && request.resource.data.createdById == request.auth.uid;
       }
 
-      // Réglages : un membre peut tout sauf le budget et les modules
+      // Réglages : un membre peut tout sauf le budget, les modules et la liste des comptes
       match /data/{d} {
         allow read: if lit(fid);
         allow write: if resp(fid);
         allow update: if ecrit(fid)
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['budget', 'budgetDetails', 'modules']);
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['budget', 'budgetDetails', 'modules', 'comptes']);
       }
     }
   }

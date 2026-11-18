@@ -51,7 +51,7 @@ function soft(pr,ret){
     setTimeout(()=>{if(!done){done=true;res(ret);}},2500);
   });
 }
-const auteur=(r,d,o)=>{const u=auth.currentUser;return(!o&&u&&/\/transactions\//.test(r.path||'')&&!d.createdById)?{...d,createdById:u.uid,createdBy:d.createdBy||window.userName||u.displayName||''}:d;};
+const auteur=(r,d,o)=>{const u=auth.currentUser;return(!o&&u&&/\/(transactions|mouvements)\//.test(r.path||'')&&!d.createdById)?{...d,createdById:u.uid,createdBy:d.createdBy||window.userName||u.displayName||''}:d;};
 const setDoc=(r,d,o)=>soft(o?_setDoc(r,d,o):_setDoc(r,auteur(r,d,o)));
 const deleteDoc=r=>soft(_deleteDoc(r));
 const addDoc=(c,d)=>{const r=doc(c);return soft(_setDoc(r,auteur(r,d)),r);};
@@ -160,6 +160,7 @@ input,textarea,[contenteditable],.selectable,#secours-code{-webkit-user-select:t
 #nav.guide-haut{z-index:1160}
 body.sans-budget #page-bud .save-dock,body.sans-budget #bud-copy-btn,body.sans-budget #bud-eff-btn,body.sans-budget #page-bud [id^="det_"] > div:last-child{display:none!important}
 body.sans-budget #page-bud .binp{pointer-events:none}
+body.sans-budget [onclick^="openAddCompte("],body.sans-budget [onclick^="openCorrection("],body.sans-budget [onclick^="supprimerCompte("],body.sans-budget [onclick^="openPointage("],body.sans-budget [onclick*="].cor="],body.sans-budget #point-banner{display:none!important}
 body.sans-budget #page-bud #bud-lecture{display:block!important}
 body.lecture [onclick^="openPointage("],body.lecture [onclick^="recurConfirmer("],body.lecture [onclick^="recurToutConfirmer("],body.lecture [onclick^="openRecurConfirm("],body.lecture [onclick^="openRecurEdit("],body.lecture [onclick^="openEffacerBudgets("],body.lecture [onclick^="openPrepBudget("],body.lecture [onclick^="validerPrep("],body.lecture [onclick^="modifierPrep("],body.lecture [onclick^="openAddCompte("],body.lecture [onclick^="supprimerCompte("],body.lecture [onclick^="openCorrection("],body.lecture [onclick^="openVirement("],body.lecture [onclick^="saveCorrection("],body.lecture [onclick^="saveVirement("],body.lecture [onclick^="saveCompte("],body.lecture [onclick^="openAddObj("],body.lecture [onclick^="supprimerObj("],body.lecture [onclick^="openRetraitObj("],body.lecture [onclick^="ajouterAObj("],body.lecture [onclick^="saveObj("],body.lecture [onclick^="saveRetraitObj("],body.lecture [onclick^="openAddDette("],body.lecture [onclick^="supprimerDette("],body.lecture [onclick^="openRemb("],body.lecture [onclick^="openAbandon("],body.lecture [onclick^="saveDette("],body.lecture [onclick^="saveRemb("],body.lecture [onclick^="saveAbandon("],body.lecture [onclick^="rappelWhatsApp("],body.lecture [onclick^="appliquerEffort("],body.lecture [onclick^="openCopyBudget("],body.lecture [onclick^="addBudDetail("],body.lecture [onclick^="removeBudDetail("],body.lecture [onclick^="saveBudget("],body.lecture [onclick^="addCP("],body.lecture [onclick^="removePoste("],body.lecture [onclick^="removeCP("],body.lecture [onclick^="payCorrige("],body.lecture [onclick^="plusTardCpt("],body.lecture [onclick^="plusTardObj("],body.lecture [onclick^="plusTardDet("],body.lecture [onclick^="parseAndImport("]{display:none!important}
 body.lecture #nav .ni:nth-child(3){visibility:hidden}
@@ -1208,6 +1209,7 @@ function moisLong(ym){const[y,m]=ym.split('-');return MFR[+m-1]+' '+y;}
 
 // ── Étape 1 : soldes réels
 function openPointage(){
+  if(!peutComptes())return;
   if(!comptes.length){toast('Ajoute d\'abord tes comptes');return;}
   PT={ym:todayStr().slice(0,7),reels:{},lignes:{}};
   comptes.forEach(c=>PT.app=Object.assign(PT.app||{},{[c.id]:soldeCompte(c)}));
@@ -1665,7 +1667,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='42';
+const APP_VERSION='43';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -2298,6 +2300,9 @@ const CODE_ALPHA='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 function nouveauCodeFoyer(){const a=crypto.getRandomValues(new Uint8Array(6));let c='';a.forEach(b=>c+=CODE_ALPHA[b%31]);return c.slice(0,3)+'-'+c.slice(3);}
 const normCodeFoyer=v=>{const c=String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'');return c.length===6?c.slice(0,3)+'-'+c.slice(3):null;};
 function peutBudget(){return !espace||espace.role==='resp';}
+// Créer, modifier, supprimer un compte, corriger un solde, pointer : responsables seulement
+function peutComptes(){if(peutBudget())return true;toast('Dans un foyer, seuls les responsables gèrent les comptes et corrigent les soldes');return false;}
+function nomMembre(id){return(foyerDoc&&foyerDoc.membres&&foyerDoc.membres[id]&&foyerDoc.membres[id].nom)||'';}
 function peutModifierTx(t){return !espace||espace.role==='resp'||(espace.role==='membre'&&t&&t.createdById===uid);}
 const icoFoyer='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>';
 const icoPerso='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg>';
@@ -2756,6 +2761,7 @@ function payWarn(key){
   </div>`;
 }
 async function payCorrige(key,cid){
+  if(!peutComptes())return;
   const p=PAY[key],c=comptes.find(x=>x.id===cid);if(!c)return;
   const v=parseAmt(document.getElementById(p.el+'-cor')?.value);if(isNaN(v)){toast('Saisis le solde réel');return;}
   const delta=v-soldeCompte(c);p.cor=null;
@@ -2944,6 +2950,7 @@ function renderComptesPage(){
 // ── Ajouter ou renommer un compte
 let addCptType='wave',addCptNomTouche=false;
 function openAddCompte(editId){
+  if(!peutComptes())return;
   const c=editId?comptes.find(x=>x.id===editId):null;
   addCptType=c?(c.type||'autre'):'wave';addCptNomTouche=!!c;
   openSheet(sheetHead(c?'Modifier le compte':'Nouveau compte')+`
@@ -2990,12 +2997,13 @@ function openCompteDetail(id){
   const c=comptes.find(x=>x.id===id);if(!c)return;
   const lignes=[];
   const part=(o,amt)=>{const x=partsOf(o,amt).find(y=>y.compte===id);return x?x.amt||0:null;};
-  txs.forEach(t=>{const a=part(t,t.amt||0);if(a!==null)lignes.push({date:t.date||'',lib:t.poste||t.cat,sub:(t.parts?'partagé · ':'')+(t.cmt||''),v:signeTx(t)*a});});
+  txs.forEach(t=>{const a=part(t,t.amt||0);if(a!==null)lignes.push({date:t.date||'',lib:t.poste||t.cat,sub:[(t.parts?'partagé':''),(t.cmt||''),(espace&&t.createdById?'par '+(nomMembre(t.createdById)||t.createdBy||''):'')].filter(Boolean).join(' · '),v:signeTx(t)*a});});
   mouvs.forEach(m=>{
-    if(m.type==='virement'&&m.de===id)lignes.push({date:m.date,lib:(m.correction?'Correction vers ':'Virement vers ')+nomCpt(m.vers),sub:m.correction?'pointage':'',v:-(m.amt||0)});
-    if(m.type==='virement'&&m.vers===id)lignes.push({date:m.date,lib:(m.correction?'Correction depuis ':'Virement de ')+nomCpt(m.de),sub:m.correction?'pointage':'',v:m.amt||0});
-    if(m.type==='ajustement'&&m.compte===id&&m.pointage){lignes.push({date:m.date,lib:'Ajustement (pointage)',sub:'',v:m.amt||0});return;}
-    if(m.type==='ajustement'&&m.compte===id)lignes.push({date:m.date,lib:'Ajustement du solde',sub:'',v:m.amt||0});
+    const par=espace&&m.createdById?'par '+(nomMembre(m.createdById)||m.createdBy||''):'';
+    if(m.type==='virement'&&m.de===id)lignes.push({date:m.date,lib:(m.correction?'Correction vers ':'Virement vers ')+nomCpt(m.vers),sub:[m.correction?'pointage':'',par].filter(Boolean).join(' · '),v:-(m.amt||0)});
+    if(m.type==='virement'&&m.vers===id)lignes.push({date:m.date,lib:(m.correction?'Correction depuis ':'Virement de ')+nomCpt(m.de),sub:[m.correction?'pointage':'',par].filter(Boolean).join(' · '),v:m.amt||0});
+    if(m.type==='ajustement'&&m.compte===id&&m.pointage){lignes.push({date:m.date,lib:'Ajustement (pointage)',sub:par,v:m.amt||0});return;}
+    if(m.type==='ajustement'&&m.compte===id)lignes.push({date:m.date,lib:'Ajustement du solde',sub:par,v:m.amt||0});
     if(m.type==='remb'){const d=dettes.find(x=>x.id===m.dette),a=part(m,m.amt||0);if(d&&a!==null)lignes.push({date:m.date,lib:(d.sens==='pret'?'Remboursé par ':'Remboursé à ')+d.personne,sub:'',v:d.sens==='pret'?a:-a});}
     if(m.type==='retrait_obj'&&m.compte===id)lignes.push({date:m.date,lib:'Retrait objectif '+nomObj(m.objectif),sub:'',v:m.amt||0});
   });
@@ -3020,6 +3028,7 @@ function openCompteDetail(id){
     <button onclick="supprimerCompte(${jsa(id)})" style="width:100%;margin-top:10px;padding:11px;border-radius:var(--rs);border:0.5px solid rgba(255,69,58,.4);background:transparent;color:var(--red);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">Supprimer ce compte</button>`);
 }
 async function supprimerCompte(id){
+  if(!peutComptes())return;
   const c=comptes.find(x=>x.id===id);if(!c)return;
   if(!await confirmer(`Supprimer « ${c.nom} » ?\nLes transactions déjà enregistrées restent dans ton historique et ton budget.`,'Supprimer'))return;
   comptes=comptes.filter(x=>x.id!==id);
@@ -3029,6 +3038,7 @@ async function supprimerCompte(id){
 
 // ── Corriger le solde : ligne « Ajustement », sans effet sur le budget
 function openCorrection(id){
+  if(!peutComptes())return;
   const c=comptes.find(x=>x.id===id);if(!c)return;
   openSheet(sheetHead('Corriger le solde')+`
     <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5">${esc(c.nom)} affiche <b style="color:var(--text)">${fmtSigne(soldeCompte(c))}</b>. Saisis le solde réel, celui de ton appli ou de ton porte-monnaie.</div>
