@@ -1566,14 +1566,16 @@ window.addEventListener('resize',majBudMini);
 // ═══════════════ EFFACER DES BUDGETS ═══════════════
 // Vide les montants prévus (et sous-détails) d'une période. Les transactions ne sont pas touchées.
 function moisBudgetes(){return Object.keys(budget).filter(m=>/^\d{4}-\d{2}$/.test(m)&&Object.values(budget[m]||{}).some(v=>v>0)).sort();}
+// Seuls les mois futurs peuvent être effacés : les mois passés servent de référence (prévu / réalisé)
+function moisFutursBudgetes(){const min=moisSuivant(todayStr().slice(0,7));return moisBudgetes().filter(m=>m>=min);}
 function moisSuivant(ym){const[y,m]=ym.split('-').map(Number);return m===12?(y+1)+'-01':y+'-'+String(m+1).padStart(2,'0');}
 function openEffacerBudgets(){
-  const l=moisBudgetes();if(!l.length){toast('Aucun budget à effacer');return;}
-  const fin=l[l.length-1];let deb=moisSuivant(todayStr().slice(0,7));if(deb>fin)deb=fin;
+  const l=moisFutursBudgetes();if(!l.length){toast('Aucun budget futur à effacer');return;}
+  const fin=l[l.length-1],deb=moisSuivant(todayStr().slice(0,7));
   openSheet(sheetHead('Effacer des budgets')+`
-    <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:14px">Tes transactions et tes postes ne sont pas touchés, seulement les montants prévus et leurs sous-détails.</div>
+    <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:14px">Seuls les mois à venir peuvent être effacés. Tes transactions et tes postes ne sont pas touchés, seulement les montants prévus et leurs sous-détails.</div>
     <div class="frow">
-      <div class="fgrp"><div class="flbl">À partir de</div><input class="finp" type="month" id="eb-deb" value="${deb}" onchange="ebApercu()"></div>
+      <div class="fgrp"><div class="flbl">À partir de</div><input class="finp" type="month" id="eb-deb" value="${deb}" min="${deb}" onchange="ebApercu()"></div>
       <div class="fgrp"><div class="flbl">Jusqu'à</div><input class="finp" type="month" id="eb-fin" value="${fin}" onchange="ebApercu()"></div>
     </div>
     <div id="eb-prev" style="border-radius:var(--rs);padding:10px 12px;font-size:12.5px;line-height:1.5;margin-bottom:10px"></div>
@@ -1581,10 +1583,10 @@ function openEffacerBudgets(){
     <button class="btn-p" id="eb-go" onclick="effacerBudgets()" style="background:var(--red)">Effacer</button>`);
   ebApercu();
 }
-function ebMois(){const a=document.getElementById('eb-deb').value,b=document.getElementById('eb-fin').value;return a&&b&&a<=b?moisBudgetes().filter(m=>m>=a&&m<=b):null;}
+function ebMois(){const a=document.getElementById('eb-deb').value,b=document.getElementById('eb-fin').value;return a&&b&&a<=b&&a>=moisSuivant(todayStr().slice(0,7))?moisFutursBudgetes().filter(m=>m>=a&&m<=b):null;}
 function ebApercu(){
   const p=document.getElementById('eb-prev'),go=document.getElementById('eb-go'),l=ebMois();
-  if(!l){p.style.background='var(--surf2)';p.style.color='var(--text2)';p.textContent='Choisis une période valide : le début doit être avant la fin.';go.style.display='none';return;}
+  if(!l){p.style.background='var(--surf2)';p.style.color='var(--text2)';p.textContent=document.getElementById('eb-deb').value<moisSuivant(todayStr().slice(0,7))?'Le début doit être '+yml(moisSuivant(todayStr().slice(0,7)))+' ou plus tard : le mois en cours et les mois passés sont conservés.':'Choisis une période valide : le début doit être avant la fin.';go.style.display='none';return;}
   if(!l.length){p.style.background='var(--surf2)';p.style.color='var(--text2)';p.textContent='Aucun mois budgété dans cette période.';go.style.display='none';return;}
   p.style.background='var(--rd)';p.style.color='var(--red)';
   p.textContent=`${l.length} mois ${l.length>1?'ont':'a'} un budget dans cette période (${l.length>1?yml(l[0])+' → '+yml(l[l.length-1]):yml(l[0])}). ${l.length>1?'Ils seront vidés':'Il sera vidé'}, sous-détails compris.`;
@@ -3724,7 +3726,7 @@ function renderBudSolde(){
 }
 
 function renderBForm(){
-  const eb=document.getElementById('bud-eff-btn');if(eb)eb.style.display=moisBudgetes().length?'flex':'none';
+  const eb=document.getElementById('bud-eff-btn');if(eb)eb.style.display=moisFutursBudgetes().length?'flex':'none';
   const ym=ymk(bYear,bMonth);const bud=budget[ym]||{};
   const det=budgetDetails[ym]||{};
   let html='';
