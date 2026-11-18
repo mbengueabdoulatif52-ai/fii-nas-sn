@@ -3663,12 +3663,11 @@ function renderBForm(){
   ['Revenu','Dépenses fixes','Dépenses variables','Epargne'].forEach(cat=>{
     const ps=getAllPostes(cat);
     const total=ps.reduce((s,p)=>s+(bud[p]||0),0);
-    html+=`<div class="card"><div class="ct">${CICO[cat]} ${cat}${total>0?` <span style="float:right;color:${cat==='Revenu'?'var(--green)':'var(--text)'};font-family:var(--mono)">${fmt(total)} F</span>`:''}</div>
+    html+=`<div class="card"><div class="ct">${CICO[cat]} ${cat} <span id="bt_${btoa(encodeURIComponent(cat))}" style="float:right;color:${cat==='Revenu'?'var(--green)':'var(--text)'};font-family:var(--mono)">${total>0?fmt(total)+' F':''}</span></div>
       ${ps.map(p=>{
         const id='bi_'+btoa(encodeURIComponent(p));
         const val=bud[p]||'';
         const details=det[p]||[];
-        const detTotal=details.reduce((s,d)=>s+d.amt,0);
         const pKey=btoa(encodeURIComponent(ym+'|'+p));
         return `<div class="brow" style="flex-direction:column;align-items:stretch;gap:0">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:2px 0">
@@ -3679,7 +3678,7 @@ function renderBForm(){
                   value="${val?new Intl.NumberFormat('fr-FR').format(val):''}"
                   placeholder="0"
                   style="width:120px;text-align:right;padding-right:8px"
-                  oninput="fmtBudInput(this);budDirty=true;renderBudSolde()"
+                  oninput="fmtBudInput(this);budDirty=true;majBudTotaux();majBudDet('${ym}',${jsa(p)})"
                   data-raw="${val||0}">
               </div>
               <button onclick="toggleBudDetail('${pKey}')" style="background:none;border:none;cursor:pointer;padding:2px;color:var(--text2);font-size:14px;line-height:1;display:flex;align-items:center" title="Sous-détails">
@@ -3687,20 +3686,7 @@ function renderBForm(){
               </button>
             </div>
           </div>
-          <div id="det_${pKey}" style="display:none;border-top:0.5px solid var(--border);margin-top:4px;padding-top:6px">
-            ${details.map((d,i)=>`
-              <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:0.5px solid var(--border)">
-                <span style="font-size:12px;color:var(--text);flex:1">${d.label}</span>
-                <span style="font-size:12px;font-family:var(--mono);color:var(--text2);margin:0 8px">${fmt(d.amt)} F</span>
-                <button onclick="removeBudDetail('${ym}',${jsa(p)},${i})" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;padding:0 2px;line-height:1">×</button>
-              </div>`).join('')}
-            <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
-              <input id="dl_${pKey}" type="text" placeholder="Ex: Carte BRT, Netflix..." style="flex:1;min-width:0;background:var(--surf);border:0.5px solid var(--border);border-radius:8px;padding:6px 8px;font-size:12px;color:var(--text);outline:none;font-family:var(--font)">
-              <input id="da_${pKey}" type="text" inputmode="numeric" placeholder="Montant" style="width:70px;background:var(--surf);border:0.5px solid var(--border);border-radius:8px;padding:6px 8px;font-size:12px;color:var(--text);outline:none;font-family:var(--font)">
-              <button onclick="addBudDetail('${ym}',${jsa(p)},'${pKey}')" style="width:28px;height:28px;border-radius:8px;border:none;background:var(--blue);color:#fff;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</button>
-            </div>
-            ${details.length?`<div style="font-size:11px;color:var(--text3);text-align:right;margin-top:4px">Total sous-détails : <b style="color:var(--text2)">${fmt(detTotal)} F</b></div>`:''}
-          </div>
+          <div id="det_${pKey}" style="display:none;border-top:0.5px solid var(--border);margin-top:4px;padding-top:6px">${htmlBudDet(ym,p)}</div>
         </div>`;
       }).join('')}
       ${cat==='Epargne'?lienEffort(ym):''}
@@ -3785,38 +3771,69 @@ function toggleBudDetail(pKey){
   if(chv)chv.style.transform=open?'rotate(180deg)':'';
 }
 
-async function addBudDetail(ym,poste,pKey){
-  const label=document.getElementById('dl_'+pKey)?.value.trim();
-  const amtRaw=document.getElementById('da_'+pKey)?.value.replace(/[^0-9]/g,'');
-  const amt=parseInt(amtRaw)||0;
-  if(!label||!amt){toast('Label et montant requis');return;}
-  if(!budgetDetails[ym])budgetDetails[ym]={};
-  if(!budgetDetails[ym][poste])budgetDetails[ym][poste]=[];
-  budgetDetails[ym][poste].push({label,amt});
-  // Mettre à jour le total du poste automatiquement
-  const total=budgetDetails[ym][poste].reduce((s,d)=>s+d.amt,0);
-  if(!budget[ym])budget[ym]={};
-  budget[ym][poste]=total;
-  await saveSettings();
-  renderBForm();
-  // Réouvrir le détail
-  setTimeout(()=>{
-    const el=document.getElementById('det_'+pKey);
-    const chv=document.getElementById('chv_'+pKey);
-    if(el){el.style.display='block';}
-    if(chv)chv.style.transform='rotate(180deg)';
-  },50);
+// ── Sous-détails d'un poste
+// Le montant du poste reste celui saisi ; la part non répartie s'affiche en « Non détaillé ».
+// Ajouter ou retirer un détail n'enregistre que ce poste : les autres saisies en cours restent.
+function budInp(p){return document.getElementById('bi_'+btoa(encodeURIComponent(p)));}
+function budVal(p){const el=budInp(p);return el?(parseFloat(el.dataset.raw)||0):0;}
+function setBudVal(p,v){const el=budInp(p);if(!el)return;el.dataset.raw=v;el.value=v>0?new Intl.NumberFormat('fr-FR').format(v):'';}
+function htmlBudDet(ym,p){
+  const pKey=btoa(encodeURIComponent(ym+'|'+p)),details=(budgetDetails[ym]||{})[p]||[];
+  const tot=details.reduce((s,d)=>s+(d.amt||0),0),poste=budInp(p)?budVal(p):((budget[ym]||{})[p]||0),reste=poste-tot;
+  const ligne=(lib,amt,suppr,gris)=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:0.5px solid var(--border)">
+      <span style="font-size:12px;color:${gris?'var(--text3)':'var(--text)'};flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${gris?'font-style:italic':''}">${lib}</span>
+      <span style="font-size:12px;font-family:var(--mono);color:var(--text2);margin:0 8px">${amt<0?'−':''}${fmt(amt)} F</span>${suppr||'<span style="width:20px"></span>'}</div>`;
+  return details.map((d,i)=>ligne(esc(d.label),d.amt,`<button aria-label="Retirer" onclick="removeBudDetail('${ym}',${jsa(p)},${i})" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;padding:0 2px;line-height:1;width:20px">×</button>`)).join('')
+    +(details.length&&reste>0?ligne('Non détaillé',reste,'',true):'')
+    +(reste<0?`<div style="font-size:11px;color:var(--red);padding:5px 0">Les détails dépassent le poste de ${fmt(-reste)} F.</div>`:'')
+    +`<div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+      <input id="dl_${pKey}" type="text" placeholder="Carte BRT, Netflix…" style="flex:1;min-width:0;background:var(--surf);border:0.5px solid var(--border);border-radius:8px;padding:7px 8px;font-size:12px;color:var(--text);outline:none;font-family:var(--font)">
+      <input id="da_${pKey}" type="text" inputmode="numeric" placeholder="Montant" oninput="fmtAmtInput(this)" style="width:84px;background:var(--surf);border:0.5px solid var(--border);border-radius:8px;padding:7px 8px;font-size:12px;color:var(--text);outline:none;font-family:var(--font);text-align:right">
+      <button aria-label="Ajouter" onclick="addBudDetail('${ym}',${jsa(p)},'${pKey}')" style="width:30px;height:30px;border-radius:8px;border:none;background:var(--blue);color:#fff;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</button>
+    </div>`;
 }
-
+function majBudDet(ym,p){
+  const pKey=btoa(encodeURIComponent(ym+'|'+p)),el=document.getElementById('det_'+pKey);if(!el)return;
+  const l=document.getElementById('dl_'+pKey)?.value||'',a=document.getElementById('da_'+pKey)?.value||'';
+  el.innerHTML=htmlBudDet(ym,p);
+  const chv=document.getElementById('chv_'+pKey);if(chv)chv.style.opacity=((budgetDetails[ym]||{})[p]||[]).length?'1':'.4';
+  if(l)document.getElementById('dl_'+pKey).value=l;if(a)document.getElementById('da_'+pKey).value=a;
+}
+function majBudTotaux(){
+  const ym=ymk(bYear,bMonth);
+  ['Revenu','Dépenses fixes','Dépenses variables','Epargne'].forEach(cat=>{
+    const el=document.getElementById('bt_'+btoa(encodeURIComponent(cat)));if(!el)return;
+    const t=getAllPostes(cat).reduce((s,p)=>s+(budInp(p)?budVal(p):((budget[ym]||{})[p]||0)),0);
+    el.textContent=t>0?fmt(t)+' F':'';
+  });
+  renderBudSolde();
+}
+// Enregistre uniquement ce poste (montant + détails), sans toucher aux autres saisies
+async function saveBudPoste(ym,p,v){
+  const b=budget[ym]=budget[ym]||{},avant=b[p];
+  if(v>0)b[p]=v;else delete b[p];
+  try{await saveSettings();}catch(e){if(avant)b[p]=avant;else delete b[p];throw e;}
+  setBudVal(p,v);majBudTotaux();majBudDet(ym,p);
+}
+async function addBudDetail(ym,poste,pKey){
+  const label=(document.getElementById('dl_'+pKey)?.value||'').trim();
+  const amt=parseAmt(document.getElementById('da_'+pKey)?.value);
+  if(!label||!(amt>0)){toast('Nom et montant du détail requis');return;}
+  const det=(budgetDetails[ym]=budgetDetails[ym]||{})[poste]=(budgetDetails[ym][poste]||[]);
+  det.push({label,amt});
+  const somme=det.reduce((s,d)=>s+(d.amt||0),0),actuel=budVal(poste);
+  const v=Math.max(actuel,somme);
+  try{await saveBudPoste(ym,poste,v);}catch(e){det.pop();toast('⚠ '+e.message);return;}
+  document.getElementById('dl_'+pKey).value='';document.getElementById('da_'+pKey).value='';
+  if(somme>actuel&&actuel>0)toast(poste+' passe à '+fmt(v)+' F (somme des détails)');
+}
 async function removeBudDetail(ym,poste,idx){
-  if(!budgetDetails[ym]||!budgetDetails[ym][poste])return;
-  budgetDetails[ym][poste].splice(idx,1);
-  // Recalculer le total
-  const total=budgetDetails[ym][poste].reduce((s,d)=>s+d.amt,0);
-  if(!budget[ym])budget[ym]={};
-  budget[ym][poste]=total>0?total:(budget[ym][poste]||0);
-  await saveSettings();
-  renderBForm();
+  const det=budgetDetails[ym]&&budgetDetails[ym][poste];if(!det||!det[idx])return;
+  const somme=det.reduce((s,d)=>s+(d.amt||0),0),actuel=budVal(poste),ret=det[idx];
+  // Poste égal à la somme des détails : il baisse avec le détail retiré. Sinon le montant va dans « Non détaillé ».
+  const v=actuel<=somme?Math.max(0,actuel-ret.amt):actuel;
+  det.splice(idx,1);if(!det.length)delete budgetDetails[ym][poste];
+  try{await saveBudPoste(ym,poste,v);}catch(e){det.splice(idx,0,ret);budgetDetails[ym][poste]=det;toast('⚠ '+e.message);}
 }
 async function saveBudget(){
   const ym=ymk(bYear,bMonth);const bud={};
@@ -3913,11 +3930,6 @@ async function applyBudCascade(){
   const btn=document.getElementById('bc-go');btn.disabled=true;btn.textContent='Application…';
   const snapB=JSON.parse(JSON.stringify(budget)),snapD=JSON.parse(JSON.stringify(budgetDetails));
   try{
-    // Mois modifié : même ligne d'ajustement sur un poste détaillé
-    chg.forEach(c=>{
-      const det=budgetDetails[ym]&&budgetDetails[ym][c.p];
-      if(det&&det.length&&c.d)det.push({label:'Ajustement '+(c.d>0?'+':'−')+fmt(Math.abs(c.d))+' ('+yml(ym)+')',amt:c.d});
-    });
     budget[ym]=bud;
     T.forEach(m=>{
       const b=budget[m]=budget[m]||{};
@@ -3925,12 +3937,6 @@ async function applyBudCascade(){
         const before=b[c.p]||0,after=budCascadeVal(m,c);
         if(after===before)return;
         if(after>0)b[c.p]=after;else delete b[c.p];
-        // Poste détaillé : une ligne d'ajustement garde le total des sous-détails juste
-        const det=budgetDetails[m]&&budgetDetails[m][c.p];
-        if(det&&det.length){
-          const k=after-before;
-          det.push({label:'Ajustement '+(k>0?'+':'−')+fmt(Math.abs(k))+' ('+yml(ym)+')',amt:k});
-        }
       });
     });
     await saveSettings();
