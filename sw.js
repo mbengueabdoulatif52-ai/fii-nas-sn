@@ -1,4 +1,4 @@
-const CACHE = 'fiinas-sn-v26';
+const CACHE = 'fiinas-sn-v27';
 const ASSETS = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
 // Librairies versionnées (ne changent jamais) : gardées en cache pour l'usage hors ligne
 const LIBS = [
@@ -45,6 +45,8 @@ self.addEventListener('fetch', e => {
   if (url.origin !== self.location.origin) return;
   // Serveur d'analyse : jamais en cache
   if (url.pathname.startsWith('/api/')) return;
+  // Numéro de version en ligne : toujours demandé au serveur
+  if (url.pathname === '/version.json') return;
 
   // Page de l'appli : réseau d'abord (toujours la dernière version), cache si hors ligne
   const isPage = e.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html');

@@ -338,6 +338,7 @@ select option{background:#1F2840;color:#F1F4FA}
   <div id="page-dash" class="page active">
     <div class="mnav"><button class="mnav-a" onclick="shiftMonth(-1)" aria-label="Mois précédent">‹</button><div class="mnav-slot"></div><button class="mnav-a" onclick="shiftMonth(1)" aria-label="Mois suivant">›</button></div>
     <div class="hero" id="hero"></div>
+    <div id="maj-banner"></div>
     <div id="recur-dash"></div>
     <div id="point-banner"></div>
     <div id="cpt-dash"></div>
@@ -1604,6 +1605,56 @@ async function effacerBudgets(){
   catch(e){budget=snapB;budgetDetails=snapD;document.getElementById('eb-go').disabled=false;document.getElementById('eb-err').textContent='Non effacé : '+e.message;return;}
   closeSheet();budDirty=false;renderBudPage();toast(l.length+' mois effacés');
 }
+
+// ═══════════════ MISES À JOUR ═══════════════
+// APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
+// APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
+const APP_VERSION='27';
+const APP_NOTES=[
+  ['M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8l-6.2 4.5 2.4-7.4L2 9.4h7.6z','Les mises à jour arrivent toutes seules : un bandeau te prévient'],
+  ['M9 11l3 3 8-8M20 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2h11','Pointe tes comptes en fin de mois (Mes comptes → Pointer)'],
+  ['M17 2l4 4-4 4M3 11v-1a4 4 0 014-4h14M7 22l-4-4 4-4M21 13v1a4 4 0 01-4 4H3','Dépenses récurrentes : active « Répéter » dans Ajouter'],
+  ['M12 17v5M9 3h6l-1 7 4 3H6l4-3z','Budget : le reste prévu reste affiché en haut quand tu descends']
+];
+let majDispo=null,majPlusTard=false;
+async function verifMaj(){
+  try{
+    const r=await fetch('/version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;
+    const v=await r.json();
+    if(v&&v.v&&String(v.v)!==APP_VERSION&&Number(v.v)>Number(APP_VERSION)){majDispo=v;renderMajBanner();}
+  }catch(e){}
+}
+function renderMajBanner(){
+  const el=document.getElementById('maj-banner');if(!el)return;
+  if(!majDispo||majPlusTard){el.innerHTML='';return;}
+  el.innerHTML=`<div class="card" style="border-color:var(--blue)">
+    <div style="display:flex;gap:10px;align-items:flex-start">
+      <div class="cpt-ic" style="background:var(--bd);color:var(--blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></div>
+      <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;color:var(--text)">Nouvelle version disponible</div>
+      <div style="font-size:11.5px;color:var(--text2);margin-top:1px">${esc(majDispo.resume||'Améliorations et corrections')}</div></div></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button onclick="appliquerMaj()" style="flex:1;background:var(--blue);color:#fff;border:none;border-radius:8px;padding:9px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--font)">Mettre à jour</button>
+      <button onclick="majPlusTard=true;renderMajBanner()" style="background:none;border:none;color:var(--text2);font-size:12.5px;cursor:pointer;font-family:var(--font);padding:9px 10px">Plus tard</button>
+    </div></div>`;
+}
+async function appliquerMaj(){
+  if(typeof formDirty!=='undefined'&&formDirty){toast('Enregistre d\'abord ta transaction en cours');return;}
+  toast('Mise à jour…');
+  try{const reg=await navigator.serviceWorker?.getRegistration();if(reg)await reg.update();}catch(e){}
+  location.reload();
+}
+function quoiDeNeuf(){
+  let vue=null;try{vue=localStorage.getItem('fiinas-version-vue');localStorage.setItem('fiinas-version-vue',APP_VERSION);}catch(e){return;}
+  // Premier lancement sur cet appareil : rien à annoncer
+  if(!vue||vue===APP_VERSION||!APP_NOTES.length)return;
+  openSheet(sheetHead('Quoi de neuf')+`<div style="display:flex;flex-direction:column;gap:12px;margin-bottom:18px">${APP_NOTES.map(([ic,t])=>`<div style="display:flex;gap:11px;align-items:flex-start">
+      <div class="cpt-ic" style="background:var(--bd);color:var(--blue);width:32px;height:32px;flex-shrink:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${ic}"/></svg></div>
+      <div style="font-size:13px;color:var(--text);line-height:1.45;padding-top:6px">${esc(t)}</div></div>`).join('')}</div>
+    <button class="btn-p" onclick="closeSheet()">C'est parti</button>`);
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')verifMaj();});
+setInterval(verifMaj,30*60000);
+setTimeout(verifMaj,4000);
 
 // ═══════════════ CLAVIER ═══════════════
 // Clavier ouvert : la barre de navigation se cache et le bouton Enregistrer se pose juste au-dessus.
@@ -3047,9 +3098,11 @@ function computePatrimoineToday(){
 }
 
 
+let _qdnFait=false;
 async function renderDash(){
+  if(!_qdnFait){_qdnFait=true;setTimeout(quoiDeNeuf,600);}
   renderBackupBanner();
-  renderCptDash();renderObjDash();renderDetDash();renderPointBanner();renderRecurDash();
+  renderCptDash();renderObjDash();renderDetDash();renderPointBanner();renderRecurDash();renderMajBanner();
   if(isAnnual()){const h=document.getElementById('hero');h.className='hero';h.onclick=null;h.style.cursor='';['watch','cpt-dash','obj-dash','det-dash','point-banner'].forEach(i=>{const e=document.getElementById(i);if(e)e.innerHTML='';});document.getElementById('detail-wrap').style.display='block';renderDashAnnual();return;}
   const ym=curYM();const t=txYM(ym);
   const rev=sumC(t,'Revenu');const fix=sumC(t,'Dépenses fixes');
