@@ -154,6 +154,9 @@ body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin
 body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 input,textarea,[contenteditable],.selectable,#secours-code{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 #secours-code{-webkit-user-select:all;user-select:all}
+.guide-cible{position:relative;z-index:1160!important;box-shadow:0 0 0 3px var(--blue),0 0 0 9999px rgba(0,0,0,0)!important;border-radius:12px}
+#nav .guide-cible{background:var(--surf2)}
+#nav.guide-haut{z-index:1160}
 .save-dock{position:fixed;left:50%;transform:translateX(-50%);width:100%;max-width:480px;bottom:var(--navh,74px);padding:16px 18px 10px;background:linear-gradient(to bottom,transparent,var(--bg) 14px);z-index:90}
 #page-add,#page-bud{padding-bottom:96px}
 body.kbd #nav{display:none}
@@ -350,7 +353,9 @@ select option{background:#1F2840;color:#F1F4FA}
     <div id="maj-banner"></div>
     <div id="recur-dash"></div>
     <div id="point-banner"></div>
+    <div id="bilanm-dash"></div>
     <div id="bilan-dash"></div>
+    <div id="prep-dash"></div>
     <div id="cpt-dash"></div>
     <div id="tiles" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div id="obj-dash"></div><div id="det-dash"></div></div>
     <div class="mgrid" id="dm"></div>
@@ -527,6 +532,11 @@ select option{background:#1F2840;color:#F1F4FA}
         </div>
         <div style="margin-left:auto;color:var(--text3);font-size:18px">›</div>
       </div>
+    </div>
+    <div class="card" style="cursor:pointer;display:flex;align-items:center;gap:14px" onclick="lancerGuide()">
+      <div style="width:42px;height:42px;background:var(--bd);border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 114 2c-.9.6-1.5 1-1.5 2M12 17h.01"/></svg></div>
+      <div><div style="font-size:14px;font-weight:500;color:var(--text)">Revoir le guide</div><div style="font-size:11px;color:var(--text3);margin-top:2px">Les bases de l'appli en quatre étapes</div></div>
+      <div style="margin-left:auto;color:var(--text3);font-size:18px">›</div>
     </div>
     <div class="card">
       <div class="ct">Mes récurrentes</div>
@@ -1633,11 +1643,11 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='33';
+const APP_VERSION='34';
 const APP_NOTES=[
-  ['M11 3a8 8 0 100 16 8 8 0 000-16zM21 21l-4.3-4.3','Historique : la recherche fouille tous les mois et donne le total (« yango », « wave », « 2500 »)'],
-  ['M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M8 13l4 5M12 13l-4 5','Profil → Exporter en Excel : transactions et budget prévu / réalisé'],
-  ['M12 5v14M5 12h14','Appui long sur l\'icône de l\'appli : ajouter une dépense ou une entrée directement']
+  ['M3 4h18v17H3zM3 9h18M8 2v4M16 2v4','Dès le 25 : l\'appli prépare ton budget du mois suivant, ajusté à tes vraies dépenses'],
+  ['M3 3v18h18M7 15l4-4 3 3 5-6','Le 1er du mois : le bilan du mois écoulé, avec un conseil pour celui qui commence'],
+  ['M12 2a10 10 0 100 20 10 10 0 000-20zM9.5 9.5a2.5 2.5 0 114 2c-.9.6-1.5 1-1.5 2M12 17h.01','Profil → Revoir le guide : les bases de l\'appli en quatre étapes']
 ]; // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1998,6 +2008,177 @@ async function exporterExcel(){
   }
   XLSX.writeFile(wb,`FIINAS-${nomFich}.xlsx`);
   closeSheet();toast('Fichier Excel téléchargé');
+}
+
+// ═══════════════ PRÉPARER LE MOIS SUIVANT ═══════════════
+// Dès le 25 : budget du mois suivant proposé à partir du mois en cours, ajusté aux vraies dépenses.
+const moisDecal=(ym,n)=>{let[y,m]=ym.split('-').map(Number);m+=n;while(m>12){m-=12;y++;}while(m<1){m+=12;y--;}return y+'-'+String(m).padStart(2,'0');};
+const nomMois=ym=>MFR[+ym.slice(5)-1].toLowerCase();
+const deMois=ym=>{const n=nomMois(ym);return(/^[aeiouyéèh]/.test(n)?"d'":'de ')+n;};
+const reelPoste=(ym,cat,p)=>txYM(ym).filter(t=>t.cat===cat&&t.poste===p).reduce((s,t)=>s+(t.amt||0),0);
+const arrMil=v=>Math.ceil(v/1000)*1000;
+function propositionBudget(){
+  const cur=todayStr().slice(0,7),next=moisDecal(cur,1),prev=moisDecal(cur,-1),prev2=moisDecal(cur,-2);
+  const base=budget[cur]||{},prop={},chg=[];
+  const actif=ym=>txYM(ym).length>0;
+  ['Revenu','Dépenses fixes','Dépenses variables','Epargne'].forEach(cat=>getAllPostes(cat).forEach(p=>{
+    const b=base[p]||0;let v=b,raison='';
+    if(cat==='Dépenses fixes'||cat==='Dépenses variables'){
+      const rc=reelPoste(cur,cat,p),rp=reelPoste(prev,cat,p),bp=gBud(prev,p);
+      if(b>0&&rc>b&&bp>0&&rp>bp){v=arrMil(Math.max(rc,rp));raison='dépassé deux mois de suite';}
+      else if(b>0&&actif(prev)&&actif(prev2)&&!rc&&!rp&&!reelPoste(prev2,cat,p)&&!recur.some(r=>!r.pause&&r.poste===p)){v=0;raison='non utilisé depuis trois mois';}
+      else if(!b&&rc>0&&rp>0){v=arrMil((rc+rp)/2);raison='dépensé sans budget deux mois de suite';}
+      // Récurrentes du mois suivant
+      const rec=recur.filter(r=>!r.pause&&r.poste===p&&r.cat===cat).reduce((s,r)=>s+occMois(r,next)*r.amt,0);
+      if(rec>v){v=rec;raison=`dépenses récurrentes : ${fmt(rec)} F prévus`;}
+    }
+    if(v>0)prop[p]=v;
+    if(v!==b)chg.push({p,cat,de:b,a:v,raison});
+  }));
+  return{cur,next,prop,chg,n:Object.keys(prop).length};
+}
+function renderPrepDash(){
+  const el=document.getElementById('prep-dash');if(!el)return;
+  const auj=todayStr(),cur=auj.slice(0,7),next=moisDecal(cur,1);
+  let masque=null;try{masque=localStorage.getItem('fiinas-prep-masque');}catch(e){}
+  const okJour=+auj.slice(8)>=25,curBud=Object.values(budget[cur]||{}).some(v=>v>0),nextBud=Object.values(budget[next]||{}).some(v=>v>0);
+  if(!okJour||!curBud||nextBud||masque===next||!isAdmin()){el.innerHTML='';return;}
+  const P=propositionBudget();
+  el.innerHTML=`<div class="card" style="cursor:pointer;display:flex;gap:12px;align-items:center" onclick="openPrepBudget()">
+    <div class="cpt-ic" style="background:var(--bd);color:var(--blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M12 13v5M9.5 15.5h5"/></svg></div>
+    <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;color:var(--text)">Prépare ton budget ${deMois(next)}</div>
+    <div style="font-size:11.5px;color:var(--text2)">${P.chg.length?P.chg.length+' ajustement'+(P.chg.length>1?'s':'')+' proposé'+(P.chg.length>1?'s':'')+' d\'après tes dépenses':'Repris de '+nomMois(cur)+', prêt à valider'}</div></div>
+    <button aria-label="Masquer" onclick="event.stopPropagation();try{localStorage.setItem('fiinas-prep-masque','${next}')}catch(e){};renderPrepDash()" style="background:none;border:none;color:var(--text3);font-size:15px;cursor:pointer;padding:0 2px">✕</button></div>`;
+}
+function openPrepBudget(){
+  const P=propositionBudget();
+  const tot=cat=>getAllPostes(cat).reduce((s,p)=>s+(P.prop[p]||0),0);
+  const rev=tot('Revenu'),sor=tot('Dépenses fixes')+tot('Dépenses variables')+tot('Epargne');
+  const lignes=P.chg.map(c=>`<div style="padding:8px 0;border-bottom:0.5px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;gap:10px;font-size:13px"><span style="color:var(--text)">${esc(c.p)}</span>
+      <span style="white-space:nowrap;color:var(--text)"><span style="color:var(--text3)">${c.de?fmt(c.de):'—'}</span> → <b style="font-weight:600;color:${c.a>c.de?'var(--amber)':c.a?'var(--green)':'var(--text3)'}">${c.a?fmt(c.a):'0'}</b></span></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:1px">${esc(c.raison)}</div></div>`).join('');
+  openSheet(sheetHead('Budget '+deMois(P.next))+`
+    <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:12px">Repris ${deMois(P.cur)}${P.chg.length?', avec ces ajustements tirés de tes vraies dépenses :':'. Aucun ajustement nécessaire d\'après tes dépenses.'}</div>
+    ${lignes}
+    <div style="background:var(--surf2);border-radius:var(--rs);padding:10px 12px;margin:12px 0;font-size:12.5px;color:var(--text2);line-height:1.6">${P.n} postes · entrées ${fmt(rev)} F · sorties ${fmt(sor)} F<br>Reste prévu : <b style="color:${rev-sor<0?'var(--red)':'var(--text)'}">${rev-sor<0?'−':'+'}${fmt(rev-sor)} F</b></div>
+    <button class="btn-p" id="pb-go" onclick="validerPrep()">Valider ce budget</button>
+    <button type="button" onclick="modifierPrep()" style="width:100%;margin-top:8px;padding:10px;border:none;background:none;color:var(--blue);font-size:13px;cursor:pointer;font-family:var(--font)">Le modifier avant</button>`);
+}
+async function validerPrep(){
+  const P=propositionBudget();
+  budget[P.next]=P.prop;
+  // Sous-détails repris pour les postes inchangés
+  const det=budgetDetails[P.cur]||{},nd={};
+  Object.keys(det).forEach(p=>{if(P.prop[p]&&(budget[P.cur]||{})[p]===P.prop[p])nd[p]=JSON.parse(JSON.stringify(det[p]));});
+  if(Object.keys(nd).length)budgetDetails[P.next]=nd;
+  document.getElementById('pb-go').disabled=true;
+  try{await saveSettings();}catch(e){delete budget[P.next];delete budgetDetails[P.next];document.getElementById('pb-go').disabled=false;toast('⚠ '+e.message);return;}
+  closeSheet();renderCurrent();toast('Budget '+deMois(P.next)+' enregistré');
+}
+function modifierPrep(){
+  const P=propositionBudget();closeSheet();
+  goP('bud',document.querySelectorAll('.ni')[3]);
+  const[y,m]=P.next.split('-');setBYM(y,+m);
+  setTimeout(()=>{Object.entries(P.prop).forEach(([p,v])=>setBudVal(p,v));budDirty=true;majBudTotaux();toast('Proposition chargée : ajuste puis enregistre');},120);
+}
+
+// ═══════════════ BILAN DU MOIS ═══════════════
+function bilanMoisCalc(ym){
+  const t=txYM(ym),bud=budget[ym]||{};
+  const rev=sumC(t,'Revenu'),fix=sumC(t,'Dépenses fixes'),vari=sumC(t,'Dépenses variables'),epa=sumC(t,'Epargne');
+  const solde=rev-fix-vari-epa;
+  const tenus=[],derapes=[],sansBud=[];let prevuDep=0,reelBud=0;
+  ['Dépenses fixes','Dépenses variables'].forEach(cat=>getAllPostes(cat).forEach(p=>{
+    const b=bud[p]||0,r=reelPoste(ym,cat,p);
+    if(b>0){prevuDep+=b;reelBud+=r;if(r>b)derapes.push({p,ex:r-b});else tenus.push(p);}
+    else if(r>0)sansBud.push({p,r});
+  }));
+  derapes.sort((a,b)=>b.ex-a.ex);sansBud.sort((a,b)=>b.r-a.r);
+  const epaPrevu=getAllPostes('Epargne').reduce((s,p)=>s+(bud[p]||0),0);
+  const hist=[moisDecal(ym,-2),moisDecal(ym,-1),ym].map(m=>{const x=txYM(m);return{m,v:sumC(x,'Revenu')-sumC(x,'Dépenses fixes')-sumC(x,'Dépenses variables')-sumC(x,'Epargne'),n:x.length};});
+  return{ym,rev,fix,vari,epa,solde,tenus,derapes,sansBud,prevuDep,reelBud,epaPrevu,hist,aBud:Object.values(bud).some(v=>v>0),n:t.length};
+}
+function renderBilanMoisDash(){
+  const el=document.getElementById('bilanm-dash');if(!el)return;
+  const auj=todayStr(),prev=moisDecal(auj.slice(0,7),-1);
+  let masque=null;try{masque=localStorage.getItem('fiinas-bilanm-masque');}catch(e){}
+  if(+auj.slice(8)>7||masque===prev||txYM(prev).length<5){el.innerHTML='';return;}
+  const B=bilanMoisCalc(prev);
+  el.innerHTML=`<div class="card" style="cursor:pointer;border-color:var(--purple)" onclick="openBilanMois('${prev}')">
+    <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11.5px;color:var(--purple);font-weight:600">Bilan ${deMois(prev)}</span>
+    <button aria-label="Masquer" onclick="event.stopPropagation();try{localStorage.setItem('fiinas-bilanm-masque','${prev}')}catch(e){};renderBilanMoisDash()" style="background:none;border:none;color:var(--text3);font-size:15px;cursor:pointer;padding:0 2px">✕</button></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:5px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600;color:var(--text)">${MFR[+prev.slice(5)-1]} : ${B.solde<0?'−':'+'}${fmt(B.solde)} F</div>
+    <div style="font-size:12px;color:var(--text2);margin-top:1px">${B.aBud?(B.derapes.length?B.derapes.length+' poste'+(B.derapes.length>1?'s':'')+' au-delà du budget':'Budget tenu sur tous les postes'):'Entrées − sorties du mois'}</div></div><span style="color:var(--text3);font-size:18px">›</span></div></div>`;
+}
+function openBilanMois(ym){
+  const B=bilanMoisCalc(ym),M=MFR[+ym.slice(5)-1];
+  const sec=(t,h)=>h?`<div style="margin-top:16px"><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">${t}</div>${h}</div>`:'';
+  const ligne=(l,v,c)=>`<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0"><span style="color:var(--text2)">${l}</span><span style="color:${c||'var(--text)'};font-weight:500">${v}</span></div>`;
+  let h=`<div style="display:flex;justify-content:space-between;align-items:center;margin:-4px 0 12px">
+      <button onclick="openBilanMois('${moisDecal(ym,-1)}')" aria-label="Mois précédent" style="background:var(--surf2);border:none;color:var(--text);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px">‹</button>
+      <span style="font-size:13px;color:var(--text2)">${M} ${ym.slice(0,4)}</span>
+      <button onclick="${ym<moisDecal(todayStr().slice(0,7),-1)?`openBilanMois('${moisDecal(ym,1)}')`:''}" aria-label="Mois suivant" style="background:var(--surf2);border:none;color:var(--text);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px;${ym<moisDecal(todayStr().slice(0,7),-1)?'':'opacity:.3;cursor:default'}">›</button></div>`;
+  if(!B.n){openSheet(sheetHead('Bilan du mois')+h+'<div style="font-size:13px;color:var(--text2);text-align:center;padding:20px 0">Aucune transaction ce mois-là.</div>');return;}
+  h+=`<div style="font-size:24px;font-weight:600;color:${B.solde<0?'var(--red)':'var(--text)'}">${B.solde<0?'−':'+'}${fmt(B.solde)} F</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">${B.solde<0?'Tu as dépensé plus que tu n\'as gagné':'Ce qui reste une fois tout payé et épargné'}</div>
+    ${ligne('Entrées',fmt(B.rev)+' F','var(--green)')}${ligne('Dépenses fixes',fmt(B.fix)+' F')}${ligne('Dépenses courantes',fmt(B.vari)+' F')}${ligne('Épargne',fmt(B.epa)+' F','var(--purple)')}`;
+  if(B.aBud){
+    h+=sec('Le budget',`${ligne('Dépenses budgétées',fmt(B.reelBud)+' F sur '+fmt(B.prevuDep)+' F prévus',B.reelBud>B.prevuDep?'var(--red)':'var(--green)')}
+      ${B.tenus.length?`<div style="font-size:12.5px;color:var(--text2);margin-top:6px;line-height:1.55"><span style="color:var(--green);font-weight:500">Tenus :</span> ${B.tenus.map(esc).join(', ')}</div>`:''}
+      ${B.derapes.length?`<div style="font-size:12.5px;color:var(--text2);margin-top:4px;line-height:1.55"><span style="color:var(--red);font-weight:500">Au-delà :</span> ${B.derapes.map(d=>esc(d.p)+' +'+fmt(d.ex)).join(', ')}</div>`:''}
+      ${B.sansBud.length?`<div style="font-size:12.5px;color:var(--text2);margin-top:4px;line-height:1.55"><span style="color:var(--amber);font-weight:500">Sans budget :</span> ${B.sansBud.slice(0,4).map(d=>esc(d.p)+' '+fmt(d.r)).join(', ')}</div>`:''}`);
+    if(B.epaPrevu)h+=sec('L\'épargne',ligne('Versé',fmt(B.epa)+' F sur '+fmt(B.epaPrevu)+' F prévus ('+Math.round(B.epa/B.epaPrevu*100)+' %)',B.epa>=B.epaPrevu?'var(--green)':'var(--amber)'));
+  }
+  if(modules.dettes&&dettes.length){const jd=totDettes('emprunt'),od=dettes.filter(d=>d.sens==='pret').reduce((s,d)=>s+resteDette(d),0),dd=dettes.filter(d=>d.sens!=='pret').reduce((s,d)=>s+resteDette(d),0);
+    if(dd||od)h+=sec('Dettes et prêts',(dd?ligne('Tu dois encore',fmt(dd)+' F','var(--red)'):'')+(od?ligne('On te doit encore',fmt(od)+' F','var(--green)'):''));}
+  const mx=Math.max(1,...B.hist.map(x=>Math.abs(x.v)));
+  h+=sec('Sur trois mois',`<div style="display:flex;align-items:flex-end;gap:10px;height:70px;padding-top:6px">${B.hist.map(x=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%"><div style="font-size:10.5px;color:${x.v<0?'var(--red)':'var(--text2)'};margin-bottom:3px">${x.n?(x.v<0?'−':'+')+fmt(x.v):'—'}</div><div style="width:100%;height:${x.n?Math.max(4,Math.round(Math.abs(x.v)/mx*44)):2}px;border-radius:4px;background:${x.v<0?'var(--red)':x.m===ym?'var(--blue)':'var(--bd)'}"></div></div>`).join('')}</div>
+    <div style="display:flex;gap:10px;margin-top:4px">${B.hist.map(x=>`<div style="flex:1;text-align:center;font-size:11px;color:var(--text3)">${MOIS_C[+x.m.slice(5)-1]}</div>`).join('')}</div>`);
+  // Conseil pour le mois qui commence
+  const nx=moisDecal(ym,1);let c='';
+  if(B.solde<0)c=`Tu as dépensé ${fmt(-B.solde)} F de plus que tu n'as gagné. En ${nomMois(nx)}, commence par les postes qui ont dépassé${B.derapes.length?' ('+B.derapes.slice(0,2).map(d=>d.p).join(', ')+')':''}.`;
+  else if(B.derapes.length)c=`${B.derapes[0].p} a dépassé de ${fmt(B.derapes[0].ex)} F. Si c'est régulier, ajuste son budget ; sinon, surveille-le dès le début ${deMois(nx)}.`;
+  else if(B.epaPrevu&&B.epa<B.epaPrevu)c=`Il a manqué ${fmt(B.epaPrevu-B.epa)} F d'épargne. Verse-la en début de mois, avant les dépenses courantes : c'est plus facile.`;
+  else if(B.sansBud.length)c=`${B.sansBud[0].p} a coûté ${fmt(B.sansBud[0].r)} F sans budget. Donne-lui un montant pour ${nomMois(nx)}.`;
+  else if(!B.aBud)c=`Fais un budget pour ${nomMois(nx)} : le prochain bilan pourra te dire ce qui a été tenu.`;
+  else c=`Mois tenu. Si le solde positif se répète, augmente ton épargne prévue : c'est l'argent qui reste vraiment.`;
+  h+=`<div style="margin-top:16px;background:var(--bd);border-radius:var(--rs);padding:11px 13px"><div style="font-size:12.5px;font-weight:600;color:var(--blue);margin-bottom:3px">Pour ${nomMois(nx)}</div><div style="font-size:12.5px;color:var(--text);line-height:1.55">${esc(c)}</div></div>`;
+  openSheet(sheetHead('Bilan du mois')+h);
+}
+
+// ═══════════════ GUIDE DE DÉMARRAGE ═══════════════
+const GUIDE=[
+  {cible:'#hero',titre:'Ton tableau de bord',txt:'Ce qui est entré et sorti ce mois, et ce qu\'il te reste. Tout se met à jour à chaque transaction.'},
+  {cible:'.ni:nth-child(3)',titre:'Note ta première dépense',txt:'Le bouton + : un montant, un poste, c\'est tout. Plus tu notes au fil de l\'eau, plus l\'appli te sera utile.'},
+  {cible:'.ni:nth-child(4)',titre:'Fais ton budget',txt:'Prévois ce que tu comptes gagner et dépenser. L\'appli te prévient quand un poste s\'emballe, et chaque lundi elle te fait le bilan.'},
+  {cible:'.ni:nth-child(5)',titre:'À ton rythme',txt:'Dans Profil, active ce dont tu as besoin : tes comptes (Wave, Orange Money, espèces), tes objectifs d\'épargne, tes dettes et prêts.'}
+];
+let guideI=0;
+function lancerGuide(){if(document.getElementById('onb'))return;goP('dash',document.querySelectorAll('.ni')[0]);window.scrollTo(0,0);guideI=0;setTimeout(guideEtape,250);}
+function guideEtape(){
+  document.getElementById('guide')?.remove();document.querySelectorAll('.guide-cible').forEach(e=>e.classList.remove('guide-cible'));
+  const g=GUIDE[guideI];if(!g)return finGuide();
+  const el=document.querySelector(g.cible);
+  const ov=document.createElement('div');ov.id='guide';ov.style.cssText='position:fixed;inset:0;z-index:1150;background:rgba(5,8,16,.62)';
+  const r=el?el.getBoundingClientRect():{top:120,bottom:200,left:20,width:300};
+  if(el){el.classList.add('guide-cible');document.getElementById('nav').classList.toggle('guide-haut',!!el.closest('#nav'));}
+  const enBas=r.top>window.innerHeight/2;
+  const pos=enBas?`bottom:${Math.round(window.innerHeight-r.top+14)}px`:`top:${Math.round(r.bottom+14)}px`;
+  ov.innerHTML=`<div style="position:absolute;left:50%;transform:translateX(-50%);${pos};width:calc(100% - 36px);max-width:420px;background:var(--surf);border:1px solid var(--blue);border-radius:14px;padding:15px 16px">
+    <div style="font-size:11px;color:var(--blue);font-weight:600;margin-bottom:4px">Étape ${guideI+1} sur ${GUIDE.length}</div>
+    <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px">${g.titre}</div>
+    <div style="font-size:12.5px;color:var(--text2);line-height:1.55">${g.txt}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
+      <button onclick="finGuide()" style="background:none;border:none;color:var(--text3);font-size:12.5px;cursor:pointer;font-family:var(--font);padding:6px 0">Passer le guide</button>
+      <button onclick="guideI++;guideEtape()" style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">${guideI===GUIDE.length-1?'C\'est parti':'Suivant'}</button></div></div>`;
+  document.body.appendChild(ov);
+}
+function finGuide(){document.getElementById('guide')?.remove();document.getElementById('nav')?.classList.remove('guide-haut');document.querySelectorAll('.guide-cible').forEach(e=>e.classList.remove('guide-cible'));try{localStorage.setItem('fiinas-guide','1');}catch(e){}}
+function guideAuto(){
+  let fait=null;try{fait=localStorage.getItem('fiinas-guide');}catch(e){}
+  if(fait||txs.length>=3||document.getElementById('onb')||document.getElementById('cpt-sheet'))return;
+  lancerGuide();
 }
 
 // ═══════════════ CLAVIER ═══════════════
@@ -3473,10 +3654,10 @@ function actionRaccourci(){
   return false;
 }
 async function renderDash(){
-  if(!_qdnFait){_qdnFait=true;if(actionRaccourci())return;setTimeout(quoiDeNeuf,600);}
+  if(!_qdnFait){_qdnFait=true;if(actionRaccourci())return;setTimeout(quoiDeNeuf,600);setTimeout(guideAuto,2500);}
   renderBackupBanner();
-  renderCptDash();renderObjDash();renderDetDash();renderPointBanner();renderRecurDash();renderMajBanner();renderBilanDash();
-  if(isAnnual()){const h=document.getElementById('hero');h.className='hero';h.onclick=null;h.style.cursor='';['watch','cpt-dash','obj-dash','det-dash','point-banner','bilan-dash'].forEach(i=>{const e=document.getElementById(i);if(e)e.innerHTML='';});document.getElementById('detail-wrap').style.display='block';renderDashAnnual();return;}
+  renderCptDash();renderObjDash();renderDetDash();renderPointBanner();renderRecurDash();renderMajBanner();renderBilanDash();renderBilanMoisDash();renderPrepDash();
+  if(isAnnual()){const h=document.getElementById('hero');h.className='hero';h.onclick=null;h.style.cursor='';['watch','cpt-dash','obj-dash','det-dash','point-banner','bilan-dash','bilanm-dash','prep-dash'].forEach(i=>{const e=document.getElementById(i);if(e)e.innerHTML='';});document.getElementById('detail-wrap').style.display='block';renderDashAnnual();return;}
   const ym=curYM();const t=txYM(ym);
   const rev=sumC(t,'Revenu');const fix=sumC(t,'Dépenses fixes');
   const vr=sumC(t,'Dépenses variables');const ep=sumC(t,'Epargne');
