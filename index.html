@@ -454,7 +454,7 @@ select option{background:#1F2840;color:#F1F4FA}
     <div class="mnav"><button class="mnav-a" onclick="shiftMonth(-1)" aria-label="Mois précédent">‹</button><div class="mnav-slot"></div><button class="mnav-a" onclick="shiftMonth(1)" aria-label="Mois suivant">›</button></div>
     <div style="position:relative;margin-bottom:10px">
       <svg style="position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:.4;pointer-events:none" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-      <input id="tx-search" class="finp" type="text" placeholder="Rechercher poste, commentaire, montant..." style="padding-left:36px;font-size:13px" oninput="renderTX()">
+      <input id="tx-search" class="finp" type="text" placeholder="Rechercher : Yango, Wave, 2500…" style="padding-left:36px;font-size:13px" oninput="renderTX()">
     </div>
     <div id="poste-banner" style="display:none;align-items:center;justify-content:space-between;background:rgba(77,159,255,.1);border:0.5px solid rgba(77,159,255,.3);border-radius:var(--rs);padding:8px 12px;margin-bottom:8px">
       <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--blue)">
@@ -504,6 +504,18 @@ select option{background:#1F2840;color:#F1F4FA}
 
   <!-- PAGE PROFIL -->
   <div id="page-pro" class="page">
+    <div class="card" style="cursor:pointer" onclick="openExportExcel()">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:42px;height:42px;background:var(--gd);border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M8 13l4 5M12 13l-4 5"/></svg>
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:500;color:var(--text)">Exporter en Excel</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Transactions et budget, pour tes propres calculs</div>
+        </div>
+        <div style="margin-left:auto;color:var(--text3);font-size:18px">›</div>
+      </div>
+    </div>
     <div class="card" style="cursor:pointer" onclick="exportPDF()">
       <div style="display:flex;align-items:center;gap:14px">
         <div style="width:42px;height:42px;background:var(--surf2);border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -1621,8 +1633,12 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='32';
-const APP_NOTES=[]; // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
+const APP_VERSION='33';
+const APP_NOTES=[
+  ['M11 3a8 8 0 100 16 8 8 0 000-16zM21 21l-4.3-4.3','Historique : la recherche fouille tous les mois et donne le total (« yango », « wave », « 2500 »)'],
+  ['M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M8 13l4 5M12 13l-4 5','Profil → Exporter en Excel : transactions et budget prévu / réalisé'],
+  ['M12 5v14M5 12h14','Appui long sur l\'icône de l\'appli : ajouter une dépense ou une entrée directement']
+]; // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
   try{
@@ -1927,6 +1943,61 @@ function planEpargne(amt,deja){
   const n=Math.ceil(Math.max(0,amt-deja)/cap);
   const d=new Date();d.setMonth(d.getMonth()+n);
   return `<br>En mettant <b>${fmt(cap)} F</b> de côté chaque mois (la moitié de ta marge habituelle), c'est possible <b>en ${MFR[d.getMonth()].toLowerCase()}${d.getFullYear()!==new Date().getFullYear()?' '+d.getFullYear():''}</b>.`;
+}
+
+// ═══════════════ EXPORT EXCEL ═══════════════
+// SheetJS chargé seulement au premier export (cdnjs, gardé en cache par le service worker).
+const XLSX_URL='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+function chargerXLSX(){
+  if(window.XLSX)return Promise.resolve();
+  return new Promise((ok,ko)=>{const sc=document.createElement('script');sc.src=XLSX_URL;sc.onload=()=>ok();sc.onerror=()=>ko(new Error('connexion nécessaire pour le premier export'));document.head.appendChild(sc);});
+}
+let expPer='mois';
+function openExportExcel(){
+  const ym=todayStr().slice(0,7);
+  openSheet(sheetHead('Exporter en Excel')+`
+    <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:14px">Un fichier .xlsx avec tes transactions${Object.keys(budget).length?' et une feuille budget (prévu / réalisé par poste)':''}.</div>
+    <div class="flbl">Période</div>
+    <div id="exp-per" style="display:flex;gap:6px;margin-bottom:12px"></div>
+    <div id="exp-mois" class="fgrp"><div class="flbl">Mois</div><input class="finp" type="month" id="exp-ym" value="${ym}"></div>
+    <div id="exp-an" class="fgrp" style="display:none"><div class="flbl">Année</div><select class="fsel" id="exp-y">${[...new Set(txs.map(t=>(t.date||'').slice(0,4)).filter(Boolean).concat([ym.slice(0,4)]))].sort().reverse().map(y=>`<option>${y}</option>`).join('')}</select></div>
+    <div id="exp-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
+    <button class="btn-p" id="exp-go" onclick="exporterExcel()">Télécharger</button>`);
+  expPer='mois';expRender();
+}
+function expRender(){
+  document.getElementById('exp-per').innerHTML=[['mois','Un mois'],['annee','Une année'],['tout','Tout']].map(([k,l])=>`<button type="button" class="cpt-ch ${expPer===k?'on':''}" onclick="expPer='${k}';expRender()">${l}</button>`).join('');
+  document.getElementById('exp-mois').style.display=expPer==='mois'?'':'none';
+  document.getElementById('exp-an').style.display=expPer==='annee'?'':'none';
+}
+async function exporterExcel(){
+  const err=document.getElementById('exp-err'),go=document.getElementById('exp-go');
+  let pref,nomFich;
+  if(expPer==='mois'){pref=document.getElementById('exp-ym').value;nomFich=pref;}
+  else if(expPer==='annee'){pref=document.getElementById('exp-y').value;nomFich=pref;}
+  else{pref='';nomFich='complet';}
+  const t=txs.filter(x=>(x.date||'').startsWith(pref)).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  if(!t.length){err.textContent='Aucune transaction sur cette période.';return;}
+  go.disabled=true;go.textContent='Préparation…';
+  try{await chargerXLSX();}catch(e){go.disabled=false;go.textContent='Télécharger';err.textContent='Impossible de préparer le fichier : '+e.message+'.';return;}
+  const cpt=x=>x.parts?x.parts.map(p=>nomCpt(p.compte)+' ('+fmt(p.amt)+')').join(' + '):x.compte?nomCpt(x.compte):'';
+  const lignes=t.map(x=>({Date:x.date,Mois:MFR[+(x.date||'0000-01').slice(5,7)-1]+' '+(x.date||'').slice(0,4),'Catégorie':x.cat,Poste:x.poste,'Montant (F)':x.cat==='Revenu'?(x.amt||0):-(x.amt||0),Compte:cpt(x),Commentaire:x.cmt||''}));
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.json_to_sheet(lignes);ws['!cols']=[{wch:11},{wch:15},{wch:18},{wch:18},{wch:13},{wch:18},{wch:34}];
+  XLSX.utils.book_append_sheet(wb,ws,'Transactions');
+  // Budget : prévu / réalisé par mois et par poste
+  const mois=[...new Set(t.map(x=>x.date.slice(0,7)))].filter(m=>budget[m]&&Object.keys(budget[m]).length).sort();
+  if(mois.length){
+    const b=[];
+    mois.forEach(m=>['Revenu','Dépenses fixes','Dépenses variables','Epargne'].forEach(cat=>getAllPostes(cat).forEach(p=>{
+      const prevu=gBud(m,p),reel=txYM(m).filter(x=>x.cat===cat&&x.poste===p).reduce((s,x)=>s+(x.amt||0),0);
+      if(prevu||reel)b.push({Mois:MFR[+m.slice(5)-1]+' '+m.slice(0,4),'Catégorie':cat,Poste:p,'Prévu (F)':prevu,'Réalisé (F)':reel,'Écart (F)':cat==='Revenu'?reel-prevu:prevu-reel});
+    })));
+    const wb2=XLSX.utils.json_to_sheet(b);wb2['!cols']=[{wch:15},{wch:18},{wch:18},{wch:12},{wch:12},{wch:12}];
+    XLSX.utils.book_append_sheet(wb,wb2,'Budget');
+  }
+  XLSX.writeFile(wb,`FIINAS-${nomFich}.xlsx`);
+  closeSheet();toast('Fichier Excel téléchargé');
 }
 
 // ═══════════════ CLAVIER ═══════════════
@@ -3387,8 +3458,22 @@ function computePatrimoineToday(){
 
 
 let _qdnFait=false;
+// Raccourcis de l'icône (appui long) : /?action=depense | entree | comptes
+function actionRaccourci(){
+  let a=null;try{a=new URLSearchParams(location.search).get('action');}catch(e){}
+  if(!a)return false;
+  try{history.replaceState(null,'',location.pathname);}catch(e){}
+  if(a==='comptes'){goP('cpt',null);return true;}
+  if(a==='depense'||a==='entree'){
+    goP('add',document.querySelectorAll('.ni')[2]);
+    const chip=[...document.querySelectorAll('#page-add .chip')].find(c=>(c.getAttribute('onclick')||'').includes(a==='entree'?"'Revenu'":"'Dépenses variables'"));
+    if(chip)chip.click();
+    setTimeout(()=>document.getElementById('f-amt')?.focus(),250);return true;
+  }
+  return false;
+}
 async function renderDash(){
-  if(!_qdnFait){_qdnFait=true;setTimeout(quoiDeNeuf,600);}
+  if(!_qdnFait){_qdnFait=true;if(actionRaccourci())return;setTimeout(quoiDeNeuf,600);}
   renderBackupBanner();
   renderCptDash();renderObjDash();renderDetDash();renderPointBanner();renderRecurDash();renderMajBanner();renderBilanDash();
   if(isAnnual()){const h=document.getElementById('hero');h.className='hero';h.onclick=null;h.style.cursor='';['watch','cpt-dash','obj-dash','det-dash','point-banner','bilan-dash'].forEach(i=>{const e=document.getElementById(i);if(e)e.innerHTML='';});document.getElementById('detail-wrap').style.display='block';renderDashAnnual();return;}
@@ -3925,7 +4010,9 @@ function setTF(el,f){
   el.classList.add('active');txFilt=f;txPosteFilter='';renderTX();
 }
 function renderTX(){
-  let t=isAnnual()?txYear(annualYear()):txYM(curYM());
+  // Avec une recherche : tous les mois (« combien chez Yango cette année ? »)
+  const q=(document.getElementById('tx-search')?.value||'').toLowerCase().trim();
+  let t=q?txs.slice():isAnnual()?txYear(annualYear()):txYM(curYM());
   // Filtre catégorie
   const catFromFilt={'rev':'Revenu','fix':'Dépenses fixes','var':'Dépenses variables','epa':'Epargne'};
   if(txFilt!=='all'&&catFromFilt[txFilt])t=t.filter(x=>x.cat===catFromFilt[txFilt]);
@@ -3943,10 +4030,17 @@ function renderTX(){
       banner.style.display='none';
     }
   }
-  const q=(document.getElementById('tx-search')?.value||'').toLowerCase().trim();
-  if(q)t=t.filter(x=>(x.poste||'').toLowerCase().includes(q)||(x.cmt||'').toLowerCase().includes(q)||String(x.amt).includes(q));
+  if(q){
+    const qn=q.replace(/[\s\u202f\u00a0.]/g,''),num=/^\d+$/.test(qn);
+    const nomsCpt=x=>(x.parts||[]).map(p=>nomCpt(p.compte)).concat(x.compte?[nomCpt(x.compte)]:[]).join(' ').toLowerCase();
+    t=t.filter(x=>num?String(x.amt||'').includes(qn):((x.poste||'').toLowerCase().includes(q)||(x.cmt||'').toLowerCase().includes(q)||(x.cat||'').toLowerCase().includes(q)||nomsCpt(x).includes(q)));
+  }
   const countEl=document.getElementById('tx-count');
-  if(countEl)countEl.textContent=t.length?`${t.length} transaction${t.length>1?'s':''}`:'';
+  if(countEl){
+    if(q&&t.length){const dep=t.filter(x=>x.cat!=='Revenu').reduce((s,x)=>s+(x.amt||0),0),rev=t.filter(x=>x.cat==='Revenu').reduce((s,x)=>s+(x.amt||0),0);
+      countEl.textContent=`${t.length} résultat${t.length>1?'s':''} sur tous les mois${dep?' · sorties '+fmt(dep)+' F':''}${rev?' · entrées '+fmt(rev)+' F':''}`;}
+    else countEl.textContent=t.length?`${t.length} transaction${t.length>1?'s':''}`:'';
+  }
   const el=document.getElementById('txl');
   if(!t.length){
     el.innerHTML=`<div class="empty">${q?'Aucun résultat pour "'+q+'"':'Aucune transaction'}</div>`;
