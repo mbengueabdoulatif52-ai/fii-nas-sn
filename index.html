@@ -1643,11 +1643,9 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='34';
+const APP_VERSION='35';
 const APP_NOTES=[
-  ['M3 4h18v17H3zM3 9h18M8 2v4M16 2v4','Dès le 25 : l\'appli prépare ton budget du mois suivant, ajusté à tes vraies dépenses'],
-  ['M3 3v18h18M7 15l4-4 3 3 5-6','Le 1er du mois : le bilan du mois écoulé, avec un conseil pour celui qui commence'],
-  ['M12 2a10 10 0 100 20 10 10 0 000-20zM9.5 9.5a2.5 2.5 0 114 2c-.9.6-1.5 1-1.5 2M12 17h.01','Profil → Revoir le guide : les bases de l\'appli en quatre étapes']
+  ['M19 12H5M12 5l-7 7 7 7','Le bouton retour ferme la fenêtre ouverte ou revient à l\'accueil. Sur l\'accueil, appuie deux fois pour quitter']
 ]; // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -2181,6 +2179,39 @@ function guideAuto(){
   if(fait||txs.length>=3||document.getElementById('onb')||document.getElementById('cpt-sheet')||document.getElementById('cfm')||formDirty||!document.getElementById('page-dash')?.classList.contains('active'))return;
   lancerGuide();
 }
+
+// ═══════════════ BOUTON RETOUR DU TÉLÉPHONE ═══════════════
+// Retour ferme d'abord ce qui est ouvert (liste, fenêtre, guide), puis revient à l'accueil.
+// Sur l'accueil : un appui affiche « Appuie encore pour quitter », un 2e appui dans les 2 s quitte.
+(function(){
+  if(!window.history||!history.pushState)return;
+  let dernier=0,quitter=false;
+  const armer=()=>{try{history.pushState({fiinas:1},'');}catch(e){}};
+  const fermer=()=>{
+    const cfm=document.getElementById('cfm');if(cfm){cfm.click();return true;}
+    if(document.getElementById('picker')){fermerListe();return true;}
+    if(document.getElementById('guide')){finGuide();return true;}
+    if(document.getElementById('bud-cascade')){closeBudCascade();return true;}
+    const em=document.getElementById('edit-modal');if(em&&em.style.display!=='none'){closeEditTx();return true;}
+    if(document.getElementById('cpt-sheet')){closeSheet();return true;}
+    // Fenêtres sans identifiant (copier un mois…) : dernière couche plein écran ajoutée au body
+    const ov=[...document.body.children].reverse().find(e=>e.tagName==='DIV'&&!e.id&&getComputedStyle(e).position==='fixed'&&e.offsetHeight>200);
+    if(ov){ov.remove();return true;}
+    return false;
+  };
+  window.addEventListener('popstate',()=>{
+    if(quitter)return;
+    // Écrans qu'on ne ferme pas avec retour : verrouillage, premier réglage, code de secours
+    if(document.getElementById('onb')||document.getElementById('secours-ov')||document.getElementById('lock-overlay')){armer();return;}
+    if(fermer()){armer();return;}
+    const actif=document.querySelector('.page.active')?.id;
+    if(actif&&actif!=='page-dash'&&document.getElementById('nav')){armer();goP('dash',document.querySelectorAll('.ni')[0]);return;}
+    if(Date.now()-dernier<2000){quitter=true;history.back();return;}
+    dernier=Date.now();armer();toast('Appuie encore sur retour pour quitter');
+  });
+  const init=()=>{try{history.replaceState({fiinas:0},'');}catch(e){}armer();};
+  if(document.readyState==='complete')init();else window.addEventListener('load',init);
+})();
 
 // ═══════════════ CLAVIER ═══════════════
 // Clavier ouvert : la barre de navigation se cache et le bouton Enregistrer se pose juste au-dessus.
