@@ -12,7 +12,7 @@ export const signInWithEmailAndPassword=async(a,email,pw)=>{const u=users[email]
 export const createUserWithEmailAndPassword=async(a,email,pw)=>{if(users[email])throw E('auth/email-already-in-use');users[email]={pw,uid:'u'+(++n)};cur=mkU(email,users[email]);setTimeout(()=>cb(cur),10);return{user:cur}};
 export const updateProfile=async(u,p)=>{u.displayName=p.displayName;users[u.email].dn=p.displayName};
 export const EmailAuthProvider={credential:(e,p)=>({e,p})};
-export const reauthenticateWithCredential=async(u,c)=>{if(users[c.e].pw!==c.p)throw E('auth/invalid-credential')};
+export const reauthenticateWithPopup=async()=>{};export const reauthenticateWithCredential=async(u,c)=>{if(users[c.e].pw!==c.p)throw E('auth/invalid-credential')};
 export const updatePassword=async(u,p)=>{users[u.email].pw=p};"""
 srv=subprocess.Popen(['python3','-m','http.server','8771'],cwd=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);time.sleep(1)
 calls=[]

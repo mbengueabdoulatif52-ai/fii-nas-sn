@@ -23,5 +23,14 @@ export const ops = {
   async lireProfil(uid) { const d = await getFirestore(app()).doc(`users/${uid}/data/profil`).get(); return d.exists ? d.data() : null; },
   // Index numéro → comptes, lisible et modifiable par le serveur seulement (règles : tout le reste est fermé)
   async uidsDeNumero(num) { const d = await getFirestore(app()).doc(`numeros/${num}`).get(); return d.exists ? (d.data().uids || []) : []; },
-  async ajouterNumero(num, uid) { await getFirestore(app()).doc(`numeros/${num}`).set({ uids: FieldValue.arrayUnion(uid) }, { merge: true }); }
+  async ajouterNumero(num, uid) { await getFirestore(app()).doc(`numeros/${num}`).set({ uids: FieldValue.arrayUnion(uid) }, { merge: true }); },
+  async retirerNumero(num, uid) {
+    const ref = getFirestore(app()).doc(`numeros/${num}`), d = await ref.get();
+    if (!d.exists) return;
+    const reste = (d.data().uids || []).filter(u => u !== uid);
+    if (reste.length) await ref.set({ uids: reste }); else await ref.delete();
+  },
+  // users/{uid} et tout ce qu'il contient (transactions, mouvements, réglages, code de secours…)
+  async effacerDonnees(uid) { const db = getFirestore(app()); await db.recursiveDelete(db.doc(`users/${uid}`)); },
+  async supprimerUtilisateur(uid) { try { await getAuth(app()).deleteUser(uid); } catch (e) { if (e.code !== 'auth/user-not-found') throw e; } }
 };

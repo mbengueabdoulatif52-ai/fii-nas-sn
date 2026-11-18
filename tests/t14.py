@@ -11,7 +11,7 @@ const E=c=>{const e=new Error(c);e.code=c;return e};
 export const signInWithEmailAndPassword=async(a,e,pw)=>{const u=st.users[e];if(!u||u.pw!==pw)throw E('auth/invalid-credential');st.cur=e;sv();setTimeout(()=>cb(mk(e)),10);return{user:mk(e)}};
 export const createUserWithEmailAndPassword=async(a,e,pw)=>{if(st.users[e])throw E('auth/email-already-in-use');st.users[e]={pw,uid:'u'+(++st.n)};st.cur=e;sv();setTimeout(()=>cb(mk(e)),10);return{user:mk(e)}};
 export const updateProfile=async(u,p)=>{st.users[u.email].dn=p.displayName;sv()};
-export const EmailAuthProvider={};export const reauthenticateWithCredential=async()=>{};export const updatePassword=async()=>{};"""
+export const EmailAuthProvider={};export const reauthenticateWithPopup=async()=>{};export const reauthenticateWithCredential=async()=>{};export const updatePassword=async()=>{};"""
 FSP="""const K='__fs';const store=JSON.parse(localStorage.getItem(K)||'{}');const sv=()=>localStorage.setItem(K,JSON.stringify(store));const subs={};window.__store=store;let n=0;
 export const initializeFirestore=()=>({});export const getFirestore=()=>({});export const persistentLocalCache=()=>0;export const persistentMultipleTabManager=()=>0;
 export const doc=(d,...a)=>a.length?a.join('/'):(d+'/id'+Date.now()+(++n));export const collection=(d,...a)=>a.join('/');export const query=c=>c;export const orderBy=()=>0;export const where=()=>0;

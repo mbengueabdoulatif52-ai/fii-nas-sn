@@ -21,7 +21,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, setDoc as _setDoc, getDoc, getDocs, onSnapshot, collection, deleteDoc as _deleteDoc, query, orderBy, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, EmailAuthProvider, reauthenticateWithCredential, reauthenticateWithPopup, updatePassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey:            "AIzaSyDNb0ei06G6_zyC0IFHLry2fd84N0d6dGI",
@@ -55,7 +55,7 @@ const setDoc=(r,d,o)=>soft(o?_setDoc(r,d,o):_setDoc(r,d));
 const deleteDoc=r=>soft(_deleteDoc(r));
 const addDoc=(c,d)=>{const r=doc(c);return soft(_setDoc(r,d),r);};
 
-window._fb = { db, auth, doc, setDoc, getDoc, getDocs, onSnapshot, collection, addDoc, deleteDoc, query, orderBy, where, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword };
+window._fb = { db, auth, doc, setDoc, getDoc, getDocs, onSnapshot, collection, addDoc, deleteDoc, query, orderBy, where, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, EmailAuthProvider, reauthenticateWithCredential, reauthenticateWithPopup, updatePassword };
 </script>
 
 <style>
@@ -594,6 +594,12 @@ select option{background:#1F2840;color:#F1F4FA}
       </div>
       <div id="trash-list"></div>
     </div>
+    <div class="card" style="cursor:pointer;display:flex;align-items:center;gap:14px" onclick="openConfidentialite()">
+      <div style="width:42px;height:42px;background:var(--surf2);border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/></svg></div>
+      <div><div style="font-size:14px;font-weight:500;color:var(--text)">Confidentialité</div><div style="font-size:11px;color:var(--text3);margin-top:2px">Ce que l'appli garde, où, et tes droits</div></div>
+      <div style="margin-left:auto;color:var(--text3);font-size:18px">›</div>
+    </div>
+    <div style="text-align:center;margin:18px 0 6px"><button onclick="openSupprimerCompte()" style="background:none;border:none;color:var(--red);font-size:12.5px;cursor:pointer;font-family:var(--font);padding:8px">Supprimer mon compte</button></div>
   </div>
 
   <!-- PAGE IMPORT -->
@@ -811,6 +817,7 @@ function renderAuth(vue){
       ${g('Confirme le mot de passe',champMdp('au-mdp2','','new-password'))}
       ${err}
       <button class="btn-p" id="au-go" style="background:var(--blue);color:#fff;font-weight:600" onclick="creerCompte()">Créer mon compte</button>
+      <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:10px;line-height:1.5">En créant un compte, tu acceptes la <a href="#" onclick="event.preventDefault();openConfidentialite()" style="color:var(--blue)">politique de confidentialité</a>.</div>
       ${lien('J\'ai déjà un compte','renderAuth(\'login\')')}`;
   } else if(vue==='oubli'){
     el.innerHTML=`<div style="font-size:19px;font-weight:600;color:var(--text);margin-bottom:6px;text-align:left">Mot de passe oublié</div>
@@ -1643,8 +1650,11 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='36';
-const APP_NOTES=[]; // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
+const APP_VERSION='37';
+const APP_NOTES=[
+  ['M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z','Profil → Confidentialité : ce que l\'appli garde, où, et tes droits'],
+  ['M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14','Tu peux supprimer ton compte et toutes tes données toi-même, en bas de Profil']
+]; // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
   try{
@@ -2210,6 +2220,56 @@ function guideAuto(){
   const init=()=>{try{history.replaceState({fiinas:0},'');}catch(e){}armer();};
   if(document.readyState==='complete')init();else window.addEventListener('load',init);
 })();
+
+// ═══════════════ CONFIDENTIALITÉ ═══════════════
+function contactAppli(){return['mbenguearchibuilding','gmail.com'].join('@');} // assemblé ici pour gêner les robots qui ramassent les adresses
+function openConfidentialite(){
+  const sec=(t,p)=>`<div style="margin-bottom:14px"><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px">${t}</div><div style="font-size:12.5px;color:var(--text2);line-height:1.6">${p}</div></div>`;
+  const c=contactAppli();
+  openSheet(sheetHead('Confidentialité')+
+    sec('Ce que l\'appli garde','Ce que tu y notes : transactions, budgets, comptes, objectifs, dettes, réglages, et ton identifiant de connexion (nom d\'utilisateur, numéro ou compte Google). Rien d\'autre : ni tes contacts, ni ta position, ni tes SMS.')+
+    sec('Où','Sur les serveurs de Google Firebase, liés à ton compte. Les règles de sécurité empêchent tout autre utilisateur de les lire. Le créateur de l\'appli a un accès technique pour la maintenance, mais ne consulte pas tes données.')+
+    sec('Ce que l\'appli ne fait pas','Pas de publicité, pas de revente, pas de partage avec qui que ce soit. Les bilans et conseils sont calculés sur ton téléphone : tes chiffres ne sont envoyés à aucun service d\'analyse ni à aucune intelligence artificielle.')+
+    sec('Tes droits','Tu peux à tout moment exporter tes données (Profil → Exporter en Excel ou Sauvegarde) et supprimer ton compte avec tout ce qu\'il contient (Profil → Supprimer mon compte). Si tu ne peux plus te connecter, écris-nous pour demander l\'effacement.')+
+    sec('Contact',`<a href="mailto:${c}" style="color:var(--blue)">${c}</a>`)+
+    `<div style="font-size:11px;color:var(--text3);margin-top:4px">Mise à jour : novembre 2026</div>`);
+}
+
+// ═══════════════ SUPPRIMER MON COMPTE ═══════════════
+function openSupprimerCompte(){
+  const u=window._fb?.auth?.currentUser;if(!u)return;
+  const google=(u.providerData||[]).some(p=>p.providerId==='google.com');
+  const n=txs.length;
+  openSheet(`<div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:8px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg><div style="font-size:16px;font-weight:600;color:var(--text)">Supprimer ton compte ?</div></div>
+    <div style="font-size:12.5px;color:var(--text2);line-height:1.6;margin-bottom:14px">Tout sera effacé définitivement : ${n?`<b style="color:var(--text)">${fmt(n)} transaction${n>1?'s':''}</b>, `:''}budgets, comptes, objectifs, dettes, réglages et ton accès. Impossible de revenir en arrière.</div>
+    <button type="button" onclick="downloadBackup()" style="width:100%;padding:11px;border-radius:var(--r);border:0.5px solid var(--border2);background:var(--surf2);color:var(--text);font-size:13px;cursor:pointer;font-family:var(--font);margin-bottom:14px">Sauvegarder mes données d'abord</button>
+    ${google?`<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Pour confirmer, Google va te demander de te reconnecter.</div>`
+      :`<div class="fgrp"><div class="flbl">Ton mot de passe pour confirmer</div><input class="finp" type="password" id="sc-mdp" autocomplete="current-password"></div>`}
+    <div id="sc-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
+    <button class="btn-p" id="sc-go" onclick="supprimerMonCompte()" style="background:var(--red)">Supprimer définitivement</button>
+    <button type="button" onclick="closeSheet()" style="width:100%;margin-top:6px;padding:11px;border:none;background:none;color:var(--text2);font-size:13.5px;cursor:pointer;font-family:var(--font)">Garder mon compte</button>`);
+}
+async function supprimerMonCompte(){
+  const{auth,EmailAuthProvider,reauthenticateWithCredential,reauthenticateWithPopup,GoogleAuthProvider,signOut}=window._fb;
+  const u=auth.currentUser,err=document.getElementById('sc-err'),bt=document.getElementById('sc-go');if(!u)return;
+  const google=(u.providerData||[]).some(p=>p.providerId==='google.com');
+  const mdp=document.getElementById('sc-mdp')?.value||'';
+  if(!google&&!mdp){err.textContent='Saisis ton mot de passe.';return;}
+  bt.disabled=true;bt.textContent='Suppression…';err.textContent='';
+  try{
+    if(google)await reauthenticateWithPopup(u,new GoogleAuthProvider());
+    else await reauthenticateWithCredential(u,EmailAuthProvider.credential(u.email,mdp));
+    const r=await fetch('/api/supprimer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idToken:await u.getIdToken(true)})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw{message:j.erreur||'Suppression impossible pour le moment.'};
+  }catch(e){bt.disabled=false;bt.textContent='Supprimer définitivement';
+    err.textContent=/invalid-credential|wrong-password/.test(e.code||'')?'Mot de passe incorrect.':/popup-closed|cancelled/.test(e.code||'')?'Reconnexion annulée.':(e.message||'Suppression impossible.');return;}
+  // Plus rien sur ce téléphone non plus
+  try{Object.keys(localStorage).filter(k=>k.startsWith('fiinas')).forEach(k=>localStorage.removeItem(k));}catch(e){}
+  try{await signOut(auth);}catch(e){}
+  try{const dbs=await indexedDB.databases();dbs.filter(d=>d.name&&d.name.includes('firestore')).forEach(d=>indexedDB.deleteDatabase(d.name));}catch(e){}
+  document.body.innerHTML=`<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:30px;text-align:center;font-family:var(--font);color:var(--text)"><div><div style="font-size:18px;font-weight:600;margin-bottom:8px">Compte supprimé</div><div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:20px">Toutes tes données ont été effacées.<br>Merci d'avoir utilisé FII'NAS.</div><button onclick="location.href='/'" style="background:var(--blue);color:#fff;border:none;border-radius:10px;padding:11px 22px;font-size:14px;font-family:var(--font);cursor:pointer">Retour à l'accueil</button></div></div>`;
+}
 
 // ═══════════════ CLAVIER ═══════════════
 // Clavier ouvert : la barre de navigation se cache et le bouton Enregistrer se pose juste au-dessus.

@@ -169,3 +169,24 @@ export function makeMotDePasse(ops) {
     } catch (e) { console.error('motdepasse', e); return res.status(500).json({ erreur: 'Erreur du serveur.' }); }
   };
 }
+
+// POST /api/supprimer {idToken} → efface le compte : données, numéro associé, compte de connexion.
+// L'appli refait d'abord confirmer le mot de passe (connexion de moins de 5 minutes).
+export function makeSupprimer(ops) {
+  return async (req, res) => {
+    entetes(req, res);
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    if (req.method !== 'POST') return res.status(405).json({ erreur: 'Méthode non autorisée.' });
+    if (!ops.pret()) return res.status(503).json({ erreur: 'La suppression n\'est pas disponible pour le moment.' });
+    const b = corps(req), t = await appelant(ops, b);
+    if (!t) return res.status(401).json({ erreur: 'Reconnecte-toi puis réessaie.' });
+    if (Date.now() / 1000 - (t.auth_time || 0) > 300) return res.status(401).json({ erreur: 'Confirme d\'abord ton mot de passe.' });
+    try {
+      const num = numeroDe((await ops.lireProfil(t.uid) || {}).numero);
+      if (num) await ops.retirerNumero(num, t.uid);
+      await ops.effacerDonnees(t.uid);
+      await ops.supprimerUtilisateur(t.uid);
+      return res.status(200).json({ ok: true });
+    } catch (e) { console.error('supprimer', e); return res.status(500).json({ erreur: 'Erreur du serveur. Réessaie plus tard.' }); }
+  };
+}

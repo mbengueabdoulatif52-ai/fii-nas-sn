@@ -1,6 +1,6 @@
 APP="export const initializeApp=()=>({});"
 AUTH="""try{if(!localStorage.getItem('fiinas-guide-test'))localStorage.setItem('fiinas-guide','1')}catch(e){}
-export const getAuth=()=>({});export class GoogleAuthProvider{};export const signInWithPopup=async()=>{};export const signOut=async()=>{};export const signInWithEmailAndPassword=async()=>{};export const createUserWithEmailAndPassword=async()=>{};export const updateProfile=async()=>{};export const EmailAuthProvider={};export const reauthenticateWithCredential=async()=>{};export const updatePassword=async()=>{};
+export const getAuth=()=>({});export class GoogleAuthProvider{};export const signInWithPopup=async()=>{};export const signOut=async()=>{};export const signInWithEmailAndPassword=async()=>{};export const createUserWithEmailAndPassword=async()=>{};export const updateProfile=async()=>{};export const EmailAuthProvider={};export const reauthenticateWithCredential=async()=>{};export const reauthenticateWithPopup=async()=>{};export const updatePassword=async()=>{};
 export const onAuthStateChanged=(a,cb)=>{setTimeout(()=>cb({uid:'u1',displayName:'Awa Diop',email:'awa@test.sn'}),30);return()=>{}};"""
 def FS(init='{}'):
     return """const store=%s;const subs={};window.__store=store;let n=0;
