@@ -61,7 +61,7 @@ window._fb = { db, auth, doc, setDoc, getDoc, getDocs, onSnapshot, collection, a
 <style>
 :root{
   --bg:#0D1220;--surf:#151C2E;--surf2:#1F2840;--border:rgba(255,255,255,.07);
-  --border2:rgba(255,255,255,.13);--text:#F1F4FA;--text2:#8C97AE;--text3:#5F6B85;
+  --border2:rgba(255,255,255,.13);--text:#F1F4FA;--text2:#8C97AE;--text3:#7D89A3;
   --green:#3DDC84;--gd:rgba(61,220,132,.12);--red:#FF6B5E;--rd:rgba(255,107,94,.12);
   --blue:#3471FF;--bd:rgba(52,113,255,.15);--purple:#A78BFA;--pd:rgba(167,139,250,.14);
   --amber:#F2B33D;--r:14px;--rs:10px;
@@ -70,7 +70,7 @@ window._fb = { db, auth, doc, setDoc, getDoc, getDocs, onSnapshot, collection, a
 :root.light{
   color-scheme:light;
   --bg:#F3F5FA;--surf:#ffffff;--surf2:#ECEFF6;--border:rgba(13,18,32,.08);
-  --border2:rgba(13,18,32,.14);--text:#0D1220;--text2:#5B6478;--text3:#9AA3B5;
+  --border2:rgba(13,18,32,.14);--text:#0D1220;--text2:#5B6478;--text3:#6B7488;
   --green:#16A34A;--gd:rgba(22,163,74,.1);--red:#E5484D;--rd:rgba(229,72,77,.08);
   --blue:#2F6BFF;--bd:rgba(47,107,255,.1);--purple:#7C3AED;--pd:rgba(124,58,237,.1);
   --amber:#D97706;
@@ -1643,10 +1643,8 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='35';
-const APP_NOTES=[
-  ['M19 12H5M12 5l-7 7 7 7','Le bouton retour ferme la fenêtre ouverte ou revient à l\'accueil. Sur l\'accueil, appuie deux fois pour quitter']
-]; // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
+const APP_VERSION='36';
+const APP_NOTES=[]; // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
   try{
@@ -3407,7 +3405,7 @@ waitFB(()=>{
       syncDerniereSauvegarde();
   
   checkLockOnStart();
-      document.getElementById('f-date').value=new Date().toISOString().split('T')[0];
+      document.getElementById('f-date').value=todayStr();
       syncPostes();
     } else {
       // Déconnexion après une session : on recharge la page pour vider TOUTE la mémoire
@@ -4041,7 +4039,7 @@ async function saveTx(){
   document.getElementById('f-amt').value='';
   document.getElementById('f-cmt').value='';
   if(PAY.add){PAY.add.mode='one';PAY.add.parts=[];PAY.add.force=false;PAY.add.warn=false;}
-  document.getElementById('f-date').value=new Date().toISOString().split('T')[0];
+  document.getElementById('f-date').value=todayStr();
   btn.disabled=false;
   if(inner)inner.innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12l5 5L20 7"/></svg> Enregistrer';
   toast(navigator.onLine
@@ -4067,7 +4065,7 @@ function budgetStatus(cat,poste,ym,add){
 function updReste(){
   const el=document.getElementById('f-reste');if(!el)return;
   const poste=document.getElementById('f-poste')?.value;
-  const date=document.getElementById('f-date')?.value||new Date().toISOString().split('T')[0];
+  const date=document.getElementById('f-date')?.value||todayStr();
   const raw=(document.getElementById('f-amt')?.value||'').replace(/\s/g,'').replace(/,/g,'.');
   const amt=parseFloat(raw)||0;
   const ym=date.slice(0,7);
@@ -4222,6 +4220,7 @@ function setTF(el,f){
   document.querySelectorAll('#txf .tab').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');txFilt=f;txPosteFilter='';renderTX();
 }
+let txLim=200,txQPrec='';
 function renderTX(){
   // Avec une recherche : tous les mois (« combien chez Yango cette année ? »)
   const q=(document.getElementById('tx-search')?.value||'').toLowerCase().trim();
@@ -4262,6 +4261,8 @@ function renderTX(){
   const hi=(s,q)=>{if(!q||!s)return esc(s||"");const i=s.toLowerCase().indexOf(q.toLowerCase());if(i<0)return esc(s);return esc(s.slice(0,i))+'<mark style="background:rgba(99,102,241,.3);color:#a5b4fc;border-radius:3px;padding:0 2px">'+esc(s.slice(i,i+q.length))+'</mark>'+esc(s.slice(i+q.length));};
   const tsN=x=>Date.parse(x.ts)||0;
   t=[...t].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||tsN(b)-tsN(a));
+  if(q!==txQPrec){txQPrec=q;txLim=200;}
+  const txTotal=t.length;if(t.length>txLim)t=t.slice(0,txLim);
   const groupes=[];
   t.forEach(x=>{const g=groupes[groupes.length-1];if(g&&g.date===x.date)g.l.push(x);else groupes.push({date:x.date,l:[x]});});
   const CAT_COURT={'Revenu':'Revenu','Dépenses fixes':'Fixes','Dépenses variables':'Variables','Epargne':'Épargne'};
@@ -4295,7 +4296,7 @@ function renderTX(){
       </div>`;
     }).join('');
     return `<div class="dayh"><span>${titre}</span><span class="n" style="color:${net>0?'var(--green)':'var(--text2)'}">${net>=0?'+':'−'}${fmt(Math.abs(net))}</span></div><div class="txg">${rows}</div>`;
-  }).join('');
+  }).join('')+(txTotal>t.length?`<button onclick="txLim+=200;renderTX()" style="width:100%;margin:10px 0;padding:11px;border-radius:var(--r);border:0.5px solid var(--border2);background:var(--surf2);color:var(--text);font-size:13px;cursor:pointer;font-family:var(--font)">Voir plus (${fmt(txTotal-t.length)} restants)</button>`:'');
 }
 
 // BUDGET
@@ -6381,7 +6382,7 @@ async function downloadBackup(){
     const blob=new Blob([JSON.stringify(out,null,1)],{type:'application/json'});
     const a=document.createElement('a');
     a.href=URL.createObjectURL(blob);
-    a.download='Sauvegarde_FIINAS_'+new Date().toISOString().slice(0,10)+'.json';
+    a.download='Sauvegarde_FIINAS_'+todayStr()+'.json';
     document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href),5000);
     localStorage.setItem(BACKUP_KEY,out.date);
