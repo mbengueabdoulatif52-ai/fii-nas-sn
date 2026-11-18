@@ -51,9 +51,10 @@ function soft(pr,ret){
     setTimeout(()=>{if(!done){done=true;res(ret);}},2500);
   });
 }
-const setDoc=(r,d,o)=>soft(o?_setDoc(r,d,o):_setDoc(r,d));
+const auteur=(r,d,o)=>{const u=auth.currentUser;return(!o&&u&&/\/transactions\//.test(r.path||'')&&!d.createdById)?{...d,createdById:u.uid,createdBy:d.createdBy||window.userName||u.displayName||''}:d;};
+const setDoc=(r,d,o)=>soft(o?_setDoc(r,d,o):_setDoc(r,auteur(r,d,o)));
 const deleteDoc=r=>soft(_deleteDoc(r));
-const addDoc=(c,d)=>{const r=doc(c);return soft(_setDoc(r,d),r);};
+const addDoc=(c,d)=>{const r=doc(c);return soft(_setDoc(r,auteur(r,d)),r);};
 
 window._fb = { db, auth, doc, setDoc, getDoc, getDocs, onSnapshot, collection, addDoc, deleteDoc, query, orderBy, where, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, EmailAuthProvider, reauthenticateWithCredential, reauthenticateWithPopup, updatePassword };
 </script>
@@ -157,6 +158,9 @@ input,textarea,[contenteditable],.selectable,#secours-code{-webkit-user-select:t
 .guide-cible{position:relative;z-index:1160!important;box-shadow:0 0 0 3px var(--blue),0 0 0 9999px rgba(0,0,0,0)!important;border-radius:12px}
 #nav .guide-cible{background:var(--surf2)}
 #nav.guide-haut{z-index:1160}
+body.sans-budget #page-bud .save-dock,body.sans-budget #bud-copy-btn,body.sans-budget #bud-eff-btn,body.sans-budget #page-bud [id^="det_"] > div:last-child{display:none!important}
+body.sans-budget #page-bud .binp{pointer-events:none}
+body.sans-budget #page-bud #bud-lecture{display:block!important}
 .save-dock{position:fixed;left:50%;transform:translateX(-50%);width:100%;max-width:480px;bottom:var(--navh,74px);padding:16px 18px 10px;background:linear-gradient(to bottom,transparent,var(--bg) 14px);z-index:90}
 #page-add,#page-bud{padding-bottom:96px}
 body.kbd #nav{display:none}
@@ -329,7 +333,7 @@ select option{background:#1F2840;color:#F1F4FA}
   <div id="gm-park"></div>
 
   <div id="topbar">
-    <div class="topbar-l">
+    <div class="topbar-l" onclick="openEspaces()" style="cursor:pointer">
       <div class="av" id="uav">?</div>
       <div>
         <div class="uname" id="uname">—</div>
@@ -350,6 +354,7 @@ select option{background:#1F2840;color:#F1F4FA}
   <div id="page-dash" class="page active">
     <div class="mnav"><button class="mnav-a" onclick="shiftMonth(-1)" aria-label="Mois précédent">‹</button><div class="mnav-slot"></div><button class="mnav-a" onclick="shiftMonth(1)" aria-label="Mois suivant">›</button></div>
     <div class="hero" id="hero"></div>
+    <div id="foyer-dash"></div>
     <div id="maj-banner"></div>
     <div id="recur-dash"></div>
     <div id="point-banner"></div>
@@ -488,6 +493,7 @@ select option{background:#1F2840;color:#F1F4FA}
     <div class="bmonths" id="bmonths"></div>
     <div id="bud-solde"></div>
     <div id="bud-mini"></div>
+    <div id="bud-lecture" style="display:none;font-size:12px;color:var(--text2);background:var(--surf2);border-radius:var(--rs);padding:9px 12px;margin-bottom:10px">Seul un responsable du foyer peut modifier le budget. Tu le vois en lecture.</div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <button id="bud-copy-btn" onclick="openCopyBudget()" style="flex:1;justify-content:center;background:none;border:0.5px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);cursor:pointer;font-family:var(--font);display:flex;align-items:center;gap:5px">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
@@ -557,6 +563,10 @@ select option{background:#1F2840;color:#F1F4FA}
         </div>
         <div style="margin-left:auto;color:var(--text3);font-size:18px">›</div>
       </div>
+    </div>
+    <div class="card">
+      <div class="ct">Foyer</div>
+      <div id="foyer-ui"></div>
     </div>
     <div class="card">
       <div class="ct">Compte</div>
@@ -1420,6 +1430,7 @@ function occMois(r,ym){const[y,m]=ym.split('-').map(Number),fin=new Date(y,m,0).
 async function recurEcrire(r,dates,amt,compte){
   const{db,doc,setDoc}=window._fb;
   for(const date of dates){
+    if(txs.some(x=>x.id==='rec_'+r.id+'_'+date))continue;
     const t={amt,date,cat:r.cat,poste:r.poste,cmt:r.cmt||'',recur:r.id,ts:new Date().toISOString(),createdBy:userName,createdById:uid};
     if(compte)t.compte=compte;
     await setDoc(doc(db,dataPath()+'/transactions/rec_'+r.id+'_'+date),t);
@@ -1650,10 +1661,11 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='37';
+const APP_VERSION='38';
 const APP_NOTES=[
-  ['M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z','Profil → Confidentialité : ce que l\'appli garde, où, et tes droits'],
-  ['M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14','Tu peux supprimer ton compte et toutes tes données toi-même, en bas de Profil']
+  ['M3 11l9-7 9 7M5 10v10h14V10','Nouveau : les foyers. Un suivi commun avec ton conjoint ou ta famille ; ton espace perso reste privé'],
+  ['M12 8a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0','Touche ton nom en haut de l\'écran pour créer un foyer, le rejoindre ou changer d\'espace'],
+  ['M9 11l3 3 8-8','Chaque entrée dans un foyer est acceptée par un responsable, qui choisit le rôle : responsable, membre ou lecteur']
 ]; // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -2048,7 +2060,7 @@ function renderPrepDash(){
   const auj=todayStr(),cur=auj.slice(0,7),next=moisDecal(cur,1);
   let masque=null;try{masque=localStorage.getItem('fiinas-prep-masque');}catch(e){}
   const okJour=+auj.slice(8)>=25,curBud=Object.values(budget[cur]||{}).some(v=>v>0),nextBud=Object.values(budget[next]||{}).some(v=>v>0);
-  if(!okJour||!curBud||nextBud||masque===next||!isAdmin()){el.innerHTML='';return;}
+  if(!okJour||!curBud||nextBud||masque===next||!peutBudget()){el.innerHTML='';return;}
   const P=propositionBudget();
   el.innerHTML=`<div class="card" style="cursor:pointer;display:flex;gap:12px;align-items:center" onclick="openPrepBudget()">
     <div class="cpt-ic" style="background:var(--bd);color:var(--blue)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M12 13v5M9.5 15.5h5"/></svg></div>
@@ -2259,6 +2271,7 @@ async function supprimerMonCompte(){
   try{
     if(google)await reauthenticateWithPopup(u,new GoogleAuthProvider());
     else await reauthenticateWithCredential(u,EmailAuthProvider.credential(u.email,mdp));
+    await sortirDesFoyers();
     const r=await fetch('/api/supprimer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idToken:await u.getIdToken(true)})});
     const j=await r.json().catch(()=>({}));
     if(!r.ok)throw{message:j.erreur||'Suppression impossible pour le moment.'};
@@ -2269,6 +2282,303 @@ async function supprimerMonCompte(){
   try{await signOut(auth);}catch(e){}
   try{const dbs=await indexedDB.databases();dbs.filter(d=>d.name&&d.name.includes('firestore')).forEach(d=>indexedDB.deleteDatabase(d.name));}catch(e){}
   document.body.innerHTML=`<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:30px;text-align:center;font-family:var(--font);color:var(--text)"><div><div style="font-size:18px;font-weight:600;margin-bottom:8px">Compte supprimé</div><div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:20px">Toutes tes données ont été effacées.<br>Merci d'avoir utilisé FII'NAS.</div><button onclick="location.href='/'" style="background:var(--blue);color:#fff;border:none;border-radius:10px;padding:11px 22px;font-size:14px;font-family:var(--font);cursor:pointer">Retour à l'accueil</button></div></div>`;
+}
+
+// ═══════════════ FOYERS (ESPACES PARTAGÉS) ═══════════════
+// Chacun garde son espace perso (users/{uid}). Un foyer est un espace séparé (foyers/{fid}) avec
+// les mêmes données (transactions, mouvements, réglages) et une liste de rôles :
+//   resp = responsable (tout, membres, budget) · membre = ajoute, modifie ses transactions · lect = lecture
+// Rejoindre : code → demande (foyers/{fid}/demandes/{uid}) → un responsable accepte et choisit le rôle.
+// Les règles Firestore imposent tout cela côté serveur.
+let espace=null,mesFoyers=[],foyerDoc=null,demandesFoyer=[],unsubFoyer=null,unsubDem=null;
+const ROLES={resp:'Responsable',membre:'Membre',lect:'Lecteur'};
+const CODE_ALPHA='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function nouveauCodeFoyer(){const a=crypto.getRandomValues(new Uint8Array(6));let c='';a.forEach(b=>c+=CODE_ALPHA[b%31]);return c.slice(0,3)+'-'+c.slice(3);}
+const normCodeFoyer=v=>{const c=String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'');return c.length===6?c.slice(0,3)+'-'+c.slice(3):null;};
+function peutBudget(){return !espace||espace.role==='resp';}
+function peutModifierTx(t){return !espace||espace.role==='resp'||(espace.role==='membre'&&t&&t.createdById===uid);}
+const icoFoyer='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>';
+const icoPerso='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></svg>';
+
+// ── Liste de mes foyers (users/{uid}/data/foyers : {liste:[fid], demandes:[fid]})
+async function lireMesFoyers(){
+  const{db,doc,getDoc}=window._fb;
+  let d={};try{const s=await getDoc(doc(db,'users/'+uid+'/data/foyers'));d=s.exists()?s.data():{};}catch(e){}
+  return{liste:d.liste||[],demandes:d.demandes||[]};
+}
+async function ecrireMesFoyers(m){const{db,doc,setDoc}=window._fb;await setDoc(doc(db,'users/'+uid+'/data/foyers'),{liste:m.liste,demandes:m.demandes});}
+async function chargerFoyers(){
+  const{db,doc,getDoc}=window._fb;
+  const m=await lireMesFoyers();let modif=false;const msgs=[];
+  // Demandes en attente : acceptées → foyer ajouté ; refusées → retirées
+  for(const fid of [...m.demandes]){
+    try{const s=await getDoc(doc(db,'foyers/'+fid+'/demandes/'+uid));const st=s.exists()?s.data().statut:null;
+      if(st==='accepte'){m.demandes=m.demandes.filter(x=>x!==fid);if(!m.liste.includes(fid))m.liste.push(fid);modif=true;msgs.push({fid,ok:true});}
+      else if(st==='refuse'||!s.exists()){m.demandes=m.demandes.filter(x=>x!==fid);modif=true;msgs.push({fid,ok:false,nom:s.exists()?s.data().foyer:''});}
+    }catch(e){}
+  }
+  const res=[];
+  for(const fid of m.liste){
+    try{const s=await getDoc(doc(db,'foyers/'+fid));const f=s.exists()?s.data():null,r=f&&f.roles&&f.roles[uid];
+      if(r)res.push({fid,nom:f.nom,role:r});else{m.liste=m.liste.filter(x=>x!==fid);modif=true;}
+    }catch(e){if(/permission/i.test(e.code||e.message||'')){m.liste=m.liste.filter(x=>x!==fid);modif=true;}}
+  }
+  mesFoyers=res;
+  if(modif)try{await ecrireMesFoyers(m);}catch(e){}
+  msgs.forEach(x=>{const f=res.find(y=>y.fid===x.fid);toast(x.ok?`Tu as rejoint ${f?f.nom:'le foyer'}`:`Ta demande${x.nom?' pour '+x.nom:''} n'a pas été acceptée`);});
+  return m;
+}
+async function initEspaces(){
+  try{await chargerFoyers();}catch(e){}
+  let der=null;try{der=localStorage.getItem('fiinas-espace-'+uid);}catch(e){}
+  const f=der&&mesFoyers.find(x=>x.fid===der);
+  if(f){espace=f;suivreFoyer();}
+  majEnteteEspace();subscribe();
+}
+
+// ── Changer d'espace
+function viderDonnees(){
+  txs=[];mouvs=[];budget={};budgetDetails={};custom={};modules={};comptes=[];objectifs=[];dettes=[];recur=[];suggMasq={};
+  lastSettingsHash='';_txOk=false;_setOk=false;_recurAutoFait=false;CATS=JSON.parse(JSON.stringify(DEFAULT_CATS));
+}
+function changerEspace(fid){
+  closeSheet();budDirty=false;
+  const f=fid?mesFoyers.find(x=>x.fid===fid):null;
+  if((espace&&espace.fid)===(f&&f.fid))return;
+  espace=f;try{localStorage.setItem('fiinas-espace-'+uid,f?f.fid:'');}catch(e){}
+  viderDonnees();
+  if(unsubFoyer){unsubFoyer();unsubFoyer=null;}if(unsubDem){unsubDem();unsubDem=null;}foyerDoc=null;demandesFoyer=[];
+  if(f)suivreFoyer();
+  majEnteteEspace();subscribe();
+  goP('dash',document.querySelectorAll('.ni')[0]);window.scrollTo(0,0);
+  toast(f?'Foyer : '+f.nom:'Ton espace perso');
+}
+function suivreFoyer(){
+  const{db,doc,onSnapshot,collection,query,where}=window._fb;if(!espace)return;
+  const fid=espace.fid;
+  unsubFoyer=onSnapshot(doc(db,'foyers/'+fid),s=>{
+    if(!espace||espace.fid!==fid)return;
+    const f=s.exists()?s.data():null,r=f&&f.roles&&f.roles[uid];
+    if(!r){toast('Tu ne fais plus partie de ce foyer');mesFoyers=mesFoyers.filter(x=>x.fid!==fid);changerEspace(null);return;}
+    foyerDoc=f;const avant=espace.role;espace.role=r;espace.nom=f.nom;
+    const mf=mesFoyers.find(x=>x.fid===fid);if(mf){mf.role=r;mf.nom=f.nom;}
+    if(r==='resp'&&!unsubDem)unsubDem=onSnapshot(query(collection(db,'foyers/'+fid+'/demandes'),where('statut','==','attente')),q=>{demandesFoyer=q.docs.map(d=>({uid:d.id,...d.data()})).filter(d=>d.statut==='attente');renderFoyerDash();renderFoyerUI();},()=>{});
+    if(r!=='resp'&&unsubDem){unsubDem();unsubDem=null;demandesFoyer=[];}
+    majEnteteEspace();if(avant!==r)renderCurrent();renderFoyerDash();renderFoyerUI();
+  },()=>{});
+}
+function majEnteteEspace(){
+  const av=document.getElementById('uav');
+  if(av){
+    if(espace){if(av.dataset.perso===undefined)av.dataset.perso=av.innerHTML;av.innerHTML=icoFoyer;av.style.background='var(--blue)';av.style.color='#fff';}
+    else if(av.dataset.perso!==undefined){av.innerHTML=av.dataset.perso;delete av.dataset.perso;av.style.background='';av.style.color='';}}
+  const un=document.getElementById('uname'),actif=document.querySelector('.page.active')?.id;
+  if(un&&actif==='page-dash')un.textContent=espace?espace.nom:(userName||'—').split(' ')[0];
+  document.body.classList.toggle('en-foyer',!!espace);
+  document.body.classList.toggle('lecture',!!espace&&espace.role==='lect');
+  document.body.classList.toggle('sans-budget',!peutBudget());
+}
+
+// ── Choisir l'espace (toucher son nom en haut)
+function openEspaces(){
+  const ligne=(fid,ic,nom,sub,on)=>`<button type="button" onclick="changerEspace(${fid?jsa(fid):'null'})" style="width:100%;display:flex;align-items:center;gap:12px;padding:12px 4px;border:none;border-bottom:0.5px solid var(--border);background:none;cursor:pointer;font-family:var(--font);text-align:left">
+      <div class="cpt-ic" style="background:${on?'var(--blue)':'var(--surf2)'};color:${on?'#fff':'var(--text2)'}">${ic}</div>
+      <div style="flex:1;min-width:0"><div style="font-size:14px;color:var(--text);font-weight:${on?600:400}">${esc(nom)}</div><div style="font-size:11.5px;color:var(--text3)">${sub}</div></div>
+      ${on?'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2.6"><path d="M5 12l5 5L20 7"/></svg>':''}</button>`;
+  openSheet(sheetHead('Mes espaces')+
+    ligne(null,icoPerso,(userName||'Moi')+' · perso','Privé, toi seul',!espace)+
+    mesFoyers.map(f=>ligne(f.fid,icoFoyer,f.nom,'Foyer · '+ROLES[f.role],espace&&espace.fid===f.fid)).join('')+
+    `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px">
+      <button type="button" onclick="openCreerFoyer()" style="padding:11px;border-radius:var(--rs);border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font)">Créer un foyer</button>
+      <button type="button" onclick="openRejoindreFoyer()" style="padding:11px;border-radius:var(--rs);border:0.5px solid var(--border2);background:var(--surf2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font)">Rejoindre</button></div>
+    <div style="font-size:11.5px;color:var(--text3);margin-top:12px;line-height:1.5">Un foyer est un suivi commun : chaque membre y note les dépenses du pot commun. Ton espace perso reste privé.</div>`);
+}
+function openCreerFoyer(){
+  openSheet(sheetHead('Créer un foyer')+`
+    <div class="fgrp"><div class="flbl">Nom du foyer</div><input class="finp" id="cf-nom" maxlength="40" placeholder="Foyer ${esc((userName||'').split(' ').slice(-1)[0]||'Diop')}, Famille…"></div>
+    <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:12px">Tu en seras responsable. Tu inviteras ensuite les autres avec un code ; chaque entrée devra être acceptée par un responsable.</div>
+    <div id="cf-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
+    <button class="btn-p" id="cf-go" onclick="creerFoyer()">Créer</button>`);
+  setTimeout(()=>document.getElementById('cf-nom')?.focus(),60);
+}
+async function creerFoyer(){
+  const nom=(document.getElementById('cf-nom').value||'').trim(),err=document.getElementById('cf-err');
+  if(nom.length<2){err.textContent='Donne un nom au foyer.';return;}
+  const{db,doc,setDoc,collection}=window._fb;
+  const ref=doc(collection(db,'foyers')),fid=ref.id||String(ref).split('/').pop(),code=nouveauCodeFoyer();
+  document.getElementById('cf-go').disabled=true;
+  try{
+    await setDoc(doc(db,'foyers/'+fid),{nom,code,roles:{[uid]:'resp'},membres:{[uid]:{nom:userName||'Moi'}},creePar:uid,creeLe:new Date().toISOString()});
+    await setDoc(doc(db,'codes/'+code),{fid,nom});
+    const cats=JSON.parse(JSON.stringify(DEFAULT_CATS));cats['Revenu']=['Apports'];
+    await setDoc(doc(db,'foyers/'+fid+'/data/settings'),{budget:{},budgetDetails:{},custom:{},cats,modules:{},comptes:[],suggMasq:{},objectifs:[],dettes:[],recur:[]});
+    const m=await lireMesFoyers();if(!m.liste.includes(fid))m.liste.push(fid);await ecrireMesFoyers(m);
+  }catch(e){document.getElementById('cf-go').disabled=false;err.textContent=/permission/i.test(e.code||e.message||'')?'Création refusée : les règles de sécurité des foyers ne sont pas encore en place.':'Création impossible : '+e.message;return;}
+  mesFoyers.push({fid,nom,role:'resp'});changerEspace(fid);
+  setTimeout(()=>openFoyerMembres(),400);
+}
+function openRejoindreFoyer(){
+  openSheet(sheetHead('Rejoindre un foyer')+`
+    <div class="fgrp"><div class="flbl">Code reçu</div><input class="finp" id="rf-code" maxlength="7" placeholder="K7P-4QM" style="text-transform:uppercase;letter-spacing:2px;font-family:var(--mono)" autocapitalize="characters"></div>
+    <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:12px">Un responsable du foyer devra accepter ta demande.</div>
+    <div id="rf-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
+    <button class="btn-p" id="rf-go" onclick="rejoindreFoyer()">Envoyer la demande</button>`);
+  setTimeout(()=>document.getElementById('rf-code')?.focus(),60);
+}
+async function rejoindreFoyer(){
+  const code=normCodeFoyer(document.getElementById('rf-code').value),err=document.getElementById('rf-err');
+  if(!code){err.textContent='Le code a 6 caractères, comme K7P-4QM.';return;}
+  const{db,doc,getDoc,setDoc}=window._fb;const go=document.getElementById('rf-go');go.disabled=true;
+  try{
+    const s=await getDoc(doc(db,'codes/'+code));
+    if(!s.exists()){go.disabled=false;err.textContent='Code inconnu ou remplacé. Demande le code actuel au responsable.';return;}
+    const{fid,nom}=s.data();
+    if(mesFoyers.some(f=>f.fid===fid)){go.disabled=false;err.textContent='Tu fais déjà partie de ce foyer.';return;}
+    await setDoc(doc(db,'foyers/'+fid+'/demandes/'+uid),{nom:userName||'Quelqu\'un',foyer:nom,date:new Date().toISOString(),statut:'attente'});
+    const m=await lireMesFoyers();if(!m.demandes.includes(fid))m.demandes.push(fid);await ecrireMesFoyers(m);
+    closeSheet();toast('Demande envoyée à '+nom);
+  }catch(e){go.disabled=false;err.textContent='Demande impossible : '+e.message;}
+}
+
+// Avant de supprimer son compte : quitter chaque foyer (ou le supprimer si on y est seul)
+async function sortirDesFoyers(){
+  const{db,doc,getDoc,setDoc,getDocs,collection,deleteDoc}=window._fb;
+  const fs=[];
+  for(const f of mesFoyers){const s=await getDoc(doc(db,'foyers/'+f.fid));if(s.exists())fs.push({fid:f.fid,d:s.data()});}
+  const bloque=fs.find(x=>x.d.roles[uid]==='resp'&&nbResp(x.d.roles)===1&&Object.keys(x.d.roles).length>1);
+  if(bloque)throw{message:`Tu es le seul responsable de « ${bloque.d.nom} ». Nomme un autre responsable ou supprime ce foyer d'abord.`};
+  for(const x of fs){
+    if(Object.keys(x.d.roles).length===1){
+      for(const c of ['transactions','mouvements','demandes','data']){const q=await getDocs(collection(db,'foyers/'+x.fid+'/'+c));for(const d of q.docs)await deleteDoc(doc(db,'foyers/'+x.fid+'/'+c+'/'+d.id));}
+      if(x.d.code)await deleteDoc(doc(db,'codes/'+x.d.code));await deleteDoc(doc(db,'foyers/'+x.fid));
+    } else {const roles={...x.d.roles},membres={...x.d.membres};delete roles[uid];delete membres[uid];await setDoc(doc(db,'foyers/'+x.fid),{...x.d,roles,membres});}
+  }
+}
+
+// ── Accueil du foyer : demandes + apports du mois
+function renderFoyerDash(){
+  const el=document.getElementById('foyer-dash');if(!el)return;
+  if(!espace){el.innerHTML='';return;}
+  let h='';
+  if(espace.role==='resp'&&demandesFoyer.length)h+=`<div class="card" style="border-color:var(--amber);cursor:pointer" onclick="openFoyerMembres()"><div style="display:flex;align-items:center;gap:10px">
+    <div class="cpt-ic" style="background:rgba(242,179,61,.15);color:var(--amber)">${icoPerso}</div>
+    <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;color:var(--text)">${demandesFoyer.length>1?demandesFoyer.length+' demandes pour rejoindre':esc(demandesFoyer[0].nom)+' demande à rejoindre'} ${esc(espace.nom)}</div>
+    <div style="font-size:11.5px;color:var(--text2)">Touche pour accepter ou refuser</div></div><span style="color:var(--text3);font-size:18px">›</span></div></div>`;
+  const ym=curYM(),ap={};
+  txYM(ym).filter(t=>t.cat==='Revenu').forEach(t=>{const n=(foyerDoc&&foyerDoc.membres&&foyerDoc.membres[t.createdById]&&foyerDoc.membres[t.createdById].nom)||t.createdBy||'?';ap[n]=(ap[n]||0)+(t.amt||0);});
+  const l=Object.entries(ap).sort((a,b)=>b[1]-a[1]);
+  if(l.length)h+=`<div class="card" style="padding:12px 16px"><div style="font-size:11.5px;color:var(--text2);margin-bottom:5px">Apports de ${MFR[+ym.slice(5)-1].toLowerCase()}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--text)">${l.map(([n,v])=>`<span>${esc(n)} <b style="font-weight:600">${fmt(v)}</b></span>`).join('')}</div></div>`;
+  el.innerHTML=h;
+}
+function badgeAuteur(x){
+  const n=(foyerDoc&&foyerDoc.membres&&foyerDoc.membres[x.createdById]&&foyerDoc.membres[x.createdById].nom)||x.createdBy||'';
+  if(!n)return'';const moi=x.createdById===uid;
+  return `<span style="padding:1px 7px;border-radius:10px;background:${moi?'var(--bd)':'var(--gd)'};color:${moi?'var(--blue)':'var(--green)'};font-size:10.5px">${esc(n.split(' ')[0])}</span>`;
+}
+
+// ── Profil : carte Foyers
+function renderFoyerUI(){
+  const el=document.getElementById('foyer-ui');if(!el)return;
+  if(!espace){
+    el.innerHTML=`<div style="font-size:12px;color:var(--text2);line-height:1.55;margin-bottom:12px">Un suivi commun avec ton conjoint, ta famille… Chacun note les dépenses du pot commun ; ton espace perso reste privé.</div>
+      ${mesFoyers.length?mesFoyers.map(f=>`<button type="button" onclick="changerEspace(${jsa(f.fid)})" style="width:100%;display:flex;justify-content:space-between;align-items:center;padding:10px 0;border:none;border-top:0.5px solid var(--border);background:none;cursor:pointer;font-family:var(--font)"><span style="font-size:13.5px;color:var(--text)">${esc(f.nom)}</span><span style="font-size:11.5px;color:var(--text3)">${ROLES[f.role]} ›</span></button>`).join(''):''}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+        <button type="button" onclick="openCreerFoyer()" class="btn-o" style="justify-content:center">Créer</button>
+        <button type="button" onclick="openRejoindreFoyer()" class="btn-o" style="justify-content:center">Rejoindre</button></div>`;
+    return;
+  }
+  const n=foyerDoc?Object.keys(foyerDoc.roles||{}).length:1;
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;cursor:pointer" onclick="openFoyerMembres()">
+      <div class="cpt-ic" style="background:var(--blue);color:#fff">${icoFoyer}</div>
+      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:500;color:var(--text)">${esc(espace.nom)}</div><div style="font-size:11.5px;color:var(--text3)">${n} membre${n>1?'s':''} · tu es ${ROLES[espace.role].toLowerCase()}${espace.role==='resp'&&demandesFoyer.length?` · <span style="color:var(--amber)">${demandesFoyer.length} demande${demandesFoyer.length>1?'s':''}</span>`:''}</div></div>
+      <span style="color:var(--text3);font-size:18px">›</span></div>`;
+}
+function openFoyerMembres(){
+  if(!espace||!foyerDoc)return;
+  const resp=espace.role==='resp',f=foyerDoc;
+  const membres=Object.keys(f.roles||{}).map(u=>({u,nom:(f.membres&&f.membres[u]&&f.membres[u].nom)||'?',r:f.roles[u]})).sort((a,b)=>(a.u===uid?-1:b.u===uid?1:0)||a.nom.localeCompare(b.nom));
+  const selR=(u,r)=>`<select class="fsel" style="width:auto;padding:6px 28px 6px 10px;font-size:12px" onchange="changerRole(${jsa(u)},this.value)">${Object.entries(ROLES).map(([k,l])=>`<option value="${k}" ${k===r?'selected':''}>${l}</option>`).join('')}</select>`;
+  const lignesM=membres.map(m=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:0.5px solid var(--border)">
+      <span style="font-size:13.5px;color:var(--text)">${esc(m.nom)}${m.u===uid?' <span style="color:var(--text3);font-size:11.5px">(toi)</span>':''}</span>
+      <span style="display:flex;align-items:center;gap:6px">${resp&&m.u!==uid?selR(m.u,m.r)+`<button aria-label="Retirer" onclick="retirerMembre(${jsa(m.u)})" style="background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:2px 4px">✕</button>`:`<span style="font-size:12px;color:${m.r==='resp'?'var(--blue)':'var(--text2)'}">${ROLES[m.r]}</span>`}</span></div>`).join('');
+  const lignesD=resp?demandesFoyer.map(d=>`<div style="padding:10px 0;border-bottom:0.5px solid var(--border)">
+      <div style="font-size:13.5px;color:var(--text);margin-bottom:7px">${esc(d.nom)} <span style="font-size:11px;color:var(--text3)">· ${d.date?new Date(d.date).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):''}</span></div>
+      <div style="display:flex;gap:6px;align-items:center">${`<select class="fsel" id="dr-${esc(d.uid)}" style="flex:1;padding:7px 28px 7px 10px;font-size:12.5px">${Object.entries(ROLES).map(([k,l])=>`<option value="${k}" ${k==='membre'?'selected':''}>${l}</option>`).join('')}</select>`}
+        <button onclick="repondreDemande(${jsa(d.uid)},true)" style="padding:8px 12px;border:none;border-radius:8px;background:var(--blue);color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--font)">Accepter</button>
+        <button onclick="repondreDemande(${jsa(d.uid)},false)" style="padding:8px 10px;border:none;background:none;color:var(--red);font-size:12.5px;cursor:pointer;font-family:var(--font)">Refuser</button></div></div>`).join(''):'';
+  const lien=`Rejoins le foyer « ${f.nom} » sur FII'NAS : ouvre https://fii-nas-sn.vercel.app, touche ton nom en haut → Rejoindre, et saisis le code ${f.code}`;
+  openSheet(sheetHead(esc(f.nom))+
+    (lignesD?`<div class="ct" style="color:var(--amber);margin-bottom:2px">Demandes en attente</div>${lignesD}<div style="height:14px"></div>`:'')+
+    `<div class="ct" style="margin-bottom:2px">Membres (${membres.length})</div>${lignesM}`+
+    (resp?`<div style="margin-top:16px;background:var(--surf2);border-radius:var(--r);padding:14px">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Code d'invitation · chaque demande devra être acceptée</div>
+      <div style="font-family:var(--mono);font-size:22px;font-weight:600;letter-spacing:3px;text-align:center;color:var(--text);padding:6px 0" class="selectable">${esc(f.code)}</div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:8px">
+        <button onclick="window.open('https://wa.me/?text='+encodeURIComponent(${jsa(lien)}),'_blank')" style="padding:10px;border:none;border-radius:8px;background:#25D366;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">Envoyer par WhatsApp</button>
+        <button onclick="changerCodeFoyer()" style="padding:10px 12px;border:0.5px solid var(--border2);border-radius:8px;background:none;color:var(--text2);font-size:12.5px;cursor:pointer;font-family:var(--font)">Nouveau code</button></div></div>`:'')+
+    `<div style="display:grid;grid-template-columns:1fr${resp?' 1fr':''};gap:8px;margin-top:16px">
+      <button onclick="quitterFoyer()" style="padding:11px;border-radius:var(--rs);border:0.5px solid var(--border2);background:var(--surf2);color:var(--text);font-size:13px;cursor:pointer;font-family:var(--font)">Quitter le foyer</button>
+      ${resp?`<button onclick="supprimerFoyer()" style="padding:11px;border-radius:var(--rs);border:0.5px solid rgba(255,69,58,.4);background:transparent;color:var(--red);font-size:13px;cursor:pointer;font-family:var(--font)">Supprimer le foyer</button>`:''}</div>`);
+}
+async function ecrireFoyer(roles,membres,extra){
+  const{db,doc,setDoc}=window._fb;
+  const nv={...foyerDoc,roles,membres,...(extra||{})};
+  await setDoc(doc(db,'foyers/'+espace.fid),nv);foyerDoc=nv;
+}
+const nbResp=r=>Object.values(r).filter(x=>x==='resp').length;
+async function repondreDemande(u,ok){
+  const{db,doc,setDoc}=window._fb;const d=demandesFoyer.find(x=>x.uid===u);if(!d)return;
+  try{
+    if(ok){const role=document.getElementById('dr-'+u)?.value||'membre';
+      await ecrireFoyer({...foyerDoc.roles,[u]:role},{...foyerDoc.membres,[u]:{nom:d.nom}});}
+    await setDoc(doc(db,'foyers/'+espace.fid+'/demandes/'+u),{statut:ok?'accepte':'refuse',reponduLe:new Date().toISOString()},{merge:true});
+  }catch(e){toast('⚠ '+e.message);return;}
+  demandesFoyer=demandesFoyer.filter(x=>x.uid!==u);toast(ok?d.nom+' a rejoint le foyer':'Demande refusée');openFoyerMembres();renderFoyerDash();
+}
+async function changerRole(u,r){
+  const roles={...foyerDoc.roles,[u]:r};
+  if(!nbResp(roles)){toast('Il faut au moins un responsable');openFoyerMembres();return;}
+  try{await ecrireFoyer(roles,foyerDoc.membres);toast('Rôle modifié');}catch(e){toast('⚠ '+e.message);}
+  openFoyerMembres();
+}
+async function retirerMembre(u){
+  const nom=foyerDoc.membres?.[u]?.nom||'ce membre';
+  if(!await confirmer(`Retirer ${nom} du foyer ?\nSes transactions restent dans le foyer. Il pourra redemander à entrer avec le code.`,'Retirer'))return;
+  const roles={...foyerDoc.roles},membres={...foyerDoc.membres};delete roles[u];delete membres[u];
+  try{await ecrireFoyer(roles,membres);toast(nom+' a été retiré');}catch(e){toast('⚠ '+e.message);}
+  openFoyerMembres();
+}
+async function changerCodeFoyer(){
+  if(!await confirmer('Créer un nouveau code ?\nL\'ancien ne marchera plus. Les membres actuels ne sont pas touchés.','Nouveau code',false))return;
+  const{db,doc,setDoc,deleteDoc}=window._fb;const code=nouveauCodeFoyer(),ancien=foyerDoc.code;
+  try{await ecrireFoyer(foyerDoc.roles,foyerDoc.membres,{code});await setDoc(doc(db,'codes/'+code),{fid:espace.fid,nom:foyerDoc.nom});if(ancien)await deleteDoc(doc(db,'codes/'+ancien));}
+  catch(e){toast('⚠ '+e.message);return;}
+  toast('Nouveau code : '+code);openFoyerMembres();
+}
+async function quitterFoyer(){
+  const roles={...foyerDoc.roles},membres={...foyerDoc.membres};
+  if(roles[uid]==='resp'&&nbResp(roles)===1&&Object.keys(roles).length>1){
+    await confirmer('Nomme d\'abord un autre responsable\nTu es le seul responsable : donne ce rôle à un autre membre, ou supprime le foyer.','Compris',false,'Fermer');return;}
+  if(Object.keys(roles).length===1)return supprimerFoyer();
+  if(!await confirmer(`Quitter ${foyerDoc.nom} ?\nTes transactions restent dans le foyer. Pour revenir, il faudra refaire une demande.`,'Quitter'))return;
+  delete roles[uid];delete membres[uid];const fid=espace.fid;
+  try{const{db,doc,setDoc}=window._fb;await setDoc(doc(db,'foyers/'+fid),{...foyerDoc,roles,membres});
+    const m=await lireMesFoyers();m.liste=m.liste.filter(x=>x!==fid);await ecrireMesFoyers(m);}
+  catch(e){toast('⚠ '+e.message);return;}
+  mesFoyers=mesFoyers.filter(x=>x.fid!==fid);changerEspace(null);toast('Tu as quitté le foyer');
+}
+async function supprimerFoyer(){
+  if(!await confirmer(`Supprimer ${foyerDoc.nom} ?\nToutes ses transactions, son budget et ses réglages seront effacés pour tous les membres. Action définitive.`,'Supprimer le foyer'))return;
+  const{db,doc,getDocs,collection,deleteDoc}=window._fb;const fid=espace.fid,code=foyerDoc.code;
+  toast('Suppression du foyer…');
+  try{
+    for(const c of ['transactions','mouvements','demandes','data']){const q=await getDocs(collection(db,'foyers/'+fid+'/'+c));for(const d of q.docs)await deleteDoc(doc(db,'foyers/'+fid+'/'+c+'/'+d.id));}
+    if(code)await deleteDoc(doc(db,'codes/'+code));
+    await deleteDoc(doc(db,'foyers/'+fid));
+    const m=await lireMesFoyers();m.liste=m.liste.filter(x=>x!==fid);await ecrireMesFoyers(m);
+  }catch(e){toast('⚠ '+e.message);return;}
+  mesFoyers=mesFoyers.filter(x=>x.fid!==fid);changerEspace(null);toast('Foyer supprimé');
 }
 
 // ═══════════════ CLAVIER ═══════════════
@@ -2455,6 +2765,7 @@ function renderModulesUI(){
     </div>`;
 }
 async function toggleModule(k){
+  if(!peutBudget()){toast('Seul un responsable du foyer peut activer ou couper un module');renderModulesUI();return;}
   modules[k]=!modules[k];
   // Désactivé volontairement : on ne le resuggère plus sur l'accueil (réactivable dans Profil → Modules)
   const masqAvant=suggMasq[k];
@@ -3484,7 +3795,7 @@ function nomPropre(v){v=String(v||'').trim();return v&&v===v.toLowerCase()?v.rep
 function setUserUI(u){
   const ps=pseudoDeEmail(u.email);
   const n=nomPropre((u.displayName||window.__nouveauCompte||ps||(estCompteNumero(u.email)?'Utilisateur':u.email)||'Utilisateur').split(' ')[0]);
-  userName=nomPropre(u.displayName||window.__nouveauCompte||n);
+  userName=nomPropre(u.displayName||window.__nouveauCompte||n);window.userName=userName;
   document.getElementById('uname').textContent=n;
   document.getElementById('pname').textContent=nomPropre(u.displayName||window.__nouveauCompte||ps||'Utilisateur');
   document.getElementById('pemail').textContent=ps?'@'+ps:estCompteNumero(u.email)?(monNumero?fmtNumero(monNumero):''):(u.email||'');
@@ -3498,15 +3809,9 @@ function setUserUI(u){
 
 
 // Chemin des données — espace perso ou partagé
-function dataPath(){
-  // sharedSpaceId now stores the OWNER's uid, not a space document id
-  return sharedSpaceId ? 'users/'+sharedSpaceId : 'users/'+uid;
-}
-function isAdmin(){
-  if(!sharedSpaceId)return true; // own space — always admin
-  const sp=mySpaces.find(s=>s.ownerUid===sharedSpaceId);
-  return (sp?.role||userRole)==='admin';
-}
+function dataPath(){return espace?'foyers/'+espace.fid:'users/'+uid;}
+// Peut écrire dans l'espace courant (perso : toujours ; foyer : responsable ou membre)
+function isAdmin(){return !espace||espace.role!=='lect';}
 
 function subscribe(){
   const{db,collection,query,orderBy,onSnapshot,doc}=window._fb;
@@ -3552,7 +3857,7 @@ function subscribe(){
       // local (vide) : on attend la réponse du serveur avant de conclure à un nouveau compte.
       if(snap.metadata.fromCache)return;
       CATS=JSON.parse(JSON.stringify(DEFAULT_CATS));
-      openOnboarding();
+      if(!espace)openOnboarding(); // un foyer reçoit ses réglages à sa création
     }
     renderCurrent();renderCPUI();
   },err=>loadError('réglages',err));
@@ -3688,14 +3993,14 @@ function goP(p,btn){
   placeMonthSel(p);
   // Bandeau : ton nom sur l'accueil, le nom de l'écran ailleurs
   const TITRES={tx:'Historique',add:'Ajouter',bud:'Budget',pro:'Profil',imp:'Importer',cpt:'Mes comptes',obj:'Objectifs',det:'Dettes et prêts'};
-  const un=document.getElementById('uname');if(un)un.textContent=p==='dash'?(userName||'—'):(TITRES[p]||'');
+  const un=document.getElementById('uname');if(un)un.textContent=p==='dash'?(espace?espace.nom:(userName||'—')):(TITRES[p]||'');
   if(p==='dash')renderDash();
   else if(p==='tx')renderTX();
   else if(p==='bud')renderBudPage();
   else if(p==='cpt')renderComptesPage();
   else if(p==='obj')renderObjPage();
   else if(p==='det')renderDetPage();
-  else if(p==='pro'){renderModulesUI();renderCPUI();renderRecurUI();renderTrash();renderSecurityUI();renderSpacesUI();renderBackupUI();}
+  else if(p==='pro'){renderModulesUI();renderCPUI();renderRecurUI();renderFoyerUI();renderTrash();renderSecurityUI();renderSpacesUI();renderBackupUI();}
   else if(p==='add'){syncPostes();renderFormComptes();renderFormObjectifs();renderFormRecur();document.getElementById('fmsg').textContent='';}
   else if(p==='imp'){document.getElementById('imp-log').style.display='none';document.getElementById('imp-pb').style.width='0%';document.getElementById('imp-pt').textContent='En attente';}
 }
@@ -3746,7 +4051,7 @@ function actionRaccourci(){
 async function renderDash(){
   if(!_qdnFait){_qdnFait=true;if(actionRaccourci())return;setTimeout(quoiDeNeuf,600);setTimeout(guideAuto,2500);}
   renderBackupBanner();
-  renderCptDash();renderObjDash();renderDetDash();renderPointBanner();renderRecurDash();renderMajBanner();renderBilanDash();renderBilanMoisDash();renderPrepDash();
+  renderCptDash();renderObjDash();renderDetDash();renderPointBanner();renderRecurDash();renderMajBanner();renderBilanDash();renderBilanMoisDash();renderPrepDash();renderFoyerDash();
   if(isAnnual()){const h=document.getElementById('hero');h.className='hero';h.onclick=null;h.style.cursor='';['watch','cpt-dash','obj-dash','det-dash','point-banner','bilan-dash','bilanm-dash','prep-dash'].forEach(i=>{const e=document.getElementById(i);if(e)e.innerHTML='';});document.getElementById('detail-wrap').style.display='block';renderDashAnnual();return;}
   const ym=curYM();const t=txYM(ym);
   const rev=sumC(t,'Revenu');const fix=sumC(t,'Dépenses fixes');
@@ -4185,6 +4490,7 @@ async function delTx(id){
   if(!isAdmin()){toast('Mode lecture — modification non autorisée');return;}
   const tx=txs.find(t=>t.id===id);
   if(!tx)return;
+  if(!peutModifierTx(tx)){toast('Seul un responsable peut supprimer la transaction d\'un autre membre');return;}
   // Modale de confirmation
   const confirmed=await new Promise(resolve=>{
     const ov=document.createElement('div');
@@ -4344,7 +4650,7 @@ function renderTX(){
       const isR=x.cat==='Revenu',isE=x.cat==='Epargne';
       const ac=isR?'g':isE?'p':'r';
       const meta=[x.cmt?hi(x.cmt,q):'',CAT_COURT[x.cat]||esc(x.cat||''),(modules.comptes&&(x.compte||x.parts))?esc(partsLabel(x,x.amt)):''].filter(Boolean).join(' · ');
-      const badge=sharedSpaceId?getTxBadge(x):'';
+      const badge=espace?badgeAuteur(x):'';
       return `<div class="txi" onclick="openEditTx('${x.id}')">
         <div class="txic ${cl}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICO[x.cat]||'<circle cx="12" cy="12" r="4"/>'}</svg></div>
         <div class="txin">
@@ -4616,6 +4922,7 @@ async function removeBudDetail(ym,poste,idx){
   try{await saveBudPoste(ym,poste,v);}catch(e){det.splice(idx,0,ret);budgetDetails[ym][poste]=det;toast('⚠ '+e.message);}
 }
 async function saveBudget(){
+  if(!peutBudget()){toast('Seul un responsable du foyer peut modifier le budget');return;}
   const ym=ymk(bYear,bMonth);const bud={};
   const all=Object.keys(CATS).flatMap(c=>CATS[c]||[]);
   all.forEach(p=>{
@@ -5455,6 +5762,8 @@ function fmtAmtInput(el){
 let editingId=null;
 function openEditTx(id){
   const tx=txs.find(t=>t.id===id);if(!tx)return;
+  if(!isAdmin()){toast('Mode lecture : tu peux consulter, pas modifier');return;}
+  if(!peutModifierTx(tx)){toast('Seul un responsable peut modifier la transaction d\'un autre membre');return;}
   editingId=id;
   const fmtd=tx.amt?parseInt(tx.amt).toLocaleString('fr-FR'):'';
   document.getElementById('e-amt').value=fmtd;
@@ -6056,7 +6365,7 @@ async function loadUserSpaces(){
     sharedSpaceId=null;userRole='admin';mySpaces=[];
     const sb=document.getElementById('space-btn');if(sb)sb.style.display='none';
     const su=document.getElementById('spaces-ui');if(su&&su.closest('.card'))su.closest('.card').style.display='none';
-    subscribe();
+    initEspaces();
     return;
   }
   const{db,doc,onSnapshot}=window._fb;
