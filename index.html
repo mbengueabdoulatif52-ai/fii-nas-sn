@@ -155,7 +155,7 @@ body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webki
 input,textarea,[contenteditable],.selectable,#secours-code{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 #secours-code{-webkit-user-select:all;user-select:all}
 .save-dock{position:fixed;left:50%;transform:translateX(-50%);width:100%;max-width:480px;bottom:var(--navh,74px);padding:16px 18px 10px;background:linear-gradient(to bottom,transparent,var(--bg) 14px);z-index:90}
-#page-add{padding-bottom:96px}
+#page-add,#page-bud{padding-bottom:96px}
 body.kbd #nav{display:none}
 body.kbd .save-dock{bottom:var(--kb,0px);padding-bottom:8px}
 #cpt-sheet .btn-p,#edit-modal .btn-p{position:sticky;bottom:0;z-index:2;box-shadow:0 10px 0 var(--surf),0 -10px 14px -2px var(--surf)}
@@ -494,10 +494,12 @@ select option{background:#1F2840;color:#F1F4FA}
       </button>
     </div>
     <div id="bform"></div>
-    <button class="btn-p" onclick="saveBudget()"  style="margin-top:4px;margin-bottom:2px">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12l5 5L20 7"/></svg>
-      Enregistrer le budget
-    </button>
+    <div class="save-dock">
+      <button class="btn-p" onclick="saveBudget()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12l5 5L20 7"/></svg>
+        Enregistrer le budget
+      </button>
+    </div>
   </div>
 
   <!-- PAGE PROFIL -->
@@ -1619,7 +1621,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='31';
+const APP_VERSION='32';
 const APP_NOTES=[]; // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1933,7 +1935,10 @@ function planEpargne(amt,deja){
   const nav=()=>{const n=document.getElementById('nav');if(n&&n.offsetHeight)document.documentElement.style.setProperty('--navh',n.offsetHeight+'px');};
   const saisie=el=>el&&((el.tagName==='INPUT'&&!el.readOnly&&!/^(checkbox|radio|button|submit|file)$/.test(el.type))||el.tagName==='TEXTAREA');
   let t=null;
-  document.addEventListener('focusin',e=>{if(saisie(e.target)){clearTimeout(t);document.body.classList.add('kbd');}});
+  // Le champ touché ne doit pas rester caché derrière le bouton fixé
+  const degager=el=>{const d=[...document.querySelectorAll('.page.active .save-dock')][0];if(!d||!el.isConnected)return;
+    const r=el.getBoundingClientRect(),top=d.getBoundingClientRect().top;if(r.bottom>top-8)window.scrollBy({top:r.bottom-top+16,behavior:'smooth'});};
+  document.addEventListener('focusin',e=>{if(saisie(e.target)){clearTimeout(t);document.body.classList.add('kbd');setTimeout(()=>degager(e.target),350);}});
   document.addEventListener('focusout',()=>{clearTimeout(t);t=setTimeout(()=>{if(!saisie(document.activeElement))document.body.classList.remove('kbd');},120);});
   const vv=window.visualViewport;
   const maj=()=>{const kb=vv?Math.max(0,window.innerHeight-vv.height-vv.offsetTop):0;document.documentElement.style.setProperty('--kb',(kb>40?kb:0)+'px');};
