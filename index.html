@@ -2177,7 +2177,8 @@ function guideEtape(){
 function finGuide(){document.getElementById('guide')?.remove();document.getElementById('nav')?.classList.remove('guide-haut');document.querySelectorAll('.guide-cible').forEach(e=>e.classList.remove('guide-cible'));try{localStorage.setItem('fiinas-guide','1');}catch(e){}}
 function guideAuto(){
   let fait=null;try{fait=localStorage.getItem('fiinas-guide');}catch(e){}
-  if(fait||txs.length>=3||document.getElementById('onb')||document.getElementById('cpt-sheet'))return;
+  // Seulement sur l'accueil, sans fenêtre ni saisie en cours
+  if(fait||txs.length>=3||document.getElementById('onb')||document.getElementById('cpt-sheet')||document.getElementById('cfm')||formDirty||!document.getElementById('page-dash')?.classList.contains('active'))return;
   lancerGuide();
 }
 
