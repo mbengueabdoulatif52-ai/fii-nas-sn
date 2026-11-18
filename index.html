@@ -612,6 +612,7 @@ select option{background:#1F2840;color:#F1F4FA}
       <div><div style="font-size:14px;font-weight:500;color:var(--text)">Confidentialité</div><div style="font-size:11px;color:var(--text3);margin-top:2px">Ce que l'appli garde, où, et tes droits</div></div>
       <div style="margin-left:auto;color:var(--text3);font-size:18px">›</div>
     </div>
+    <div id="version-app" style="text-align:center;font-size:11px;color:var(--text3);margin-top:14px"></div>
     <div style="text-align:center;margin:18px 0 6px"><button onclick="openSupprimerCompte()" style="background:none;border:none;color:var(--red);font-size:12.5px;cursor:pointer;font-family:var(--font);padding:8px">Supprimer mon compte</button></div>
   </div>
 
@@ -1664,7 +1665,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='40';
+const APP_VERSION='41';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1703,6 +1704,7 @@ function quoiDeNeuf(){
     <button class="btn-p" onclick="closeSheet()">C'est parti</button>`);
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')verifMaj();});
+document.addEventListener('DOMContentLoaded',()=>{const v=document.getElementById('version-app');if(v)v.textContent='FII\'NAS SN · version '+APP_VERSION;});
 setInterval(verifMaj,30*60000);
 setTimeout(verifMaj,4000);
 
