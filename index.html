@@ -161,6 +161,9 @@ input,textarea,[contenteditable],.selectable,#secours-code{-webkit-user-select:t
 body.sans-budget #page-bud .save-dock,body.sans-budget #bud-copy-btn,body.sans-budget #bud-eff-btn,body.sans-budget #page-bud [id^="det_"] > div:last-child{display:none!important}
 body.sans-budget #page-bud .binp{pointer-events:none}
 body.sans-budget #page-bud #bud-lecture{display:block!important}
+body.lecture [onclick^="openPointage("],body.lecture [onclick^="recurConfirmer("],body.lecture [onclick^="recurToutConfirmer("],body.lecture [onclick^="openRecurConfirm("],body.lecture [onclick^="openRecurEdit("],body.lecture [onclick^="openEffacerBudgets("],body.lecture [onclick^="openPrepBudget("],body.lecture [onclick^="validerPrep("],body.lecture [onclick^="modifierPrep("],body.lecture [onclick^="openAddCompte("],body.lecture [onclick^="supprimerCompte("],body.lecture [onclick^="openCorrection("],body.lecture [onclick^="openVirement("],body.lecture [onclick^="saveCorrection("],body.lecture [onclick^="saveVirement("],body.lecture [onclick^="saveCompte("],body.lecture [onclick^="openAddObj("],body.lecture [onclick^="supprimerObj("],body.lecture [onclick^="openRetraitObj("],body.lecture [onclick^="ajouterAObj("],body.lecture [onclick^="saveObj("],body.lecture [onclick^="saveRetraitObj("],body.lecture [onclick^="openAddDette("],body.lecture [onclick^="supprimerDette("],body.lecture [onclick^="openRemb("],body.lecture [onclick^="openAbandon("],body.lecture [onclick^="saveDette("],body.lecture [onclick^="saveRemb("],body.lecture [onclick^="saveAbandon("],body.lecture [onclick^="rappelWhatsApp("],body.lecture [onclick^="appliquerEffort("],body.lecture [onclick^="openCopyBudget("],body.lecture [onclick^="addBudDetail("],body.lecture [onclick^="removeBudDetail("],body.lecture [onclick^="saveBudget("],body.lecture [onclick^="addCP("],body.lecture [onclick^="removePoste("],body.lecture [onclick^="removeCP("],body.lecture [onclick^="payCorrige("],body.lecture [onclick^="plusTardCpt("],body.lecture [onclick^="plusTardObj("],body.lecture [onclick^="plusTardDet("],body.lecture [onclick^="parseAndImport("]{display:none!important}
+body.lecture #nav .ni:nth-child(3){visibility:hidden}
+body.lecture #page-add .save-dock{display:none!important}
 .save-dock{position:fixed;left:50%;transform:translateX(-50%);width:100%;max-width:480px;bottom:var(--navh,74px);padding:16px 18px 10px;background:linear-gradient(to bottom,transparent,var(--bg) 14px);z-index:90}
 #page-add,#page-bud{padding-bottom:96px}
 body.kbd #nav{display:none}
@@ -1661,7 +1664,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='39';
+const APP_VERSION='40';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -2591,6 +2594,16 @@ async function supprimerFoyer(){
   }catch(e){toast('⚠ '+e.message);return;}
   mesFoyers=mesFoyers.filter(x=>x.fid!==fid);changerEspace(null);toast('Foyer supprimé');
 }
+
+// ═══════════════ MODE LECTEUR (FOYER) ═══════════════
+// Un lecteur consulte tout mais ne modifie rien : les boutons d'écriture sont masqués,
+// et tout clic qui y mènerait quand même est arrêté (les règles Firebase refusent de toute façon).
+const ACTIONS_ECRITURE=/^(openPointage|recurConfirmer|recurToutConfirmer|openRecurConfirm|openRecurEdit|openEffacerBudgets|openPrepBudget|validerPrep|modifierPrep|openAddCompte|supprimerCompte|openCorrection|openVirement|saveCorrection|saveVirement|saveCompte|openAddObj|supprimerObj|openRetraitObj|ajouterAObj|saveObj|saveRetraitObj|openAddDette|supprimerDette|openRemb|openAbandon|saveDette|saveRemb|saveAbandon|rappelWhatsApp|appliquerEffort|openCopyBudget|addBudDetail|removeBudDetail|saveBudget|addCP|removePoste|removeCP|delTx|payCorrige|saveTx|plusTardCpt|plusTardObj|plusTardDet|parseAndImport)\(|^goP\('add'/;
+document.addEventListener('click',e=>{
+  if(!document.body.classList.contains('lecture'))return;
+  const el=e.target.closest&&e.target.closest('[onclick]');if(!el)return;
+  if(ACTIONS_ECRITURE.test((el.getAttribute('onclick')||'').trim())){e.preventDefault();e.stopPropagation();toast('Tu es lecteur dans ce foyer : tu peux consulter, pas modifier');}
+},true);
 
 // ═══════════════ CLAVIER ═══════════════
 // Clavier ouvert : la barre de navigation se cache et le bouton Enregistrer se pose juste au-dessus.
