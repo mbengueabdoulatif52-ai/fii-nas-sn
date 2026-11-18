@@ -335,6 +335,7 @@ select option{background:#1F2840;color:#F1F4FA}
   <div id="page-dash" class="page active">
     <div class="mnav"><button class="mnav-a" onclick="shiftMonth(-1)" aria-label="Mois précédent">‹</button><div class="mnav-slot"></div><button class="mnav-a" onclick="shiftMonth(1)" aria-label="Mois suivant">›</button></div>
     <div class="hero" id="hero"></div>
+    <div id="recur-dash"></div>
     <div id="point-banner"></div>
     <div id="cpt-dash"></div>
     <div id="tiles" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div id="obj-dash"></div><div id="det-dash"></div></div>
@@ -380,7 +381,7 @@ select option{background:#1F2840;color:#F1F4FA}
         </div>
         <div class="fgrp">
           <div class="flbl">Date</div>
-          <input class="finp" type="date" id="f-date" onchange="updReste()">
+          <input class="finp" type="date" id="f-date" onchange="updReste();renderFormRecur()">
         </div>
       </div>
       <div class="fgrp" id="f-poste-list-wrap" style="display:none"><div class="flbl">Poste</div><div id="f-poste-list" style="background:var(--surf2);border-radius:var(--rs);padding:4px"></div><div id="f-obj-note" style="font-size:11.5px;color:var(--text3);margin-top:6px"></div></div>
@@ -394,6 +395,7 @@ select option{background:#1F2840;color:#F1F4FA}
         <div class="flbl">Commentaire (facultatif)</div>
         <input class="finp" type="text" id="f-cmt" placeholder="Wave, Yango, MAB Ibrahima...">
       </div>
+      <div id="f-rec-wrap" style="background:var(--surf2);border-radius:var(--rs);padding:12px 13px;margin-bottom:14px"></div>
       <div class="save-dock">
         <div id="fmsg" style="font-size:12px;text-align:center;min-height:0;color:var(--red);margin-bottom:6px"></div>
         <button class="btn-p" id="bsave" onclick="saveTx()">
@@ -492,6 +494,10 @@ select option{background:#1F2840;color:#F1F4FA}
         </div>
         <div style="margin-left:auto;color:var(--text3);font-size:18px">›</div>
       </div>
+    </div>
+    <div class="card">
+      <div class="ct">Mes récurrentes</div>
+      <div id="recur-ui"></div>
     </div>
     <div class="card">
       <div class="ct">Modules</div>
@@ -1323,6 +1329,218 @@ function renderPointBanner(){
     <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--text)">Fin du mois : pointe tes comptes</div>
     <div style="font-size:11.5px;color:var(--text2)">Compare tes soldes réels avec l'appli</div></div>
     <button onclick="openPointage()" style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font);flex-shrink:0">Pointer</button></div>`;
+}
+
+// ═══════════════ RÉCURRENTES ═══════════════
+// Dépenses et revenus qui reviennent (chaque jour, jours ouvrés, chaque semaine, chaque mois).
+// Par défaut l'appli demande confirmation sur l'accueil ; en mode « tout seul » elle enregistre.
+// Chaque occurrence a un identifiant fixe (rec_<id>_<date>) : jamais de doublon entre appareils.
+const JSEM=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+const JSEM_C=['dim','lun','mar','mer','jeu','ven','sam'];
+const FREQS={jour:'Chaque jour',ouvres:'Jours ouvrés',semaine:'Chaque semaine',mois:'Chaque mois'};
+const dJ=iso=>new Date(iso+'T12:00');
+function addJ(iso,n){const d=dJ(iso);d.setDate(d.getDate()+n);return isoJour(d);}
+function recurTombe(r,iso){
+  const d=dJ(iso),w=d.getDay();
+  if(r.freq==='jour')return true;
+  if(r.freq==='ouvres')return w>=1&&w<=5;
+  if(r.freq==='semaine')return w===r.jour;
+  if(r.freq==='mois'){const fin=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();return d.getDate()===Math.min(r.jour,fin);}
+  return false;
+}
+function libFreq(r){
+  if(r.freq==='semaine')return 'le '+JSEM[r.jour];
+  if(r.freq==='mois')return 'le '+r.jour+(r.jour===1?'er':'')+' du mois';
+  return FREQS[r.freq].toLowerCase();
+}
+// Dates en attente : après la dernière traitée, jusqu'à aujourd'hui (60 jours au plus)
+function recurDates(r){
+  const auj=todayStr();let d=addJ(r.dernier||r.debut,1);const min=addJ(auj,-60);if(d<min)d=min;
+  const out=[];while(d<=auj){if(recurTombe(r,d))out.push(d);d=addJ(d,1);}
+  return out;
+}
+function recurProchaine(r){let d=addJ(r.dernier&&r.dernier>todayStr()?r.dernier:todayStr(),1);for(let i=0;i<40;i++){if(recurTombe(r,d))return d;d=addJ(d,1);}return'';}
+function libJourProche(iso){
+  const a=todayStr();if(iso===addJ(a,1))return 'demain '+JSEM[dJ(iso).getDay()];
+  return JSEM[dJ(iso).getDay()]+' '+dJ(iso).getDate()+' '+MOIS_C[dJ(iso).getMonth()];
+}
+function recurDues(){return recur.filter(r=>!r.pause&&!r.auto).map(r=>({r,dates:recurDates(r)})).filter(x=>x.dates.length);}
+function occMois(r,ym){const[y,m]=ym.split('-').map(Number),fin=new Date(y,m,0).getDate();let n=0;for(let j=1;j<=fin;j++){const iso=ym+'-'+String(j).padStart(2,'0');if(iso>=r.debut&&recurTombe(r,iso))n++;}return n;}
+
+async function recurEcrire(r,dates,amt,compte){
+  const{db,doc,setDoc}=window._fb;
+  for(const date of dates){
+    const t={amt,date,cat:r.cat,poste:r.poste,cmt:r.cmt||'',recur:r.id,ts:new Date().toISOString(),createdBy:userName,createdById:uid};
+    if(compte)t.compte=compte;
+    await setDoc(doc(db,dataPath()+'/transactions/rec_'+r.id+'_'+date),t);
+  }
+}
+// Mode « tout seul » : lancé quand transactions et réglages sont chargés
+let _recurAutoFait=false;
+async function recurAuto(){
+  if(_recurAutoFait||!recur.length||!isAdmin())return;_recurAutoFait=true;
+  let modif=false;
+  for(const r of recur){
+    if(r.pause||!r.auto)continue;
+    const ds=recurDates(r);if(!ds.length)continue;
+    try{await recurEcrire(r,ds,r.amt,r.compte&&comptes.some(c=>c.id===r.compte)?r.compte:null);r.dernier=ds[ds.length-1];modif=true;}catch(e){}
+  }
+  if(modif){try{await saveSettings();}catch(e){}renderCurrent();}
+}
+
+// ── Formulaire Ajouter : option « Répéter »
+let fRec={on:false,freq:'mois',jour:null,auto:false};
+function renderFormRecur(){
+  const w=document.getElementById('f-rec-wrap');if(!w)return;
+  const date=document.getElementById('f-date')?.value||todayStr(),d=dJ(date);
+  if(fRec.freq==='semaine'&&fRec.jour==null)fRec.jour=d.getDay();
+  const r={freq:fRec.freq,jour:fRec.freq==='semaine'?fRec.jour:d.getDate(),debut:date,dernier:date};
+  const sw=on=>`<span style="width:38px;height:22px;border-radius:11px;background:${on?'var(--blue)':'var(--surf2)'};border:0.5px solid var(--border2);position:relative;display:inline-block;flex-shrink:0;transition:background .2s"><span style="position:absolute;${on?'right':'left'}:3px;top:2.5px;width:16px;height:16px;border-radius:50%;background:#fff"></span></span>`;
+  let h=`<button type="button" onclick="fRec.on=!fRec.on;renderFormRecur()" style="display:flex;justify-content:space-between;align-items:center;width:100%;background:none;border:none;padding:0;cursor:pointer;font-family:var(--font)">
+    <span style="display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--text)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 01-4 4H3"/></svg>Répéter</span>${sw(fRec.on)}</button>`;
+  if(fRec.on){
+    h+=`<div style="display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 8px">${Object.entries(FREQS).map(([k,l])=>`<button type="button" class="cpt-ch ${fRec.freq===k?'on':''}" onclick="fRec.freq='${k}';renderFormRecur()">${l}</button>`).join('')}</div>`;
+    if(fRec.freq==='semaine')h+=`<div style="display:flex;gap:4px;margin-bottom:8px">${[1,2,3,4,5,6,0].map(j=>`<button type="button" class="cpt-ch ${fRec.jour===j?'on':''}" style="padding:7px 0;flex:1;justify-content:center" onclick="fRec.jour=${j};renderFormRecur()">${JSEM_C[j]}</button>`).join('')}</div>`;
+    const p=recurProchaine(r);
+    h+=`<div style="font-size:11.5px;color:var(--text2);margin-bottom:10px">${fRec.freq==='ouvres'?'Du lundi au vendredi':fRec.freq==='jour'?'Tous les jours':libFreq(r).replace(/^le/,'Le')}${p?' · prochaine : '+libJourProche(p):''}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <button type="button" class="cpt-ch ${!fRec.auto?'on':''}" style="border-radius:10px;justify-content:center;text-align:center" onclick="fRec.auto=false;renderFormRecur()">Me demander de confirmer</button>
+        <button type="button" class="cpt-ch ${fRec.auto?'on':''}" style="border-radius:10px;justify-content:center;text-align:center" onclick="fRec.auto=true;renderFormRecur()">Enregistrer tout seul</button>
+      </div>`;
+  }
+  w.innerHTML=h;
+}
+async function recurDepuisForm(data){
+  if(!fRec.on)return;
+  const d=dJ(data.date);
+  const r={id:'r'+Date.now().toString(36),amt:data.amt,cat:data.cat,poste:data.poste,cmt:data.cmt||'',freq:fRec.freq,
+    jour:fRec.freq==='semaine'?fRec.jour:d.getDate(),debut:data.date,dernier:data.date,auto:fRec.auto,pause:false};
+  if(data.compte)r.compte=data.compte;
+  recur.push(r);fRec={on:false,freq:'mois',jour:null,auto:false};
+  try{await saveSettings();}catch(e){toast('⚠ Répétition non enregistrée : '+e.message);}
+}
+
+// ── Accueil : à confirmer
+function renderRecurDash(){
+  const el=document.getElementById('recur-dash');if(!el)return;
+  const dues=recurDues();
+  if(!dues.length||!isAdmin()){el.innerHTML='';return;}
+  const rows=dues.map(({r,dates})=>{
+    const jc=x=>JSEM_C[dJ(x).getDay()]+' '+dJ(x).getDate(),n=dates.length,lib=n>1?`${n} ${r.freq==='semaine'?'semaines':r.freq==='mois'?'mois':'jours'} · ${n===2?jc(dates[0])+' et '+jc(dates[1]):'du '+jc(dates[0])+' au '+jc(dates[n-1])}`:(dates[0]===todayStr()?'aujourd\'hui':JSEM[dJ(dates[0]).getDay()]+' '+dJ(dates[0]).getDate());
+    const cpt=r.compte&&modules.comptes?' · '+esc(nomCpt(r.compte)):'';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:0.5px solid var(--border)">
+      <div style="flex:1;min-width:0;cursor:pointer" onclick="openRecurConfirm(${jsa(r.id)})"><div style="font-size:13.5px;color:var(--text)">${esc(r.poste)}${r.cat==='Revenu'?' <span style="font-size:11px;color:var(--green)">revenu</span>':''}</div>
+        <div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lib}${cpt}</div></div>
+      <div style="font-size:13px;font-weight:600;color:var(--text);cursor:pointer" onclick="openRecurConfirm(${jsa(r.id)})">${n>1?n+' × ':''}${fmt(r.amt)}</div>
+      <button aria-label="Confirmer" onclick="recurConfirmer(${jsa(r.id)})" style="width:32px;height:32px;border-radius:50%;border:none;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12l5 5L20 7"/></svg></button></div>`;
+  }).join('');
+  el.innerHTML=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <span style="font-size:14px;font-weight:600;color:var(--text)">À confirmer</span>
+      ${dues.length>1?`<button onclick="recurToutConfirmer()" style="background:none;border:none;color:var(--blue);font-size:12.5px;cursor:pointer;font-family:var(--font);padding:4px 0">Tout confirmer</button>`:''}</div>
+    ${rows}<div style="font-size:11px;color:var(--text3);margin-top:6px">Touche une ligne pour changer le montant, le compte, ou passer.</div></div>`;
+}
+async function recurConfirmer(id,choix){
+  const r=recur.find(x=>x.id===id);if(!r)return;
+  const toutes=recurDates(r);if(!toutes.length)return;
+  const dates=choix?choix.dates:toutes,amt=choix?choix.amt:r.amt,compte=choix?choix.compte:(r.compte&&comptes.some(c=>c.id===r.compte)?r.compte:null);
+  try{
+    if(dates.length)await recurEcrire(r,dates,amt,compte);
+    r.dernier=toutes[toutes.length-1];await saveSettings();
+  }catch(e){toast('⚠ '+e.message);return;}
+  closeSheet();renderCurrent();
+  toast(dates.length?(dates.length>1?dates.length+' transactions enregistrées':'Transaction enregistrée'):'Passé cette fois');
+}
+async function recurToutConfirmer(){
+  const dues=recurDues();let n=0;
+  try{for(const{r,dates}of dues){await recurEcrire(r,dates,r.amt,r.compte&&comptes.some(c=>c.id===r.compte)?r.compte:null);r.dernier=dates[dates.length-1];n+=dates.length;}
+    await saveSettings();}catch(e){toast('⚠ '+e.message);return;}
+  renderCurrent();toast(n+' transactions enregistrées');
+}
+let RC=null;
+function openRecurConfirm(id){
+  const r=recur.find(x=>x.id===id);if(!r)return;
+  const dates=recurDates(r);
+  RC={id,sel:new Set(dates),compte:r.compte&&comptes.some(c=>c.id===r.compte)?r.compte:null};
+  const ldates=dates.map(d=>`<button type="button" class="cpt-ch on" data-d="${d}" onclick="rcDate(this)">${JSEM_C[dJ(d).getDay()]} ${dJ(d).getDate()} ${MOIS_C[dJ(d).getMonth()]}</button>`).join('');
+  const cpts=modules.comptes&&comptes.length?`<div class="flbl">${r.cat==='Revenu'?'Reçu sur':'Payé avec'}</div><div id="rc-cpts" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px"></div>`:'';
+  openSheet(sheetHead(esc(r.poste))+`
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${esc(r.cat)} · ${libFreq(r)}${r.cmt?' · '+esc(r.cmt):''}</div>
+    ${dates.length>1?`<div class="flbl">Jours concernés</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">${ldates}</div><div style="font-size:11px;color:var(--text3);margin-bottom:14px">Décoche un jour pour le passer.</div>`:''}
+    <div class="fgrp"><div class="flbl">Montant${dates.length>1?' (chaque fois)':''}</div><input class="finp" id="rc-amt" inputmode="numeric" value="${esc(fmt(r.amt))}" oninput="fmtAmtInput(this)"></div>
+    ${cpts}
+    <div id="rc-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
+    <button class="btn-p" id="rc-go" onclick="rcValider()">Confirmer</button>
+    <button type="button" onclick="recurConfirmer(${jsa(id)},{dates:[],amt:0,compte:null})" style="width:100%;margin-top:8px;padding:10px;border:none;background:none;color:var(--text2);font-size:13px;cursor:pointer;font-family:var(--font)">Passer cette fois</button>`);
+  rcCpts();
+}
+function rcDate(b){const d=b.dataset.d;if(RC.sel.has(d)){RC.sel.delete(d);b.classList.remove('on');}else{RC.sel.add(d);b.classList.add('on');}}
+function rcCpts(){const w=document.getElementById('rc-cpts');if(!w)return;
+  w.innerHTML=comptes.map(c=>`<button type="button" class="cpt-ch ${RC.compte===c.id?'on':''}" onclick="RC.compte=${jsa(c.id)};rcCpts()">${esc(c.nom)}</button>`).join('');}
+function rcValider(){
+  const amt=parseAmt(document.getElementById('rc-amt').value);
+  if(!(amt>0)){document.getElementById('rc-err').textContent='Saisis le montant.';return;}
+  const r=recur.find(x=>x.id===RC.id);
+  recurConfirmer(RC.id,{dates:recurDates(r).filter(d=>RC.sel.has(d)),amt,compte:RC.compte});
+}
+
+// ── Profil : Mes récurrentes
+function renderRecurUI(){
+  const el=document.getElementById('recur-ui');if(!el)return;
+  if(!recur.length){el.innerHTML=`<div style="font-size:12px;color:var(--text2);line-height:1.6">Transport, loyer, abonnements, salaire… Dans l'écran Ajouter, active « Répéter » au moment de noter la transaction.</div>`;return;}
+  const ym=todayStr().slice(0,7);
+  const prevu=recur.filter(r=>!r.pause&&r.cat!=='Revenu').reduce((s,r)=>s+occMois(r,ym)*r.amt,0);
+  const tri=[...recur].sort((a,b)=>(a.pause-b.pause)||(a.cat==='Revenu')-(b.cat==='Revenu')||b.amt-a.amt);
+  el.innerHTML=tri.map((r,i)=>`<div onclick="openRecurEdit(${jsa(r.id)})" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;${i?'border-top:0.5px solid var(--border);':''}cursor:pointer;${r.pause?'opacity:.55':''}">
+      <div style="min-width:0"><div style="font-size:13.5px;color:var(--text)">${esc(r.poste)}${r.cat==='Revenu'?' <span style="font-size:11px;color:var(--green)">revenu</span>':''}</div>
+      <div style="font-size:11px;color:var(--text3)">${libFreq(r)}${r.auto?' · tout seul':''}${r.pause?' · en pause':''}</div></div>
+      <div style="font-size:13.5px;font-weight:600;color:var(--text);white-space:nowrap">${fmt(r.amt)} F</div></div>`).join('')
+    +(prevu?`<div style="background:var(--surf2);border-radius:var(--rs);padding:9px 11px;font-size:12px;color:var(--text2);margin-top:10px">Ce mois : environ ${fmt(prevu)} F prévus en dépenses récurrentes</div>`:'');
+}
+let RE=null;
+function openRecurEdit(id){
+  const r=recur.find(x=>x.id===id);if(!r)return;
+  RE={...r};reRender();
+}
+function reRender(){
+  const r=RE;
+  openSheet(sheetHead(esc(r.poste))+`
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${esc(r.cat)}${r.cmt?' · '+esc(r.cmt):''}</div>
+    <div class="fgrp"><div class="flbl">Montant</div><input class="finp" id="re-amt" inputmode="numeric" value="${esc(fmt(r.amt))}" oninput="fmtAmtInput(this)"></div>
+    <div class="flbl">Fréquence</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${Object.entries(FREQS).map(([k,l])=>`<button type="button" class="cpt-ch ${r.freq===k?'on':''}" onclick="reSet('freq','${k}')">${l}</button>`).join('')}</div>
+    ${r.freq==='semaine'?`<div style="display:flex;gap:4px;margin-bottom:8px">${[1,2,3,4,5,6,0].map(j=>`<button type="button" class="cpt-ch ${r.jour===j?'on':''}" style="padding:7px 0;flex:1;justify-content:center" onclick="reSet('jour',${j})">${JSEM_C[j]}</button>`).join('')}</div>`:''}
+    ${r.freq==='mois'?`<div class="fgrp"><div class="flbl">Jour du mois</div><input class="finp" id="re-jour" inputmode="numeric" value="${r.jour}" maxlength="2"></div>`:''}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0 14px">
+      <button type="button" class="cpt-ch ${!r.auto?'on':''}" style="border-radius:10px;justify-content:center" onclick="reSet('auto',false)">Me demander</button>
+      <button type="button" class="cpt-ch ${r.auto?'on':''}" style="border-radius:10px;justify-content:center" onclick="reSet('auto',true)">Tout seul</button>
+    </div>
+    <div id="re-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
+    <button class="btn-p" id="re-go" onclick="reSave()">Enregistrer</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+      <button type="button" onclick="reSave(true)" style="padding:10px;border-radius:var(--rs);border:0.5px solid var(--border2);background:var(--surf2);color:var(--text);font-size:12.5px;cursor:pointer;font-family:var(--font)">${r.pause?'Reprendre':'Mettre en pause'}</button>
+      <button type="button" onclick="reSuppr()" style="padding:10px;border-radius:var(--rs);border:0.5px solid rgba(255,69,58,.4);background:transparent;color:var(--red);font-size:12.5px;cursor:pointer;font-family:var(--font)">Supprimer</button>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.5;text-align:center">Les transactions déjà enregistrées restent dans ton historique.</div>`);
+}
+function reLire(){const a=parseAmt(document.getElementById('re-amt')?.value);if(!isNaN(a))RE.amt=a;const j=document.getElementById('re-jour');if(j){const v=parseInt(j.value,10);if(v>=1&&v<=31)RE.jour=v;}}
+function reSet(k,v){reLire();RE[k]=v;if(k==='freq'){if(v==='semaine')RE.jour=dJ(todayStr()).getDay();if(v==='mois')RE.jour=Math.min(31,dJ(RE.debut).getDate());}reRender();}
+async function reSave(basculePause){
+  reLire();
+  if(!(RE.amt>0)){document.getElementById('re-err').textContent='Saisis le montant.';return;}
+  const i=recur.findIndex(x=>x.id===RE.id);if(i<0)return;
+  const avant=recur[i];
+  // une fréquence changée repart d'aujourd'hui (pas de rattrapage du passé)
+  if(avant.freq!==RE.freq||avant.jour!==RE.jour)RE.dernier=todayStr();
+  if(basculePause){RE.pause=!RE.pause;if(!RE.pause)RE.dernier=todayStr();}
+  recur[i]=RE;
+  try{await saveSettings();}catch(e){recur[i]=avant;document.getElementById('re-err').textContent='Non enregistré : '+e.message;return;}
+  closeSheet();renderCurrent();renderRecurUI();toast(basculePause?(RE.pause?'Mise en pause':'Reprise'):'Récurrente modifiée');
+}
+async function reSuppr(){
+  if(!confirm('Supprimer cette récurrente ?\n\nLes transactions déjà enregistrées restent.'))return;
+  const avant=recur;recur=recur.filter(x=>x.id!==RE.id);
+  try{await saveSettings();}catch(e){recur=avant;toast('⚠ '+e.message);return;}
+  closeSheet();renderCurrent();renderRecurUI();toast('Récurrente supprimée');
 }
 
 // ═══════════════ CLAVIER ═══════════════
@@ -2450,7 +2668,7 @@ const MFR=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','S
 const MS=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
 
 let pendingSaves=0,lastSettingsHash='';
-let modules={},comptes=[],objectifs=[],dettes=[],suggMasq={},mouvs=[],unsub3=null;
+let modules={},comptes=[],objectifs=[],dettes=[],suggMasq={},mouvs=[],unsub3=null,recur=[],_txOk=false,_setOk=false;
 let uid=null,txs=[],budget={},custom={},unsub1=null,unsub2=null;
 let formDirty=false;
 let budDirty=false; // montants du budget saisis mais pas encore enregistrés
@@ -2560,6 +2778,7 @@ function subscribe(){
     const newHash=h(newTxs),oldHash=h(txs);
     txs=newTxs;
     if(firstLoad||newHash!==oldHash)renderCurrent();
+    _txOk=true;if(_setOk)recurAuto();
   },err=>loadError('transactions',err));
   if(unsub3)unsub3();
   unsub3=onSnapshot(collection(db,dataPath()+'/mouvements'),snap=>{
@@ -2576,15 +2795,16 @@ function subscribe(){
       const d=snap.data();
       // Empreinte de tous les réglages (budgets, détails, postes) : un changement fait sur
       // un autre appareil est toujours appliqué
-      const newHash=JSON.stringify([d.budget||{},d.budgetDetails||{},d.custom||{},d.cats||null,d.modules||{},d.comptes||[],d.suggMasq||{},d.objectifs||[],d.dettes||[]]);
+      const newHash=JSON.stringify([d.budget||{},d.budgetDetails||{},d.custom||{},d.cats||null,d.modules||{},d.comptes||[],d.suggMasq||{},d.objectifs||[],d.dettes||[],d.recur||[]]);
       if(newHash!==lastSettingsHash){
         lastSettingsHash=newHash;
         budget=d.budget||{};
         budgetDetails=d.budgetDetails||{};
         custom=d.custom||{};
-        modules=d.modules||{};comptes=d.comptes||[];suggMasq=d.suggMasq||{};objectifs=d.objectifs||[];dettes=d.dettes||[];
+        modules=d.modules||{};comptes=d.comptes||[];suggMasq=d.suggMasq||{};objectifs=d.objectifs||[];dettes=d.dettes||[];recur=d.recur||[];
         loadCatsFromSettings(d);
       }
+      _setOk=true;if(_txOk)recurAuto();
     } else {
       // Pas encore de réglages. Au premier chargement, la réponse peut venir du cache
       // local (vide) : on attend la réponse du serveur avant de conclure à un nouveau compte.
@@ -2604,10 +2824,10 @@ function loadError(what,err){
 
 async function saveSettings(){
   const{db,doc,setDoc}=window._fb;
-  lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,CATS,modules,comptes,suggMasq,objectifs,dettes]);
+  lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,CATS,modules,comptes,suggMasq,objectifs,dettes,recur]);
   // mergeFields : ces 4 champs sont remplacés en entier. Avec {merge:true}, Firestore fusionnait
   // les sous-niveaux et ne supprimait jamais un poste ramené à 0 : l'ancien montant revenait.
-  await setDoc(doc(db,dataPath()+'/data/settings'),{budget,budgetDetails,custom,cats:CATS,modules,comptes,suggMasq,objectifs,dettes},{mergeFields:['budget','budgetDetails','custom','cats','modules','comptes','suggMasq','objectifs','dettes']});
+  await setDoc(doc(db,dataPath()+'/data/settings'),{budget,budgetDetails,custom,cats:CATS,modules,comptes,suggMasq,objectifs,dettes,recur},{mergeFields:['budget','budgetDetails','custom','cats','modules','comptes','suggMasq','objectifs','dettes','recur']});
   budDirty=false;
 }
 
@@ -2732,8 +2952,8 @@ function goP(p,btn){
   else if(p==='cpt')renderComptesPage();
   else if(p==='obj')renderObjPage();
   else if(p==='det')renderDetPage();
-  else if(p==='pro'){renderModulesUI();renderCPUI();renderTrash();renderSecurityUI();renderSpacesUI();renderBackupUI();}
-  else if(p==='add'){syncPostes();renderFormComptes();renderFormObjectifs();document.getElementById('fmsg').textContent='';}
+  else if(p==='pro'){renderModulesUI();renderCPUI();renderRecurUI();renderTrash();renderSecurityUI();renderSpacesUI();renderBackupUI();}
+  else if(p==='add'){syncPostes();renderFormComptes();renderFormObjectifs();renderFormRecur();document.getElementById('fmsg').textContent='';}
   else if(p==='imp'){document.getElementById('imp-log').style.display='none';document.getElementById('imp-pb').style.width='0%';document.getElementById('imp-pt').textContent='En attente';}
 }
 
@@ -2767,7 +2987,7 @@ function computePatrimoineToday(){
 
 async function renderDash(){
   renderBackupBanner();
-  renderCptDash();renderObjDash();renderDetDash();renderPointBanner();
+  renderCptDash();renderObjDash();renderDetDash();renderPointBanner();renderRecurDash();
   if(isAnnual()){const h=document.getElementById('hero');h.className='hero';h.onclick=null;h.style.cursor='';['watch','cpt-dash','obj-dash','det-dash','point-banner'].forEach(i=>{const e=document.getElementById(i);if(e)e.innerHTML='';});document.getElementById('detail-wrap').style.display='block';renderDashAnnual();return;}
   const ym=curYM();const t=txYM(ym);
   const rev=sumC(t,'Revenu');const fix=sumC(t,'Dépenses fixes');
@@ -3107,6 +3327,7 @@ async function saveTx(){
   const alertInfo=budgetStatus(selCatVal,poste,date.slice(0,7),amt);
   try{
     await addDoc(collection(db,dataPath()+'/transactions'),data);
+    await recurDepuisForm(data);
   }catch(e){
     // Refus immédiat (accès, données invalides) : on ne prétend pas avoir enregistré
     btn.disabled=false;
@@ -5468,11 +5689,11 @@ async function restoreBackup(input){
     }
     if(b.settings&&Object.keys(b.settings).length){
       await setDoc(doc(db,base+'/data/settings'),b.settings);
-      modules=b.settings.modules||{};comptes=b.settings.comptes||[];suggMasq=b.settings.suggMasq||{};objectifs=b.settings.objectifs||[];dettes=b.settings.dettes||[];
+      modules=b.settings.modules||{};comptes=b.settings.comptes||[];suggMasq=b.settings.suggMasq||{};objectifs=b.settings.objectifs||[];dettes=b.settings.dettes||[];recur=b.settings.recur||[];
       // Mise à jour immédiate de l'écran (l'écho local de cet enregistrement est ignoré)
       budget=b.settings.budget||{};budgetDetails=b.settings.budgetDetails||{};custom=b.settings.custom||{};
       loadCatsFromSettings(b.settings);
-      lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,b.settings.cats||null,modules,comptes,suggMasq,objectifs,dettes]);
+      lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,b.settings.cats||null,modules,comptes,suggMasq,objectifs,dettes,recur]);
       renderCurrent();renderCPUI();
     }
     toast('Restauration terminée ✓ ('+n+' transactions)');
