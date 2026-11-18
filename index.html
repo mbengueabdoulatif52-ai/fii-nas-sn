@@ -1613,7 +1613,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='28';
+const APP_VERSION='29';
 const APP_NOTES=[
   ['M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z','Les confirmations ont les couleurs de l\'appli, le rouge pour ce qui supprime'],
   ['M3 7v6h6M21 17a9 9 0 00-15-6.7L3 13','Module désactivé par erreur ? Touche « Annuler » dans le message'],
@@ -3226,13 +3226,14 @@ async function renderDash(){
 let dashDetail=false;
 function toggleDashDetail(){dashDetail=!dashDetail;renderDash();if(dashDetail)setTimeout(()=>document.getElementById('detail-wrap')?.scrollIntoView({behavior:'smooth',block:'start'}),60);}
 // « À surveiller » : ne s'affiche que s'il y a quelque chose à signaler
+let watchTout=false;
 function renderWatch(ym,t){
   const el=document.getElementById('watch');if(!el)return;
   const items=[];const bud=budget[ym]||{};
   ['Dépenses fixes','Dépenses variables'].forEach(cat=>getAllPostes(cat).forEach(p=>{
     const r=t.filter(x=>x.cat===cat&&x.poste===p).reduce((s,x)=>s+(x.amt||0),0),bb=bud[p]||0;
-    if(bb>0&&r>bb)items.push({g:0,poids:r-bb,txt:`${esc(p)} : +${fmt(r-bb)} F (${Math.round(r/bb*100)} %)`,go:`goP('bud',document.querySelectorAll('.ni')[3])`});
-    else if(bb>0&&r>=bb*ALERT_PCT&&cat==='Dépenses variables')items.push({g:2,txt:`${esc(p)} : ${Math.round(r/bb*100)} % du budget`,go:`goP('bud',document.querySelectorAll('.ni')[3])`});
+    if(bb>0&&r>bb)items.push({g:0,poids:r-bb,txt:`${esc(p)} : +${fmt(r-bb)} F (${Math.round(r/bb*100)} %)`,go:`goPoste(${jsa(p)},'${cat}')`});
+    else if(bb>0&&r>=bb*ALERT_PCT&&cat==='Dépenses variables')items.push({g:2,txt:`${esc(p)} : ${Math.round(r/bb*100)} % du budget`,go:`goPoste(${jsa(p)},'${cat}')`});
   }));
   if(ym===todayStr().slice(0,7)){
     if(modules.comptes)comptes.forEach(c=>{if(c.type!=='banque'){const sc=soldeCompte(c);if(sc<0)items.push({g:0,poids:-sc,txt:`${esc(c.nom)} : solde négatif (${fmtSigne(sc)})`,go:`goP('cpt',null)`});}});
@@ -3242,11 +3243,11 @@ function renderWatch(ym,t){
   if(!items.length){el.innerHTML='';return;}
   items.sort((a,c)=>a.g-c.g||(c.poids||0)-(a.poids||0));
   const col=g=>g===0?'var(--red)':g===3?'var(--blue)':'var(--amber)';
-  const vis=items.slice(0,3);
+  const vis=watchTout?items:items.slice(0,3);
   el.innerHTML=`<div class="card" style="border-color:rgba(242,179,61,.35)">
     <div class="ct" style="color:var(--amber)">À surveiller</div>
     ${vis.map(i=>`<div onclick="${i.go}" style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text);padding:5px 0;cursor:pointer"><span style="width:7px;height:7px;border-radius:50%;background:${col(i.g)};flex-shrink:0"></span><span style="flex:1">${i.txt}</span><span style="color:var(--text3)">›</span></div>`).join('')}
-    ${items.length>3?`<div onclick="goP('bud',document.querySelectorAll('.ni')[3])" style="font-size:11.5px;color:var(--text3);margin-top:4px;cursor:pointer">et ${items.length-3} autre${items.length-3>1?'s':''} ›</div>`:''}
+    ${items.length>3?`<div onclick="watchTout=!watchTout;renderDash()" style="font-size:11.5px;color:var(--text3);margin-top:4px;cursor:pointer">${watchTout?'Afficher moins':'et '+(items.length-3)+' autre'+(items.length-3>1?'s':'')+' ⌄'}</div>`:''}
   </div>`;
 }
 // Tuiles Objectifs / Dettes : côte à côte, ou pleine largeur si une seule (ou une suggestion)
