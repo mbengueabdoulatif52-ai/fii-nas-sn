@@ -149,6 +149,11 @@ body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin
 .bud-mini{position:fixed;left:50%;transform:translate(-50%,-8px);width:calc(100% - 36px);max-width:444px;top:calc(var(--toph,57px) + 6px);z-index:95;background:var(--surf);border:1px solid var(--blue);border-radius:12px;padding:9px 13px;display:flex;justify-content:space-between;align-items:center;gap:10px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;box-shadow:0 6px 18px rgba(0,0,0,.35)}
 .bud-mini.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
 .bud-mini.neg{border-color:var(--red)}
+/* Appli, pas page web : toucher un texte ne le sélectionne pas (évite la recherche Google de Chrome
+   « Toucher pour rechercher ») ; les champs de saisie et le code de secours restent sélectionnables */
+body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+input,textarea,[contenteditable],.selectable,#secours-code{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+#secours-code{-webkit-user-select:all;user-select:all}
 .save-dock{position:fixed;left:50%;transform:translateX(-50%);width:100%;max-width:480px;bottom:var(--navh,74px);padding:16px 18px 10px;background:linear-gradient(to bottom,transparent,var(--bg) 14px);z-index:90}
 #page-add{padding-bottom:96px}
 body.kbd #nav{display:none}
@@ -1614,12 +1619,8 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='30';
-const APP_NOTES=[
-  ['M3 3v18h18M7 15l4-4 3 3 5-6','Chaque lundi, le bilan de ta semaine sur l\'accueil : ce qui était prévu, ce qui sort du budget'],
-  ['M3 17l6-6 4 4 8-8M14 7h7v7','Il prévient quand un poste va dépasser avant la fin du mois, et te dit combien dépenser par jour'],
-  ['M12 2a10 10 0 100 20 10 10 0 000-20zM9.5 9a2.5 2.5 0 114 2c-.9.6-1.5 1-1.5 2M12 17h.01','« Je peux me le permettre ? » : tape un achat, l\'appli te répond selon ton budget et tes comptes']
-]; // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
+const APP_VERSION='31';
+const APP_NOTES=[]; // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
   try{
