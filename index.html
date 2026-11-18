@@ -1661,12 +1661,8 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='38';
-const APP_NOTES=[
-  ['M3 11l9-7 9 7M5 10v10h14V10','Nouveau : les foyers. Un suivi commun avec ton conjoint ou ta famille ; ton espace perso reste privé'],
-  ['M12 8a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0','Touche ton nom en haut de l\'écran pour créer un foyer, le rejoindre ou changer d\'espace'],
-  ['M9 11l3 3 8-8','Chaque entrée dans un foyer est acceptée par un responsable, qui choisit le rôle : responsable, membre ou lecteur']
-]; // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
+const APP_VERSION='39';
+const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
   try{
@@ -2290,7 +2286,7 @@ async function supprimerMonCompte(){
 //   resp = responsable (tout, membres, budget) · membre = ajoute, modifie ses transactions · lect = lecture
 // Rejoindre : code → demande (foyers/{fid}/demandes/{uid}) → un responsable accepte et choisit le rôle.
 // Les règles Firestore imposent tout cela côté serveur.
-let espace=null,mesFoyers=[],foyerDoc=null,demandesFoyer=[],unsubFoyer=null,unsubDem=null;
+let espace=null,mesFoyers=[],foyerDoc=null,demandesFoyer=[],unsubFoyer=null,unsubDem=null,mesDemandes=[],unsubMesDem={};
 const ROLES={resp:'Responsable',membre:'Membre',lect:'Lecteur'};
 const CODE_ALPHA='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 function nouveauCodeFoyer(){const a=crypto.getRandomValues(new Uint8Array(6));let c='';a.forEach(b=>c+=CODE_ALPHA[b%31]);return c.slice(0,3)+'-'+c.slice(3);}
@@ -2323,10 +2319,23 @@ async function chargerFoyers(){
       if(r)res.push({fid,nom:f.nom,role:r});else{m.liste=m.liste.filter(x=>x!==fid);modif=true;}
     }catch(e){if(/permission/i.test(e.code||e.message||'')){m.liste=m.liste.filter(x=>x!==fid);modif=true;}}
   }
-  mesFoyers=res;
+  mesFoyers=res;mesDemandes=m.demandes.slice();
   if(modif)try{await ecrireMesFoyers(m);}catch(e){}
+  suivreMesDemandes();
   msgs.forEach(x=>{const f=res.find(y=>y.fid===x.fid);toast(x.ok?`Tu as rejoint ${f?f.nom:'le foyer'}`:`Ta demande${x.nom?' pour '+x.nom:''} n'a pas été acceptée`);});
   return m;
+}
+// Mes demandes en attente : suivies en direct, la réponse arrive sans relancer l'appli
+function suivreMesDemandes(){
+  const{db,doc,onSnapshot}=window._fb;
+  Object.keys(unsubMesDem).forEach(fid=>{if(!mesDemandes.includes(fid)){unsubMesDem[fid]();delete unsubMesDem[fid];}});
+  mesDemandes.forEach(fid=>{
+    if(unsubMesDem[fid])return;
+    unsubMesDem[fid]=onSnapshot(doc(db,'foyers/'+fid+'/demandes/'+uid),s=>{
+      const st=s.exists()?s.data().statut:null;
+      if(st&&st!=='attente')chargerFoyers().then(()=>{renderFoyerUI();if(document.getElementById('cpt-sheet')?.innerText.includes('Mes espaces'))openEspaces();});
+    },()=>{});
+  });
 }
 async function initEspaces(){
   try{await chargerFoyers();}catch(e){}
@@ -2388,6 +2397,7 @@ function openEspaces(){
   openSheet(sheetHead('Mes espaces')+
     ligne(null,icoPerso,(userName||'Moi')+' · perso','Privé, toi seul',!espace)+
     mesFoyers.map(f=>ligne(f.fid,icoFoyer,f.nom,'Foyer · '+ROLES[f.role],espace&&espace.fid===f.fid)).join('')+
+    (mesDemandes.length?`<div style="font-size:12px;color:var(--amber);padding:10px 4px;border-bottom:0.5px solid var(--border)">${mesDemandes.length>1?mesDemandes.length+' demandes':'1 demande'} en attente d'acceptation</div>`:'')+
     `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px">
       <button type="button" onclick="openCreerFoyer()" style="padding:11px;border-radius:var(--rs);border:none;background:var(--blue);color:#fff;font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font)">Créer un foyer</button>
       <button type="button" onclick="openRejoindreFoyer()" style="padding:11px;border-radius:var(--rs);border:0.5px solid var(--border2);background:var(--surf2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font)">Rejoindre</button></div>
@@ -2436,7 +2446,8 @@ async function rejoindreFoyer(){
     if(mesFoyers.some(f=>f.fid===fid)){go.disabled=false;err.textContent='Tu fais déjà partie de ce foyer.';return;}
     await setDoc(doc(db,'foyers/'+fid+'/demandes/'+uid),{nom:userName||'Quelqu\'un',foyer:nom,date:new Date().toISOString(),statut:'attente'});
     const m=await lireMesFoyers();if(!m.demandes.includes(fid))m.demandes.push(fid);await ecrireMesFoyers(m);
-    closeSheet();toast('Demande envoyée à '+nom);
+    mesDemandes=m.demandes.slice();suivreMesDemandes();
+    closeSheet();toast('Demande envoyée à '+nom+'. Tu seras prévenu dès qu\'elle est acceptée.');
   }catch(e){go.disabled=false;err.textContent='Demande impossible : '+e.message;}
 }
 
