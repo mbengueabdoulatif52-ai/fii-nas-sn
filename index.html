@@ -1665,7 +1665,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='41';
+const APP_VERSION='42';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1847,8 +1847,9 @@ function renderBilanDash(){
   const el=document.getElementById('bilan-dash');if(!el)return;
   const lundi=bilanLundiCourant();
   let masque=null;try{masque=localStorage.getItem('fiinas-bilan-masque');}catch(e){}
-  const recent=txs.some(t=>t.date>=addJ(lundi,-14));
-  if(!recent||masque===lundi){el.innerHTML='';return;}
+  // Il faut que l'espace ait déjà existé pendant cette semaine (pas de bilan pour un foyer tout neuf)
+  const recent=txs.some(t=>t.date>=addJ(lundi,-14)),existait=txs.some(t=>t.date&&t.date<=addJ(lundi,6));
+  if(!recent||!existait||masque===lundi){el.innerHTML='';return;}
   const B=bilanCalc(lundi),T=bilanTitre(B);
   const coul={red:'var(--red)',amber:'var(--amber)',green:'var(--green)',blue:'var(--blue)'}[T.c];
   el.innerHTML=`<div class="card" style="cursor:pointer;border-color:var(--blue);position:relative" onclick="openBilan('${lundi}')">
