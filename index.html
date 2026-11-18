@@ -1614,11 +1614,7 @@ async function effacerBudgets(){
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
 const APP_VERSION='29';
-const APP_NOTES=[
-  ['M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z','Les confirmations ont les couleurs de l\'appli, le rouge pour ce qui supprime'],
-  ['M3 7v6h6M21 17a9 9 0 00-15-6.7L3 13','Module désactivé par erreur ? Touche « Annuler » dans le message'],
-  ['M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9','L\'appli demande confirmation avant de te déconnecter']
-];
+const APP_NOTES=[]; // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
   try{
