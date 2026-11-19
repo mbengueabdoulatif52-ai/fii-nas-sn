@@ -1672,7 +1672,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='44';
+const APP_VERSION='45';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -3147,7 +3147,7 @@ function renderFormComptes(){
   if(!modules.comptes||!comptes.length){w.style.display='none';w.innerHTML='';return;}
   if(!PAY.add){
     let last=null;try{last=localStorage.getItem('fiinas-dernier-cpt');}catch(e){}
-    payInit('add',{el:'f-cpt-wrap',sortie:()=>selCatVal!=='Revenu',total:()=>parseAmt(document.getElementById('f-amt')?.value)||0,retry:()=>saveTx(),init:{compte:comptes.some(c=>c.id===last)?last:comptes[0].id}});
+    payInit('add',{el:'f-cpt-wrap',allowNone:true,sortie:()=>selCatVal!=='Revenu',total:()=>parseAmt(document.getElementById('f-amt')?.value)||0,retry:()=>saveTx(),init:{compte:comptes.some(c=>c.id===last)?last:comptes[0].id}});
   }
   const p=PAY.add;
   if(p.mode==='one'&&!comptes.some(c=>c.id===p.one))p.one=comptes.some(c=>c.id===formCpt)?formCpt:comptes[0].id;
