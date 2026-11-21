@@ -93,7 +93,7 @@ body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin
 
 /* AUTH */
 #auth{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:2rem;text-align:center;background:var(--bg)}
-.logo{width:64px;height:64px;background:var(--blue);border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;color:#fff;margin:0 auto 1.2rem}
+.logo{width:72px;height:72px;border-radius:18px;display:block;margin:0 auto 1.2rem;box-shadow:0 6px 18px rgba(27,49,92,.25)}
 #auth h1{font-size:26px;font-weight:600;margin-bottom:8px}
 #auth p{font-size:14px;color:var(--text2);margin-bottom:2rem;line-height:1.6;max-width:280px}
 .btn-g{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;padding:14px;background:var(--surf);border:1px solid var(--border2);border-radius:var(--r);color:var(--text);font-family:var(--font);font-size:14px;font-weight:500;cursor:pointer;transition:.15s}
@@ -327,7 +327,7 @@ select option{background:#1F2840;color:#F1F4FA}
 <div id="loading"><div class="spin"></div><p style="font-size:13px;color:var(--text3)">Chargement...</p></div>
 
 <div id="auth" style="display:none">
-  <div class="logo">F</div>
+  <img class="logo" src="/icon-192.png" alt="FII'NAS" width="72" height="72">
   <h1 style="color:var(--text);font-weight:500">FII'NAS</h1>
   <p>Tes entrées, dépenses et budget, simplement.</p>
   <div id="auth-box" style="width:100%;max-width:340px"></div>
@@ -1672,7 +1672,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='45';
+const APP_VERSION='46';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
