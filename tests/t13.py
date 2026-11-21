@@ -37,9 +37,9 @@ with sync_playwright() as p:
     def creer(prenom,num,pw):
         pg.click('text=Créer un compte');pg.fill('#au-prenom',prenom);pg.fill('#au-pseudo',num);pg.fill('#au-mdp',pw);pg.fill('#au-mdp2',pw);pg.click('#au-go');pg.wait_for_timeout(1200)
     def sortir():
-        for sel in ['#secours-ov',"#deja-ov",'#onb']:
+        for sel in ['#secours-ov','#empreinte-ov',"#deja-ov",'#onb']:
             if pg.locator(sel).count():
-                pg.click({'#secours-ov':"text=Je l'ai noté",'#deja-ov':"text=Ouvrir mon compte",'#onb':'#onb-go'}[sel]);pg.wait_for_timeout(400)
+                pg.click({'#secours-ov':"text=Je l'ai noté",'#empreinte-ov':'text=Plus tard','#deja-ov':"text=Ouvrir mon compte",'#onb':'#onb-go'}[sel]);pg.wait_for_timeout(400)
         pg.evaluate("doSignOut()");pg.wait_for_timeout(500);pg.wait_for_selector('#auth-box button')
     creer('Awa','77 123 45 67','Baobab2026');print('1) Awa :',pg.evaluate("window._fb.auth.currentUser.uid"),'| code:',pg.locator('#secours-ov').count());sortir()
     creer('Moussa','+221771234567','Thiebou2026');print('2) même numéro, autre mot de passe :',pg.evaluate("window._fb.auth.currentUser.uid"),'| nouveau compte (code affiché):',pg.locator('#secours-ov').count());sortir()

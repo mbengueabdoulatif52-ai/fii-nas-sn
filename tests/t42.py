@@ -1,0 +1,45 @@
+# Protection proposée (PIN/empreinte) + « Code oublié ? » sur l'écran de verrouillage
+import os,sys,subprocess,time;sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+from stub import page
+from playwright.sync_api import sync_playwright
+srv=subprocess.Popen(['python3','-m','http.server','8771'],cwd=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);time.sleep(1)
+E=lambda pg,s:pg.evaluate(s)
+def tape(pg,code):
+    for k in code: E(pg,f"pinKey('{k}')"); pg.wait_for_timeout(40)
+    pg.wait_for_timeout(300)
+try:
+  with sync_playwright() as p:
+    b=p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox'])
+    pg,errs=page(b,"{'users/u1/data/settings':{cats:{'Revenu':['Salaire'],'Dépenses variables':['Alimentation']},budget:{},custom:{},modules:{}}}",protect=True)
+    E(pg,"localStorage.setItem('fiinas-guide','1');localStorage.removeItem('fiinas-protect-vu')");pg.reload();pg.wait_for_timeout(5500)
+    ov=pg.locator('#empreinte-ov')
+    print('proposée:',ov.count()==1 and 'Protège ton appli' in ov.inner_text())
+    pg.reload();pg.wait_for_timeout(5500);print('pas reproposée:',pg.locator('#empreinte-ov').count()==0)
+    E(pg,"localStorage.removeItem('fiinas-protect-vu')");pg.reload();pg.wait_for_timeout(5500)
+    pg.click("text=Activer la protection");pg.wait_for_timeout(300)
+    print('clavier création:',pg.inner_text('#pin-subtitle'))
+    pg.click("#lock-overlay >> text=Annuler");pg.wait_for_timeout(200)
+    print('annulé:',pg.locator('#lock-overlay').count()==0,E(pg,'hasPin()'))
+    E(pg,'setupPin()');pg.wait_for_timeout(200);tape(pg,'123456');tape(pg,'123456')
+    print('PIN créé:',E(pg,'hasPin()'))
+    E(pg,"window._fb.auth.currentUser={email:'awa@test.sn',providerData:[{providerId:'password'}]}")
+    E(pg,'lockApp()');pg.wait_for_timeout(200)
+    pg.click("#lock-overlay >> text=Code oublié ?");pg.wait_for_timeout(200)
+    print('feuille:',pg.locator('#pin-oubli').count()==1,'mdp:',pg.locator('#po-mdp').count())
+    pg.click('#po-go');pg.wait_for_timeout(100);print('vide:',pg.inner_text('#po-err'))
+    pg.fill('#po-mdp','secret123');pg.click('#po-go');pg.wait_for_timeout(500)
+    print('après confirmation:',pg.locator('#pin-oubli').count()==0,E(pg,'hasPin()'),pg.inner_text('#pin-subtitle'))
+    tape(pg,'654321');tape(pg,'654321');print('nouveau PIN:',E(pg,'hasPin()'),E(pg,"pinMatches('654321')"))
+    # Google
+    E(pg,"window._fb.auth.currentUser={email:'a@gmail.com',providerData:[{providerId:'google.com'}]}")
+    E(pg,'lockApp()');pg.wait_for_timeout(200);pg.click("#lock-overlay >> text=Code oublié ?");pg.wait_for_timeout(200)
+    print('google:',pg.inner_text('#po-go'));pg.click('#po-go');pg.wait_for_timeout(400);print('google ok:',E(pg,'hasPin()'),pg.locator('#lock-overlay').count())
+    pg.click("#lock-overlay >> text=Annuler");tape(pg,'')
+    # hors ligne
+    E(pg,"setPin('h1:x');window._fb.auth.currentUser={email:'awa@test.sn',providerData:[{providerId:'password'}]}")
+    pg.context.set_offline(True);E(pg,'lockApp()');pg.wait_for_timeout(200);pg.click("#lock-overlay >> text=Code oublié ?");pg.wait_for_timeout(200)
+    print('hors ligne:','connexion internet' in pg.inner_text('#pin-oubli'));pg.context.set_offline(False)
+    E(pg,"document.getElementById('pin-oubli').remove()");pg.click("#lock-overlay >> text=Code oublié ?");pg.wait_for_timeout(200)
+    pg.click("#pin-oubli >> text=Se déconnecter");pg.wait_for_timeout(400);print('déconnexion efface PIN:',E(pg,'hasPin()'))
+    print('errors',errs)
+finally: srv.terminate()

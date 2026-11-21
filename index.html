@@ -631,6 +631,7 @@ select option{background:#1F2840;color:#F1F4FA}
       <div style="background:var(--surf2);border-radius:var(--rs);overflow:hidden;height:4px;margin-bottom:6px"><div id="imp-pb" style="height:4px;background:var(--green);border-radius:var(--rs);width:0%;transition:width .3s"></div></div>
       <div id="imp-pt" style="font-size:11px;color:var(--text3);text-align:center;margin-bottom:10px">En attente</div>
       <div style="margin-bottom:12px">
+        <div style="background:var(--surf2);border-radius:var(--rs);padding:10px 12px;font-size:11.5px;color:var(--text2);line-height:1.55;margin-bottom:12px">Dans Excel, prépare <b style="color:var(--text)">5 colonnes dans cet ordre</b> : Date · Catégorie · Poste · Montant · Commentaire (facultatif). Sélectionne les lignes (sans les titres), copie-les, puis colle-les ici.<br><span style="color:var(--text3)">Exemple : 05/11/2026 · Dépenses variables · Transport · 2500 · Yango. Catégories : Revenu, Dépenses fixes, Dépenses variables, Epargne. Les postes inconnus sont créés ; les lignes déjà présentes sont ignorées.</span></div>
         <div class="flbl">Coller les données Excel</div>
         <textarea id="imp-txt" class="finp" rows="4" placeholder="Colle ici tes lignes Excel copiées..." style="resize:vertical;font-size:12px"></textarea>
       </div>
@@ -984,21 +985,32 @@ async function fermerCodeSecours(contexte){
   if(contexte==='creation')proposerEmpreinte();
 }
 
-// ── Empreinte : proposée après la création (s'appuie sur le code PIN existant)
-async function proposerEmpreinte(){
-  let dispo=false;
-  try{dispo=typeof PublicKeyCredential!=='undefined'&&await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();}catch(e){}
-  if(!dispo||hasPin())return;
+// ── Protection (code PIN + empreinte) : proposée une fois par téléphone tant qu'aucun code
+// n'existe — après la création d'un compte, à la fin du guide, ou au chargement pour les
+// comptes déjà en place (Google compris, qui n'ont jamais eu de mot de passe à créer).
+const PROTECT_VU='fiinas-protect-vu';
+function proposerEmpreinte(){proposerProtection(true);}
+async function proposerProtection(force){
+  if(hasPin()||isLocked)return;
+  try{if(localStorage.getItem(PROTECT_VU))return;}catch(e){}
+  if(document.getElementById('empreinte-ov'))return;
+  if(!force&&(document.getElementById('onb')||document.getElementById('guide')||document.getElementById('secours-ov')||document.getElementById('cfm')||document.getElementById('lock-overlay')||document.getElementById('cpt-sheet')||formDirty||!document.getElementById('page-dash')?.classList.contains('active')))return;
+  let bio=false;
+  try{bio=typeof PublicKeyCredential!=='undefined'&&await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();}catch(e){}
+  try{localStorage.setItem(PROTECT_VU,'1');}catch(e){}
+  const google=(window._fb?.auth?.currentUser?.providerData||[]).some(p=>p.providerId==='google.com');
   const ov=document.createElement('div');ov.id='empreinte-ov';
   ov.style.cssText='position:fixed;inset:0;background:var(--bg);z-index:1100;display:flex;justify-content:center';
   ov.innerHTML=`<div style="width:100%;max-width:420px;padding:28px 22px;display:flex;flex-direction:column">
     <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">
-      <div style="width:72px;height:72px;border-radius:50%;background:var(--gd);color:var(--green);display:flex;align-items:center;justify-content:center;margin-bottom:18px"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M18.9 7a8 8 0 0 1 1.1 5v1a6 6 0 0 0 .8 3M8 11a4 4 0 0 1 8 .5v1.5a10 10 0 0 0 1.5 5M12 11.5v1.5a14 14 0 0 0 2.5 7.5M8 15a18 18 0 0 0 1.8 6M4.9 19a22 22 0 0 1-.9-6v-1a8 8 0 0 1 12-6.9"/></svg></div>
-      <div style="font-size:20px;font-weight:600;color:var(--text)">Protéger avec ton empreinte ?</div>
-      <div style="font-size:13px;color:var(--text2);line-height:1.55;margin-top:10px;max-width:320px">Tu restes connecté. À chaque ouverture, ton empreinte déverrouille l'appli : personne d'autre ne voit tes comptes, même avec ton téléphone. Tu choisiras d'abord un code PIN, utile si le doigt n'est pas reconnu.</div>
+      <div style="width:72px;height:72px;border-radius:50%;background:var(--bd);color:var(--blue);display:flex;align-items:center;justify-content:center;margin-bottom:18px"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><rect x="9" y="10" width="6" height="5" rx="1"/><path d="M10.5 10V8.5a1.5 1.5 0 0 1 3 0V10"/></svg></div>
+      <div style="font-size:20px;font-weight:600;color:var(--text)">Protège ton appli</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.55;margin-top:10px;max-width:320px">${google?'Tu restes connecté avec Google. ':'Tu restes connecté. '}Un code à 6 chiffres${bio?', ou ton empreinte,':''} empêche quelqu'un qui prend ton téléphone de voir tes comptes.</div>
+      <div style="display:flex;gap:18px;margin-top:16px;font-size:12.5px;color:var(--text2)"><span style="display:flex;align-items:center;gap:5px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Code PIN</span>${bio?'<span style="display:flex;align-items:center;gap:5px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 11c0 3.5-1 6-2.5 8M8 6.5A6 6 0 0 1 18 11c0 2-.3 4-1 5.7M6 9.5A6 6 0 0 0 6 11c0 2.4-.6 4.3-1.5 5.5M12 11a2 2 0 0 0-2-2M14 11c0 3-.5 5.5-1.5 7.5"/></svg>Empreinte</span>':''}</div>
     </div>
-    <button onclick="document.getElementById('empreinte-ov').remove();setupPin()" style="width:100%;padding:14px;border-radius:var(--r);border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font)">Activer l'empreinte</button>
+    <button onclick="document.getElementById('empreinte-ov').remove();setupPin()" style="width:100%;padding:14px;border-radius:var(--r);border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font)">Activer la protection</button>
     <button onclick="document.getElementById('empreinte-ov').remove()" style="width:100%;padding:12px;margin-top:6px;border:none;background:none;color:var(--text2);font-size:13px;cursor:pointer;font-family:var(--font)">Plus tard</button>
+    <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:2px">Tu pourras l'activer à tout moment : Profil → Sécurité.</div>
   </div>`;
   document.body.appendChild(ov);
 }
@@ -1672,7 +1684,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='46';
+const APP_VERSION='47';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1711,6 +1723,13 @@ function quoiDeNeuf(){
     <button class="btn-p" onclick="closeSheet()">C'est parti</button>`);
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')verifMaj();});
+// Verrouillage aussi au retour dans l'appli : le minuteur de 5 min peut être gelé en arrière-plan
+let _cacheLe=0;
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden'){_cacheLe=Date.now();return;}
+  if(_cacheLe&&typeof hasPin==='function'&&hasPin()&&!isLocked&&uid&&Date.now()-_cacheLe>=LOCK_TIMEOUT)lockApp();
+  _cacheLe=0;
+});
 document.addEventListener('DOMContentLoaded',()=>{const v=document.getElementById('version-app');if(v)v.textContent='FII\'NAS SN · version '+APP_VERSION;});
 setInterval(verifMaj,30*60000);
 setTimeout(verifMaj,4000);
@@ -2202,7 +2221,7 @@ function guideEtape(){
       <button onclick="guideI++;guideEtape()" style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">${guideI===GUIDE.length-1?'C\'est parti':'Suivant'}</button></div></div>`;
   document.body.appendChild(ov);
 }
-function finGuide(){document.getElementById('guide')?.remove();document.getElementById('nav')?.classList.remove('guide-haut');document.querySelectorAll('.guide-cible').forEach(e=>e.classList.remove('guide-cible'));try{localStorage.setItem('fiinas-guide','1');}catch(e){}}
+function finGuide(){document.getElementById('guide')?.remove();document.getElementById('nav')?.classList.remove('guide-haut');document.querySelectorAll('.guide-cible').forEach(e=>e.classList.remove('guide-cible'));try{localStorage.setItem('fiinas-guide','1');}catch(e){}setTimeout(()=>proposerProtection(),700);}
 function guideAuto(){
   let fait=null;try{fait=localStorage.getItem('fiinas-guide');}catch(e){}
   // Seulement sur l'accueil, sans fenêtre ni saisie en cours
@@ -2232,7 +2251,11 @@ function guideAuto(){
   window.addEventListener('popstate',()=>{
     if(quitter)return;
     // Écrans qu'on ne ferme pas avec retour : verrouillage, premier réglage, code de secours
-    if(document.getElementById('onb')||document.getElementById('secours-ov')||document.getElementById('lock-overlay')){armer();return;}
+    if(document.getElementById('pin-oubli')){document.getElementById('pin-oubli').remove();armer();return;}
+    const lk=document.getElementById('lock-overlay');
+    if(lk&&lk._isSetup){lk.remove();pinInput='';isLocked=false;resetLockTimer();armer();return;}
+    if(document.getElementById('empreinte-ov')){document.getElementById('empreinte-ov').remove();armer();return;}
+    if(document.getElementById('onb')||document.getElementById('secours-ov')||lk){armer();return;}
     if(fermer()){armer();return;}
     const actif=document.querySelector('.page.active')?.id;
     if(actif&&actif!=='page-dash'&&document.getElementById('nav')){armer();goP('dash',document.querySelectorAll('.ni')[0]);return;}
@@ -2424,7 +2447,7 @@ function openEspaces(){
 function openCreerFoyer(){
   openSheet(sheetHead('Créer un foyer')+`
     <div class="fgrp"><div class="flbl">Nom du foyer</div><input class="finp" id="cf-nom" maxlength="40" placeholder="Foyer ${esc((userName||'').split(' ').slice(-1)[0]||'Diop')}, Famille…"></div>
-    <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:12px">Tu en seras responsable. Tu inviteras ensuite les autres avec un code ; chaque entrée devra être acceptée par un responsable.</div>
+    <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:12px">Tu en seras responsable. Tu inviteras ensuite les autres avec un code ; chaque demande pour rejoindre devra être acceptée par un responsable.</div>
     <div id="cf-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
     <button class="btn-p" id="cf-go" onclick="creerFoyer()">Créer</button>`);
   setTimeout(()=>document.getElementById('cf-nom')?.focus(),60);
@@ -4089,7 +4112,7 @@ function actionRaccourci(){
   return false;
 }
 async function renderDash(){
-  if(!_qdnFait){_qdnFait=true;if(actionRaccourci())return;setTimeout(quoiDeNeuf,600);setTimeout(guideAuto,2500);}
+  if(!_qdnFait){_qdnFait=true;if(actionRaccourci())return;setTimeout(quoiDeNeuf,600);setTimeout(guideAuto,2500);setTimeout(()=>{let g=null;try{g=localStorage.getItem('fiinas-guide');}catch(e){}if(g)proposerProtection();},4500);}
   renderBackupBanner();
   renderCptDash();renderObjDash();renderDetDash();renderPointBanner();renderRecurDash();renderMajBanner();renderBilanDash();renderBilanMoisDash();renderPrepDash();renderFoyerDash();
   if(isAnnual()){const h=document.getElementById('hero');h.className='hero';h.onclick=null;h.style.cursor='';['watch','cpt-dash','obj-dash','det-dash','point-banner','bilan-dash','bilanm-dash','prep-dash'].forEach(i=>{const e=document.getElementById(i);if(e)e.innerHTML='';});document.getElementById('detail-wrap').style.display='block';renderDashAnnual();return;}
@@ -5140,24 +5163,24 @@ function parseAndImport(){
   const raw=document.getElementById('imp-txt').value.trim();
   if(!raw){toast('Colle des données à importer');return;}
   const lines=raw.split('\n').filter(l=>l.trim());
-  const txList=[],rejets=[];
+  const txList=[],rejets=[],rejetsDate=[];
   lines.forEach(line=>{
     const cols=line.split('\t');
     if(cols.length<4)return;
     const dateRaw=cols[0].trim();
     const cat=normCat(cols[1].trim());
     const poste=cols[2].trim();
-    const montant=Math.round(Math.abs(parseFloat(cols[3].toString().replace(/[^0-9.-]/g,''))));
+    const montant=impMontant(cols[3]);
     const cmt=(cols[4]||'').trim();
     if(!dateRaw||isNaN(montant)||!montant||!poste)return;
     if(!cat){rejets.push(line.slice(0,60));return;}
     // Parse date
-    let date=dateRaw;
-    if(dateRaw.match(/^\d{2}\/\d{2}\/\d{4}$/)){const[d,m,y]=dateRaw.split('/');date=`${y}-${m}-${d}`;}
-    else if(dateRaw.match(/^\d{5}$/)){const d=new Date((parseInt(dateRaw)-25569)*86400000);date=d.toISOString().split('T')[0];}
+    const date=impDate(dateRaw);
+    if(!date){rejetsDate.push(line.slice(0,60));return;}
     txList.push({date,cat,poste,amt:montant,cmt});
   });
   if(rejets.length)toast(rejets.length+' ligne(s) ignorée(s) : catégorie inconnue (Revenu, Dépenses fixes, Dépenses variables ou Epargne)');
+  if(rejetsDate.length)setTimeout(()=>toast(rejetsDate.length+' ligne(s) ignorée(s) : date illisible (écris-la jj/mm/aaaa)'),rejets.length?3200:0);
   if(!txList.length){toast('Aucune ligne valide détectée');return;}
   const rev=txList.filter(t=>t.cat==='Revenu').reduce((s,t)=>s+t.amt,0);
   const dep=txList.filter(t=>t.cat!=='Revenu').reduce((s,t)=>s+t.amt,0);
@@ -5168,6 +5191,25 @@ function parseAndImport(){
   doImport(txList);
 }
 
+// Import : montant « 15 000 », « 15.000 », « 15,000 », « 1 500,50 », « -2500 F » → entier positif
+function impMontant(v){
+  let t=String(v||'').replace(/[\s\u00a0\u202f]/g,'').replace(/[^0-9.,-]/g,'').replace(/^-/,'');
+  if(/^\d{1,3}([.,]\d{3})+$/.test(t))t=t.replace(/[.,]/g,'');      // séparateurs de milliers
+  else t=t.replace(/[.,](?=\d{3}[.,])/g,'').replace(',','.');        // 1.500,50 → 1500.50
+  const n=Math.round(Math.abs(parseFloat(t)));return isFinite(n)?n:NaN;
+}
+// Import : date jj/mm/aaaa, j/m/aa, jj-mm-aaaa, aaaa-mm-jj ou numéro de série Excel → AAAA-MM-JJ (null si invalide)
+function impDate(v){
+  v=String(v||'').trim();let y,m,d;
+  let r=v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/);
+  if(r){d=+r[1];m=+r[2];y=+r[3];if(y<100)y+=2000;}
+  else if((r=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))){y=+r[1];m=+r[2];d=+r[3];}
+  else if(/^\d{5}$/.test(v)){return new Date((parseInt(v,10)-25569)*86400000).toISOString().split('T')[0];}
+  else return null;
+  const dt=new Date(Date.UTC(y,m-1,d));
+  if(dt.getUTCFullYear()!==y||dt.getUTCMonth()!==m-1||dt.getUTCDate()!==d||y<2000||y>2100)return null;
+  return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
 // Catégorie importée → catégorie de l'appli (null si inconnue)
 function normCat(c){
   const k=(c||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/s$/,'').trim();
@@ -5202,6 +5244,8 @@ async function doImport(txList){
     log.scrollTop=log.scrollHeight;
     await new Promise(r=>setTimeout(r,30));
   }
+  let nvx=0;txList.forEach(t=>{if(!CATS[t.cat])CATS[t.cat]=[];if(!CATS[t.cat].includes(t.poste)){CATS[t.cat].push(t.poste);nvx++;}});
+  if(nvx){try{await saveSettings();syncPostes();renderCPUI();}catch(e){}}
   document.getElementById('imp-pt').textContent=`✓ ${ok}/${txList.length} transactions importées`+(doublons?` · ${doublons} doublon(s) ignoré(s)`:'');
   toast(`${ok} transactions importées ✓`+(doublons?` · ${doublons} doublon(s) ignoré(s)`:''));
   btn.disabled=false;
@@ -5303,7 +5347,7 @@ function showLockScreen(isSetup=false){
     <button onclick="tryBiometric()" style="margin-top:24px;padding:10px 24px;border-radius:var(--r);border:0.5px solid var(--border);background:var(--surf);color:var(--text2);font-size:13px;cursor:pointer;font-family:var(--font);display:flex;align-items:center;gap:8px">
       <span style="display:flex;align-items:center;color:var(--text2)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 17.5A14.5 14.5 0 0 0 4.27 21"/><path d="M8.3 22a20.23 20.23 0 0 0 .43-3"/><path d="M12 2a10 10 0 0 1 8 4"/><path d="M12 6a6 6 0 0 0-6 6c0 1.99-.1 3.99-.26 5.98"/><path d="M6.08 21.51A14.51 14.51 0 0 0 6.5 19.5"/></svg></span> Utiliser l'empreinte
     </button>`:''}
-    ${isSetup?'':''}
+    ${isSetup?`<button onclick="document.getElementById('lock-overlay')?.remove();pinInput='';isLocked=false;resetLockTimer()" style="margin-top:22px;padding:6px 12px;border:none;background:none;color:var(--text2);font-size:13px;cursor:pointer;font-family:var(--font)">Annuler</button>`:`<button onclick="openPinOublie()" style="margin-top:18px;padding:6px 12px;border:none;background:none;color:var(--blue);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">Code oublié ?</button>`}
   `;
   document.body.appendChild(overlay);
   overlay._pin='';
@@ -5465,6 +5509,52 @@ function checkLockOnStart(){
   resetLockTimer();
 }
 
+// ── Code PIN oublié : on prouve son identité (mot de passe ou Google), puis nouveau code.
+// Le PIN n'existe que sur ce téléphone ; les données en ligne ne sont pas touchées.
+function openPinOublie(){
+  document.getElementById('pin-oubli')?.remove();
+  const u=window._fb?.auth?.currentUser;if(!u)return;
+  const google=(u.providerData||[]).some(p=>p.providerId==='google.com');
+  const id=identLabel();
+  const bg=document.createElement('div');bg.id='pin-oubli';
+  bg.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:flex-end;justify-content:center';
+  const hl=!navigator.onLine;
+  bg.innerHTML=`<div style="background:var(--surf);border-radius:16px 16px 0 0;padding:20px 18px 24px;width:100%;max-width:480px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-size:15px;font-weight:600;color:var(--text)">Code PIN oublié</span><button aria-label="Fermer" onclick="document.getElementById('pin-oubli').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">✕</button></div>
+    <div style="font-size:12.5px;color:var(--text2);line-height:1.55;margin-bottom:14px">Confirme que c'est bien toi, puis choisis un nouveau code. Tes données ne bougent pas.</div>
+    ${hl?`<div style="background:var(--surf2);border-radius:var(--rs);padding:12px;font-size:12.5px;color:var(--text2);line-height:1.5">Il faut une connexion internet pour réinitialiser le code. Reconnecte-toi au réseau, puis réessaie.</div>`
+      :google?`<button class="btn-p" id="po-go" onclick="pinOublieValider(true)">Confirmer avec Google</button>`
+      :`<div class="fgrp"><div class="flbl">Mot de passe${id?' du compte '+esc(id):''}</div><input class="finp" type="password" id="po-mdp" autocomplete="current-password"></div>
+        <button class="btn-p" id="po-go" onclick="pinOublieValider(false)">Confirmer et changer le code</button>
+        <div style="font-size:11.5px;color:var(--text3);margin-top:12px;line-height:1.5">Mot de passe oublié aussi ? <button onclick="pinOublieDeconnexion()" style="background:none;border:none;padding:0;color:var(--blue);font-size:11.5px;font-weight:600;cursor:pointer;font-family:var(--font)">Se déconnecter</button>, puis utilise « Mot de passe oublié ? » avec ton code de secours.</div>`}
+    <div id="po-err" style="font-size:12px;color:var(--red);min-height:16px;margin-top:8px"></div>
+  </div>`;
+  document.body.appendChild(bg);
+  setTimeout(()=>document.getElementById('po-mdp')?.focus(),100);
+}
+// Se déconnecter depuis l'écran verrouillé : sans risque, il faudra le mot de passe pour revenir.
+async function pinOublieDeconnexion(){
+  ['fiinas-pin','fiinas-passkey','fiinas-passkey-id'].forEach(k=>{try{localStorage.removeItem(k);}catch(e){}});
+  pinReset();
+  try{await window._fb.signOut(window._fb.auth);}catch(e){location.reload();}
+}
+async function pinOublieValider(google){
+  const{auth,EmailAuthProvider,reauthenticateWithCredential,reauthenticateWithPopup,GoogleAuthProvider}=window._fb;
+  const u=auth.currentUser,err=document.getElementById('po-err'),bt=document.getElementById('po-go');if(!u)return;
+  const mdp=document.getElementById('po-mdp')?.value||'';
+  if(!google&&!mdp){err.textContent='Saisis ton mot de passe.';return;}
+  bt.disabled=true;err.textContent='';
+  try{
+    if(google)await reauthenticateWithPopup(u,new GoogleAuthProvider());
+    else await reauthenticateWithCredential(u,EmailAuthProvider.credential(u.email,mdp));
+  }catch(e){bt.disabled=false;
+    err.textContent=/invalid-credential|wrong-password/.test(e.code||'')?'Mot de passe incorrect.':/popup-closed|cancelled/.test(e.code||'')?'Confirmation annulée.':/too-many/.test(e.code||'')?'Trop d\'essais. Réessaie dans quelques minutes.':/network/.test(e.code||'')?'Pas de connexion. Réessaie avec du réseau.':'Confirmation impossible : '+(e.message||e);return;}
+  ['fiinas-pin','fiinas-passkey','fiinas-passkey-id'].forEach(k=>{try{localStorage.removeItem(k);}catch(e){}});
+  pinReset();
+  document.getElementById('pin-oubli')?.remove();document.getElementById('lock-overlay')?.remove();
+  isLocked=false;toast('Identité confirmée. Choisis ton nouveau code.');
+  setupPin();
+}
 function setupPin(){
   pinInput='';
   showLockScreen(true);

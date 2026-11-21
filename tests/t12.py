@@ -41,7 +41,7 @@ with sync_playwright() as p:
     pg.click('#au-go');pg.wait_for_timeout(1000)
     print('code:',pg.inner_text('#secours-code'),'| libellé:',pg.locator('#secours-ov').inner_text().split('Compte ')[1].split('\n')[0])
     print('profil écrit:',pg.evaluate("JSON.stringify(window.__store['users/u1/data/profil'])"),'| api:',[c[0] for c in calls])
-    pg.click("text=Je l'ai noté");pg.wait_for_timeout(300);pg.click('#onb-go');pg.wait_for_timeout(400)
+    pg.click("text=Je l'ai noté");pg.wait_for_timeout(300);pg.click('text=Plus tard');pg.wait_for_timeout(200);pg.click('#onb-go');pg.wait_for_timeout(400)
     pg.evaluate("goP('pro',document.querySelectorAll('.ni')[4])");pg.wait_for_timeout(300)
     print('profil:',pg.inner_text('#pname'),'|',pg.inner_text('#pemail'),'| lignes:',pg.locator('#security-ui >> text=Mot de passe').count(),pg.locator('#security-ui >> text=Code de secours').count())
     pg.screenshot(path=os.path.join(os.path.dirname(os.path.abspath(__file__)),'out','')+'n2.png',full_page=True)
