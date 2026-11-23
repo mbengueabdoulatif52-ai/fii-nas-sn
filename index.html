@@ -1692,7 +1692,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='52';
+const APP_VERSION='53';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1835,19 +1835,26 @@ function renderGraphs(){
     if(!prev.length||!jRef)h+=carte('Par rapport à d\'habitude','',vide('Il faut au moins un mois d\'historique pour comparer.'));
     else{
       const cur=somme(ym,jRef),moy={};
-      prev.forEach(mo=>{const r=somme(mo,Math.min(jRef,finMois(mo)));Object.entries(r).forEach(([p,v])=>moy[p]=(moy[p]||0)+v/prev.length);});
+      // L'habitude = la médiane des mois d'avant, pas la moyenne : une dépense exceptionnelle (fête, prêt,
+      // remboursement) faite un seul mois ne devient pas « habituelle » et ne fait pas paraître le mois économe.
+      const parMois=prev.map(mo=>somme(mo,Math.min(jRef,finMois(mo))));
+      const med=a=>{a=a.slice().sort((x,y)=>x-y);const n=a.length;return n%2?a[(n-1)/2]:(a[n/2-1]+a[n/2])/2;};
+      [...new Set(parMois.flatMap(r=>Object.keys(r)))].forEach(p=>{const v=med(parMois.map(r=>r[p]||0));if(v)moy[p]=v;});
       const ec=[...new Set([...Object.keys(cur),...Object.keys(moy)])].map(p=>({p,d:Math.round((cur[p]||0)-(moy[p]||0))})).filter(o=>Math.abs(o.d)>=500).sort((a,b)=>Math.abs(b.d)-Math.abs(a.d));
       const tot=Math.round(Object.values(cur).reduce((s,v)=>s+v,0)-Object.values(moy).reduce((s,v)=>s+v,0));
-      const vis=ec.slice(0,5),mx=Math.max(1,...vis.map(o=>Math.abs(o.d)));
+      const hausses=ec.filter(o=>o.d>0),baisses=ec.filter(o=>o.d<0);
+      const vis=[...hausses.slice(0,Math.max(3,5-Math.min(2,baisses.length))),...baisses.slice(0,2)].slice(0,5),mx=Math.max(1,...vis.map(o=>Math.abs(o.d)));
       const lignes=vis.map(o=>{const w=Math.max(3,Math.round(Math.abs(o.d)/mx*100)),up=o.d>0,c=up?'var(--red)':'var(--green)',v=`${up?'+':'−'}${fmt(Math.abs(o.d))}`;
         const nom=`<span style="font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.p)}</span>`;
         const barre=(al)=>`<div style="display:flex;flex-direction:column;align-items:${al}"><div style="width:${w}%;height:9px;background:${c};border-radius:${up?'0 3px 3px 0':'3px 0 0 3px'}"></div><span style="font-size:10.5px;color:${c}">${v}</span></div>`;
         return `<div style="display:grid;grid-template-columns:1fr 1fr;align-items:center;margin-bottom:6px">${up?`<div style="text-align:right;padding-right:7px;min-width:0">${nom}</div>${barre('flex-start')}`:`${barre('flex-end')}<div style="padding-left:7px;min-width:0">${nom}</div>`}</div>`;}).join('');
-      const pire=ec.find(o=>o.d>0);
-      const phrase=Math.abs(tot)<1000?'Tes dépenses sont au niveau habituel.'
+      const pire=hausses[0];
+      const budDepasse=budD>0&&jMax>0&&dep.filter(x=>+x.date.slice(8)<=jMax).reduce((s,x)=>s+(x.amt||0),0)>budD;
+      let phrase=Math.abs(tot)<1000?'Tes dépenses sont au niveau habituel.'
         :tot>0?`Tu dépenses <b style="color:var(--red)">${fmt(tot)} F de plus</b> que d'habitude${pire?`, surtout à cause de ${esc(pire.p)}`:''}.`
-        :`Tu dépenses <b style="color:var(--green)">${fmt(-tot)} F de moins</b> que d'habitude.`;
-      h+=carte('Par rapport à d\'habitude',`${MFR[+ym.slice(5)-1]}${enCours?' au '+jRef:''} vs moyenne ${prev.length>1?'des '+prev.length+' mois':'du mois'} d'avant${enCours?' à la même date':''}`,
+        :`Tu dépenses <b style="color:var(--green)">${fmt(-tot)} F de moins</b> que d'habitude${pire?`, mais ${esc(pire.p)} est en hausse de ${fmt(pire.d)} F`:''}.`;
+      if(budDepasse&&tot<=0)phrase+=` <span style="color:var(--red)">Ton budget du mois est pourtant dépassé : ce mois-ci, c'est le budget qui compte.</span>`;
+      h+=carte('Par rapport à d\'habitude',`${MFR[+ym.slice(5)-1]}${enCours?' au '+jRef:''} vs un mois habituel${prev.length>1?' (sur les '+prev.length+' mois d\'avant)':' (le mois d\'avant)'}${enCours?', à la même date':''}`,
         vis.length?`<div style="position:relative"><div style="position:absolute;left:50%;top:0;bottom:6px;border-left:1px solid var(--border)"></div>${lignes}</div>`:vide('Aucun écart notable.'),
         `<div style="font-size:12px;color:var(--text2);margin-top:4px;line-height:1.45">${phrase}</div>`);
     }
@@ -1865,7 +1872,7 @@ function renderGraphs(){
       let svg=`<svg viewBox="0 0 100 100" width="96" style="display:block;margin:0 auto">`;
       parts.forEach(([p,v],i)=>{const L=C*v/tot;svg+=`<circle cx="50" cy="50" r="${R}" fill="none" stroke="${cols[i]}" stroke-width="15" stroke-dasharray="${L} ${C-L}" stroke-dashoffset="${-off}" transform="rotate(-90 50 50)"/>`;off+=L;});
       svg+=`</svg>`;
-      g3=svg+`<div style="margin-top:7px">${parts.map(([p,v],i)=>`<div style="display:flex;justify-content:space-between;gap:6px;font-size:11px;line-height:1.6"><span style="display:flex;align-items:center;gap:5px;min-width:0"><span style="width:8px;height:8px;border-radius:2px;background:${cols[i]};flex-shrink:0"></span><span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p)}</span></span><span style="color:var(--text);font-weight:600">${Math.round(v/tot*100)} %</span></div>`).join('')}</div>`;
+      g3=svg+`<div style="margin-top:7px">${parts.map(([p,v],i)=>`<div style="display:flex;justify-content:space-between;gap:6px;font-size:11px;line-height:1.6"><span style="display:flex;align-items:center;gap:5px;min-width:0"><span style="width:8px;height:8px;border-radius:2px;background:${cols[i]};flex-shrink:0"></span><span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p)}</span></span><span style="color:var(--text);font-weight:600;white-space:nowrap;flex-shrink:0">${Math.round(v/tot*100)} %</span></div>`).join('')}</div>`;
     }
   }
   {
