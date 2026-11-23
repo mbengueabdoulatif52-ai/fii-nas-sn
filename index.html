@@ -1692,7 +1692,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='51';
+const APP_VERSION='52';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1771,7 +1771,6 @@ async function demanderDeconnexion(){
 // Quatre graphiques, chacun pour une question : vais-je tenir ? où ça déborde ? qu'est-ce qui pèse ? est-ce que je progresse ?
 let vueGraph=false;try{vueGraph=localStorage.getItem('fiinas-vue')==='g';}catch(e){}
 function setVue(g){vueGraph=g;try{localStorage.setItem('fiinas-vue',g?'g':'r');}catch(e){}window.scrollTo(0,0);renderDash();}
-let grPostesTout=false;
 function renderVueSwitch(){
   const pg=document.getElementById('page-dash'),sw=document.getElementById('vue-sw');if(!pg||!sw)return;
   const annuel=isAnnual();
@@ -1828,22 +1827,29 @@ function renderGraphs(){
     svg+=`<text x="${pl}" y="${H-3}" fill="var(--text3)" font-size="9">1er</text><text x="${W-pr}" y="${H-3}" fill="var(--text3)" font-size="9" text-anchor="end">${nbJ}</text></svg>`;
     h+=carte('Le rythme du mois','Dépenses cumulées jour après jour'+(budD?' · pointillé : rythme prévu':''),svg,`${typeof resume!=='undefined'?`<div style="font-size:12px;color:var(--text2);margin-top:6px">${resume}</div>`:''}<div style="font-size:12px;color:${coul};margin-top:3px;line-height:1.45">${msg}</div>`);
   }
-  // 2. Budget par poste
+  // 2. Par rapport à d'habitude : chaque poste vs la moyenne des 3 mois d'avant, à la même date du mois
   {
-    const bud=budget[ym]||{},m={};dep.forEach(x=>m[x.poste]=(m[x.poste]||0)+(x.amt||0));
-    const postes=[...new Set([...DEP.flatMap(c=>getAllPostes(c)).filter(p=>bud[p]>0),...Object.keys(m)])].map(p=>({p,b:bud[p]||0,m:m[p]||0}))
-      .filter(o=>o.b||o.m).sort((a,b)=>(Math.max(0,b.m-b.b)-Math.max(0,a.m-a.b))||(b.m-a.m)||(b.b-a.b));
-    if(!postes.length)h+=carte('Budget par poste','',vide('Aucun budget ni dépense ce mois.'));
+    const jRef=enCours?jMax:nbJ;
+    const prev=[1,2,3].map(i=>moisDecal(ym,-i)).filter(mo=>txYM(mo).length);
+    const somme=(mo,lim)=>{const r={};txYM(mo).filter(x=>DEP.includes(x.cat)&&+x.date.slice(8)<=lim).forEach(x=>r[x.poste]=(r[x.poste]||0)+(x.amt||0));return r;};
+    if(!prev.length||!jRef)h+=carte('Par rapport à d\'habitude','',vide('Il faut au moins un mois d\'historique pour comparer.'));
     else{
-      const vis=grPostesTout?postes:postes.slice(0,7);
-      const lignes=vis.map(o=>{const over=o.b>0&&o.m>o.b,sans=!o.b;
-        const w=sans?100:Math.min(100,Math.round(o.m/o.b*100)),c=over?'var(--red)':sans?'var(--amber)':'var(--blue)';
-        const droite=sans?`<span style="color:var(--amber)">${fmt(o.m)} · sans budget</span>`:`<span style="color:${over?'var(--red)':'var(--text2)'}">${fmt(o.m)} / ${fmt(o.b)}</span>`;
-        return `<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;gap:8px;font-size:12px"><span style="color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.p)}</span><span style="white-space:nowrap">${droite}</span></div>
-          <div style="height:7px;background:var(--surf2);border-radius:4px;margin-top:4px;overflow:hidden"><div style="width:${w}%;height:7px;background:${c};border-radius:4px"></div></div></div>`;}).join('');
-      const nOver=postes.filter(o=>o.b>0&&o.m>o.b).length;
-      h+=carte('Budget par poste',nOver?`${nOver} poste${nOver>1?'s':''} au-delà du budget, en rouge`:'Dépensé / prévu ce mois',lignes,
-        postes.length>7?`<div onclick="grPostesTout=!grPostesTout;renderGraphs()" style="font-size:12px;color:var(--blue);cursor:pointer;margin-top:2px">${grPostesTout?'Moins':'Tous les postes ('+postes.length+')'} ›</div>`:'');
+      const cur=somme(ym,jRef),moy={};
+      prev.forEach(mo=>{const r=somme(mo,Math.min(jRef,finMois(mo)));Object.entries(r).forEach(([p,v])=>moy[p]=(moy[p]||0)+v/prev.length);});
+      const ec=[...new Set([...Object.keys(cur),...Object.keys(moy)])].map(p=>({p,d:Math.round((cur[p]||0)-(moy[p]||0))})).filter(o=>Math.abs(o.d)>=500).sort((a,b)=>Math.abs(b.d)-Math.abs(a.d));
+      const tot=Math.round(Object.values(cur).reduce((s,v)=>s+v,0)-Object.values(moy).reduce((s,v)=>s+v,0));
+      const vis=ec.slice(0,5),mx=Math.max(1,...vis.map(o=>Math.abs(o.d)));
+      const lignes=vis.map(o=>{const w=Math.max(3,Math.round(Math.abs(o.d)/mx*100)),up=o.d>0,c=up?'var(--red)':'var(--green)',v=`${up?'+':'−'}${fmt(Math.abs(o.d))}`;
+        const nom=`<span style="font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.p)}</span>`;
+        const barre=(al)=>`<div style="display:flex;flex-direction:column;align-items:${al}"><div style="width:${w}%;height:9px;background:${c};border-radius:${up?'0 3px 3px 0':'3px 0 0 3px'}"></div><span style="font-size:10.5px;color:${c}">${v}</span></div>`;
+        return `<div style="display:grid;grid-template-columns:1fr 1fr;align-items:center;margin-bottom:6px">${up?`<div style="text-align:right;padding-right:7px;min-width:0">${nom}</div>${barre('flex-start')}`:`${barre('flex-end')}<div style="padding-left:7px;min-width:0">${nom}</div>`}</div>`;}).join('');
+      const pire=ec.find(o=>o.d>0);
+      const phrase=Math.abs(tot)<1000?'Tes dépenses sont au niveau habituel.'
+        :tot>0?`Tu dépenses <b style="color:var(--red)">${fmt(tot)} F de plus</b> que d'habitude${pire?`, surtout à cause de ${esc(pire.p)}`:''}.`
+        :`Tu dépenses <b style="color:var(--green)">${fmt(-tot)} F de moins</b> que d'habitude.`;
+      h+=carte('Par rapport à d\'habitude',`${MFR[+ym.slice(5)-1]}${enCours?' au '+jRef:''} vs moyenne ${prev.length>1?'des '+prev.length+' mois':'du mois'} d'avant${enCours?' à la même date':''}`,
+        vis.length?`<div style="position:relative"><div style="position:absolute;left:50%;top:0;bottom:6px;border-left:1px solid var(--border)"></div>${lignes}</div>`:vide('Aucun écart notable.'),
+        `<div style="font-size:12px;color:var(--text2);margin-top:4px;line-height:1.45">${phrase}</div>`);
     }
   }
   // 3. Où va l'argent + 4. Six derniers mois (côte à côte)

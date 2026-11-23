@@ -16,7 +16,7 @@ try:
     g=pg.inner_text('#graphs').replace(' ',' ')
     print('hero caché:',not pg.locator('#hero').is_visible())
     print('rythme:','155 000 F dépensés au 20' in g and 'budget 170 000 F' in g)
-    print('dons rouge:','25 000 / 10 000' in g and '1 poste au-delà' in g)
+    print('habitude:',"Par rapport à d'habitude" in g and '−150 000' in g and 'de moins' in g)
     print('anneau:','Loyer' in g and '65 %' in g)
     print('6 mois:','Moyenne avant' in g and '−50 000' in g)
     pg.reload();pg.wait_for_timeout(1200);print('mémorisé:',pg.locator('#graphs').is_visible())
