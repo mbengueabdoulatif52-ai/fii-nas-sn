@@ -13,8 +13,9 @@ function fire(){Object.keys(subs).forEach(p=>subs[p].forEach(cb=>cb(isCol(p)?col
 export const onSnapshot=(q,o,cb)=>{let meta=false;if(typeof o==='function'){cb=o}else meta=!!(o&&o.includeMetadataChanges);(subs[q]=subs[q]||[]).push(cb);if(isCol(q))setTimeout(()=>cb(colSnap(q)),15);else{setTimeout(()=>cb(docSnap(q,true)),10);if(meta||(q in store))setTimeout(()=>cb(docSnap(q,false)),900);}return()=>{}};
 export const setDoc=async(p,d,o)=>{store[p]=o?Object.assign({},store[p]||{},d):Object.assign({},d);setTimeout(fire,5)};
 export const getDoc=async p=>docSnap(p,false);export const getDocs=async p=>colSnap(p);export const deleteDoc=async p=>{delete store[p];setTimeout(fire,5)};""" % init
-def page(b,init='{}',protect=False):
+def page(b,init='{}',protect=False,now=None):
     pg=b.new_context(viewport={'width':390,'height':844},service_workers='block').new_page()
+    if now: pg.clock.set_fixed_time(now)
     errs=[];pg.on('pageerror',lambda e:errs.append(str(e)))
     pg.route('**/firebase-app.js',lambda r:r.fulfill(body=APP,content_type='text/javascript'))
     pg.route('**/firebase-auth.js',lambda r:r.fulfill(body=AUTH,content_type='text/javascript'))

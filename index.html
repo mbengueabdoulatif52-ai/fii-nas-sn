@@ -1684,7 +1684,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='48';
+const APP_VERSION='49';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1780,7 +1780,8 @@ function bilanCalc(lundi){
   const bud=budget[ym]||{},aBudget=Object.values(bud).some(v=>v>0);
   // Mois en cours jusqu'à D, par poste
   const mtd={},sem={},catDe={};
-  txs.filter(t=>B_DEP.includes(t.cat)&&t.date&&t.date.startsWith(ym)&&t.date<=D).forEach(t=>{mtd[t.poste]=(mtd[t.poste]||0)+(t.amt||0);catDe[t.poste]=t.cat;});
+  const nTx={};
+  txs.filter(t=>B_DEP.includes(t.cat)&&t.date&&t.date.startsWith(ym)&&t.date<=D).forEach(t=>{mtd[t.poste]=(mtd[t.poste]||0)+(t.amt||0);catDe[t.poste]=t.cat;nTx[t.poste]=(nTx[t.poste]||0)+1;});
   dep.forEach(t=>{sem[t.poste]=(sem[t.poste]||0)+(t.amt||0);catDe[t.poste]=catDe[t.poste]||t.cat;});
   // Analyse par poste
   const postes=[];
@@ -1788,15 +1789,30 @@ function bilanCalc(lundi){
     const b=bud[p]||0,m=mtd[p]||0,s=sem[p]||0;if(!b&&!m&&!s)return;
     const o={p,cat,b,m,s,etat:'ok'};
     if(b>0&&m>b){o.etat='depasse';o.exces=m-b;o.excesSem=Math.min(s,m-b);}
-    else if(!b&&s>0&&aBudget){o.etat='sansbud';}
-    else if(b>0&&cat===B_VAR&&jour>=5&&m>=b*0.3){
+    else if(!b&&m>0&&s>0&&aBudget){o.etat='sansbud';}
+    else if(b>0&&m>=b&&cat===B_VAR){o.etat='atteint';}   // budget consommé pile (gros achat prévu) : rien à projeter
+    // Rythme : seulement pour un poste dépensé au fil des jours (3 dépenses au moins), pas pour un achat ponctuel
+    else if(b>0&&cat===B_VAR&&jour>=5&&m>=b*0.3&&(nTx[p]||0)>=3){
       const rythme=m/jour,proj=rythme*nbJ;
       if(proj>b*1.05){o.etat='rapide';o.jourDep=Math.min(nbJ,Math.ceil(b/rythme));o.parJour=Math.max(0,Math.floor((b-m)/Math.max(1,nbJ-jour)));}
       else o.marge=Math.round(b-proj);
     }
     postes.push(o);
   }));
-  const horsBudget=postes.reduce((s,o)=>s+(o.etat==='depasse'?o.excesSem:o.etat==='sansbud'?o.s:0),0);
+  // Semaine à cheval : les jours de l'autre mois sont jugés sur le budget de ce mois-là
+  const autres=[];
+  [...new Set(dep.map(t=>t.date.slice(0,7)))].filter(mo=>mo!==ym).forEach(mo=>{
+    const bm=budget[mo]||{},aB=Object.values(bm).some(v=>v>0),finMo=mo+'-'+String(finMois(mo)).padStart(2,'0');
+    const mm={},ss={};
+    txs.filter(t=>B_DEP.includes(t.cat)&&t.date&&t.date.startsWith(mo)&&t.date<=finMo).forEach(t=>mm[t.poste]=(mm[t.poste]||0)+(t.amt||0));
+    dep.filter(t=>t.date.startsWith(mo)).forEach(t=>ss[t.poste]=(ss[t.poste]||0)+(t.amt||0));
+    Object.entries(ss).forEach(([p,v])=>{const b=bm[p]||0,m=mm[p]||0;
+      if(b>0&&m>b)autres.push({p,v:Math.min(v,m-b)});else if(!b&&aB)autres.push({p,v});});
+  });
+  // La part de la semaine qui tombe dans le mois courant seulement
+  postes.forEach(o=>{if(o.etat==='depasse'){const sM=dep.filter(t=>t.poste===o.p&&t.date.startsWith(ym)).reduce((s,t)=>s+(t.amt||0),0);o.excesSem=Math.min(sM,o.exces);}
+    if(o.etat==='sansbud')o.sM=dep.filter(t=>t.poste===o.p&&t.date.startsWith(ym)).reduce((s,t)=>s+(t.amt||0),0);});
+  const horsBudget=postes.reduce((s,o)=>s+(o.etat==='depasse'?o.excesSem:o.etat==='sansbud'?(o.sM??o.s):0),0)+autres.reduce((s,a)=>s+a.v,0);
   const rapides=postes.filter(o=>o.etat==='rapide').sort((a,b)=>a.jourDep-b.jourDep);
   // Ce qu'on peut encore dépenser par jour (postes variables budgétés)
   const resteVar=postes.filter(o=>o.cat===B_VAR&&o.b>0).reduce((s,o)=>s+Math.max(0,o.b-o.m),0);
@@ -1826,14 +1842,15 @@ function bilanCalc(lundi){
   if(modules.dettes)dettes.forEach(d=>{if(resteDette(d)>0&&d.echeance&&d.echeance<=fin)avenir.push({d:d.echeance,txt:d.sens==='pret'?`${d.personne} doit te rendre ${fmt(resteDette(d))} F`:`Rendre ${fmt(resteDette(d))} F à ${d.personne}`,retard:d.echeance<auj});});
   avenir.sort((a,b)=>a.d.localeCompare(b.d));
   const objRetard=modules.objectifs?objectifs.map(o=>({o,e:effortObj(o)})).filter(x=>x.e.etat==='date'&&x.e.encore>0):[];
-  return{lundi,dim,D,ym,jour,nbJ,semaine,dep,totDep,totRev,totEpa,aBudget,postes,horsBudget,rapides,resteVar,resteVarNet,depasseMois,joursRestants,top,grosse,petites,totPetites,sansSaisie,jourCher,avant,avenir,objRetard};
+  return{lundi,dim,D,ym,jour,nbJ,semaine,dep,totDep,totRev,totEpa,aBudget,postes,horsBudget,autres,rapides,resteVar,resteVarNet,depasseMois,joursRestants,top,grosse,petites,totPetites,sansSaisie,jourCher,avant,avenir,objRetard};
 }
 
 // Titre de la carte selon la semaine
 function bilanTitre(B){
   if(!B.semaine.length)return{t:'Semaine sans transaction notée',s:'Un oubli ? Le pointage de fin de mois te le dira',c:'amber'};
   if(!B.aBudget)return{t:'Semaine sans budget de référence',s:`${fmt(B.totDep)} F dépensés · prépare ton budget pour un vrai bilan`,c:'blue'};
-  if(B.horsBudget>0){const l=B.postes.filter(o=>o.etat==='depasse'&&o.excesSem>0||o.etat==='sansbud').sort((a,b)=>(b.etat==='depasse'?b.excesSem:b.s)-(a.etat==='depasse'?a.excesSem:a.s)).map(o=>o.p);
+  if(B.horsBudget>0){const v={};B.postes.forEach(o=>{const x=o.etat==='depasse'?o.excesSem:o.etat==='sansbud'?(o.sM??o.s):0;if(x>0)v[o.p]=(v[o.p]||0)+x;});B.autres.forEach(a=>v[a.p]=(v[a.p]||0)+a.v);
+    const l=Object.entries(v).sort((a,b)=>b[1]-a[1]).map(x=>x[0]);
     return{t:`${fmt(B.horsBudget)} F hors budget cette semaine`,s:`${l.slice(0,2).join(', ')}${l.length>2?'…':''} · ${fmt(B.totDep)} F dépensés au total`,c:'red'};}
   if(B.rapides.length){const r=B.rapides[0];return{t:`Rythme trop rapide sur ${r.p}`,s:`Dépassement vers le ${r.jourDep}${r.jourDep===1?'er':''} si rien ne change`,c:'amber'};}
   return{t:'Semaine dans les clous',s:`${fmt(B.totDep)} F dépensés, tout était prévu`,c:'green'};
@@ -1849,7 +1866,9 @@ function bilanConseils(B){
   });
   const dv=B.postes.filter(o=>o.etat==='depasse'&&o.cat===B_VAR).sort((a,b)=>b.exces-a.exces)[0];
   if(dv&&B.joursRestants>0){const marge=B.postes.filter(o=>o.cat===B_VAR&&o.b>0&&o.p!==dv.p&&o.etat==='ok').map(o=>({p:o.p,r:o.b-o.m})).filter(x=>x.r>0).sort((a,b)=>b.r-a.r)[0];
-    C.push({id:'dep_'+dv.p,t:`${dv.p} a déjà dépassé son budget de ${fmt(dv.exces)} F. D'ici la fin du mois, chaque dépense sur ce poste sort du prévu${marge?` : compense en réduisant ${marge.p}, où il reste ${fmt(marge.r)} F`:''}.`});}
+    C.push({id:'dep_'+dv.p,t:B.depasseMois>0
+      ?`${dv.p} a dépassé son budget de ${fmt(dv.exces)} F, et les marges des autres postes ne suffisent plus : tes dépenses du mois dépassent déjà le budget de ${fmt(B.depasseMois)} F. D'ici le ${B.nbJ}, limite-toi au strict nécessaire.`
+      :`${dv.p} a déjà dépassé son budget de ${fmt(dv.exces)} F. D'ici la fin du mois, chaque dépense sur ce poste sort du prévu${marge?` : compense en réduisant ${marge.p}, où il reste ${fmt(marge.r)} F`:''}.`});}
   if(B.rapides.length){const r=B.rapides[0];C.push({id:'rap_'+r.p,t:`Pour que ${r.p} tienne jusqu'au ${B.nbJ}, limite-toi à ${fmt(r.parJour)} F par jour sur ce poste.`});}
   B.postes.filter(o=>o.etat==='depasse'&&o.cat===B_FIXE).forEach(o=>C.push({id:'fix_'+o.p,t:`${o.p} a coûté ${fmt(o.exces)} F de plus que prévu. Pour une dépense fixe, mets à jour son budget : les prochains mois seront plus justes.`}));
   const sb=B.postes.filter(o=>o.etat==='sansbud').sort((a,b)=>b.s-a.s)[0];
@@ -1900,10 +1919,13 @@ function openBilan(lundi){
   const sec=(titre,html)=>html?`<div style="margin-top:18px"><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:7px">${titre}</div>${html}</div>`:'';
   const encart=(c,ic,titre,txt)=>`<div style="margin-top:16px;background:${c==='red'?'var(--rd)':c==='amber'?'rgba(242,179,61,.12)':c==='green'?'var(--gd)':'var(--bd)'};border-radius:var(--rs);padding:11px 13px">
     <div style="font-size:12.5px;font-weight:600;color:${c==='red'?'var(--red)':c==='amber'?'var(--amber)':c==='green'?'var(--green)':'var(--blue)'};margin-bottom:3px">${ic} ${titre}</div><div style="font-size:12.5px;color:var(--text);line-height:1.55">${txt}</div></div>`;
-  const tag=x=>{const o=x.o;if(!o)return'';
+  const tag=x=>{const au=B.autres.filter(a=>a.p===x.p).reduce((s,a)=>s+a.v,0);
+    const t0=tag0(x);return au?`${t0}${t0?'<br>':''}<span style="color:var(--red);font-size:11px">dont ${fmt(au)} F hors budget ${deMois(moisDecal(B.ym,-1))}</span>`:t0;};
+  const tag0=x=>{const o=x.o;if(!o)return'';
     if(o.etat==='depasse')return `<span style="color:var(--red);font-size:11px">budget du mois dépassé de ${fmt(o.exces)} F</span>`;
     if(o.etat==='sansbud')return `<span style="color:var(--amber);font-size:11px">sans budget${B.avant[x.p]?` · d'habitude ${fmt(Math.round(B.avant[x.p]))}/sem.`:''}</span>`;
     if(o.etat==='rapide')return `<span style="color:var(--amber);font-size:11px">rythme rapide</span>`;
+    if(o.etat==='atteint')return `<span style="color:var(--green);font-size:11px">prévu · budget du mois utilisé en entier</span>`;
     if(o.b>0)return `<span style="color:var(--green);font-size:11px">prévu · ${Math.round(o.m/o.b*100)} % du mois</span>`;
     return '';};
   const kpi=(l,v,s,c)=>`<div style="background:var(--surf2);border-radius:var(--rs);padding:10px 11px"><div style="font-size:11px;color:var(--text2)">${l}</div><div style="font-size:17px;font-weight:600;color:var(--text);margin-top:1px">${v}</div>${s?`<div style="font-size:11px;color:${c||'var(--text3)'};margin-top:1px">${s}</div>`:''}</div>`;
@@ -1917,7 +1939,7 @@ function openBilan(lundi){
     <div style="display:flex;gap:9px;align-items:flex-start;margin-bottom:14px"><span style="width:9px;height:9px;border-radius:50%;background:${coul};margin-top:6px;flex-shrink:0"></span><div><div style="font-size:16px;font-weight:600;color:var(--text);line-height:1.3">${esc(T.t)}</div><div style="font-size:12px;color:var(--text2);margin-top:2px">${esc(T.s)}</div></div></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       ${kpi('Dépensé',fmt(B.totDep)+' F',B.horsBudget>0?fmt(B.horsBudget)+' F hors budget':B.aBudget&&B.totDep?'tout était prévu':'',B.horsBudget>0?'var(--red)':'var(--green)')}
-      ${B.aBudget&&B.depasseMois>0?kpi('Budget du mois',`dépassé de ${fmt(B.depasseMois)} F`,'dépenses fixes et courantes','var(--red)'):B.aBudget&&B.joursRestants>0&&B.resteVarNet<=0&&B.postes.some(o=>o.cat===B_VAR&&o.b>0)?kpi('Dépenses courantes',`dépassées de ${fmt(-B.resteVarNet)} F`,'plus de marge ce mois','var(--red)'):parJour!==null?kpi('Tu peux encore dépenser',fmt(parJour)+' F / jour',`courant, jusqu'au ${B.nbJ} ${MOIS_C[+B.ym.slice(5)-1]}`):kpi('Entrées',fmt(B.totRev)+' F',B.totEpa?fmt(B.totEpa)+' F épargnés':'')}
+      ${B.aBudget&&B.depasseMois>0?kpi('Budget du mois',`dépassé de ${fmt(B.depasseMois)} F`,'dépenses fixes et courantes','var(--red)'):B.aBudget&&B.joursRestants>0&&B.resteVarNet<=0&&B.postes.some(o=>o.cat===B_VAR&&o.b>0)?kpi('Dépenses courantes',`dépassées de ${fmt(-B.resteVarNet)} F`,'plus de marge ce mois','var(--red)'):parJour!==null?kpi('Tu peux encore dépenser',fmt(parJour)+' F / jour',`courant, jusqu'au ${B.nbJ} ${MOIS_C[+B.ym.slice(5)-1]}`):kpi('Entrées de la semaine',fmt(B.totRev)+' F',B.totEpa?fmt(B.totEpa)+' F épargnés':'')}
     </div>`;
   // Où est parti l'argent
   if(B.top.length)h+=sec('Où est parti l\'argent',B.top.map(x=>`<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:5px 0;border-bottom:0.5px solid var(--border)">
@@ -1928,10 +1950,12 @@ function openBilan(lundi){
     const ok=B.postes.filter(o=>o.cat===B_VAR&&o.b>0&&o.etat==='ok'&&o.marge!=null).sort((a,b)=>a.marge-b.marge);
     const dep=B.postes.filter(o=>o.cat===B_VAR&&o.etat==='depasse').sort((a,b)=>b.exces-a.exces);
     if(dep.length)h+=encart('red','<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="vertical-align:-2px"><path d="M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>','D\'ici la fin du mois',
-      `${dep.length===1?'Un poste a':dep.length+' postes ont'} déjà dépassé leur budget : `+dep.slice(0,3).map(o=>`<b>${esc(o.p)}</b> (+${fmt(o.exces)} F)`).join(', ')+(dep.length>3?'…':'')+`. Chaque nouvelle dépense sur ${dep.length===1?'ce poste':'ces postes'} sort du prévu.`
+      `${dep.length===1?'Un poste a déjà dépassé son budget':dep.length+' postes ont déjà dépassé leur budget'} : `+dep.slice(0,3).map(o=>`<b>${esc(o.p)}</b> (+${fmt(o.exces)} F)`).join(', ')+(dep.length>3?` et ${dep.length-3} autre${dep.length>4?'s':''}`:'')+`. Chaque nouvelle dépense sur ${dep.length===1?'ce poste':'ces postes'} sort du prévu.`
       +B.rapides.slice(0,2).map(r=>`<br>À ce rythme, <b>${esc(r.p)}</b> dépassera aussi vers le ${r.jourDep}${r.jourDep===1?'er':''} : ${fmt(r.parJour)} F par jour maximum.`).join(''));
     else if(B.rapides.length)h+=encart('amber','<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="vertical-align:-2px"><path d="M3 17l6-6 4 4 8-8M14 7h7v7"/></svg>','D\'ici la fin du mois',
       B.rapides.slice(0,3).map(r=>`À ce rythme, <b>${esc(r.p)}</b> dépassera son budget vers le ${r.jourDep}${r.jourDep===1?'er':''} ${MFR[+B.ym.slice(5)-1].toLowerCase()}. Pour tenir : ${fmt(r.parJour)} F par jour.`).join('<br>')+(ok.length?`<br><span style="color:var(--text2)">${esc(ok[0].p)} tiendra, avec environ ${fmt(ok[0].marge)} F de marge.</span>`:''));
+    else if(B.postes.some(o=>o.cat===B_VAR&&o.etat==='sansbud'&&o.m>0)){const sb=B.postes.filter(o=>o.cat===B_VAR&&o.etat==='sansbud'&&o.m>0).sort((a,b)=>b.m-a.m);
+      h+=encart('amber','<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="vertical-align:-2px"><path d="M12 8v5M12 16h.01"/><circle cx="12" cy="12" r="9"/></svg>','D\'ici la fin du mois',`Tes postes budgétés tiendront à ce rythme, mais ${sb.slice(0,2).map(o=>`<b>${esc(o.p)}</b> (${fmt(o.m)} F)`).join(' et ')} ${sb.length>1?'n\'étaient pas prévus':'n\'était pas prévu'} : c'est autant de moins pour la fin du mois.`);}
     else if(B.postes.some(o=>o.cat===B_VAR&&o.b>0))h+=encart('green','<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="vertical-align:-2px"><path d="M5 12l5 5L20 7"/></svg>','D\'ici la fin du mois','À ce rythme, tous tes postes variables tiendront leur budget.');
   }
   // Petites dépenses
@@ -1998,12 +2022,12 @@ function peutPermettre(){
     return cash?out('amber','Possible, mais sans filet.',`Tu as ${fmtSigne(cash.dispo)} de libre sur tes comptes, mais pas de budget ce mois pour savoir ce qui t'attend encore. Prépare ton budget pour une réponse sûre.`)
       :out('amber','Je ne peux pas répondre.','Il me faut un budget pour ce mois, ou le module Mes comptes, pour savoir ce qui te reste.');
   }
-  const deja=place<0?` Attention : ton mois est déjà dans le rouge de ${fmt(-place)} F (dépenses au-delà du budget, épargne prévue comprise).`:'';
+  const deja=place<0?` Attention : avec les dépassements, tes sorties du mois (dépenses et épargne prévue) dépassent déjà tes entrées de ${fmt(-place)} F.`:'';
   const c1=place+restePoste,c2=c1+resteVar,c3=c2+resteEpa;
   if(amt<=c1)return out('green','Oui.',`Ton budget du mois laisse ${fmt(libre)} F non affectés${restePoste?` et ${fmt(restePoste)} F restent sur ${esc(poste)}`:''}. ${esc(lib[0].toUpperCase()+lib.slice(1))} passe sans toucher au reste.`);
   if(amt<=c2)return out('amber','Oui, mais en te serrant ailleurs.',`Il faudrait retirer ${fmt(amt-c1)} F de ce qui reste pour tes dépenses courantes du mois (${fmt(resteVar)} F), et donc dépenser moins d'ici la fin du mois.${deja}`);
   if(amt<=c3)return out(place<0?'red':'amber',place<0?'Seulement en sacrifiant ton épargne.':'Oui, mais ça prend sur ton épargne.',`Il faudrait ${resteVar?`ne plus rien dépenser en courant d'ici la fin du mois (${fmt(resteVar)} F prévus) <b>et</b> `:''}renoncer à ${fmt(amt-c2)} F d'épargne prévue, sur ${fmt(resteEpa)} F.${deja} À toi de voir si ${esc(lib)} vaut ce recul.`);
-  return out('red','Pas ce mois-ci.',(place<0?`Ton mois est déjà dans le rouge de ${fmt(-place)} F (dépenses au-delà du budget, épargne prévue comprise). Même en renonçant à ce qui reste de tes dépenses courantes et de ton épargne (${fmt(resteVar+resteEpa)} F), ${esc(lib)} ne passe pas.`:`Ton budget du mois ne laisse pas assez de place : ${fmt(Math.max(0,c3))} F au mieux, épargne comprise.`)+planEpargne(amt,Math.max(0,c1)));
+  return out('red','Pas ce mois-ci.',(place<0?`Avec les dépassements, tes sorties du mois (dépenses et épargne prévue) dépassent déjà tes entrées de ${fmt(-place)} F. Même en renonçant à tout ce qui reste de tes dépenses courantes et de ton épargne (${fmt(resteVar+resteEpa)} F), il ne resterait que ${fmt(Math.max(0,c3))} F : pas assez pour ${esc(lib)}.`:`Ton budget du mois ne laisse pas assez de place : ${fmt(Math.max(0,c3))} F au mieux, épargne comprise.`)+planEpargne(amt,Math.max(0,c1)));
 }
 // Quand ce sera possible, en mettant de côté la marge mensuelle habituelle
 function planEpargne(amt,deja){
@@ -2202,8 +2226,10 @@ function openBilanMois(ym){
   // Conseil pour le mois qui commence
   const nx=moisDecal(ym,1);let c='';
   if(B.solde<0)c=`Tu as dépensé ${fmt(-B.solde)} F de plus que tu n'as gagné. En ${nomMois(nx)}, commence par les postes qui ont dépassé${B.derapes.length?' ('+B.derapes.slice(0,2).map(d=>d.p).join(', ')+')':''}.`;
+  else if(B.derapes.length>1)c=`${B.derapes.length} postes ont dépassé leur budget, ${fmt(B.derapes.reduce((s,d)=>s+d.ex,0))} F au total. Le plus gros : ${B.derapes[0].p} (+${fmt(B.derapes[0].ex)} F). Si c'est régulier, ajuste son budget ; sinon, surveille-le dès le début ${deMois(nx)}.`;
   else if(B.derapes.length)c=`${B.derapes[0].p} a dépassé de ${fmt(B.derapes[0].ex)} F. Si c'est régulier, ajuste son budget ; sinon, surveille-le dès le début ${deMois(nx)}.`;
   else if(B.epaPrevu&&B.epa<B.epaPrevu)c=`Il a manqué ${fmt(B.epaPrevu-B.epa)} F d'épargne. Verse-la en début de mois, avant les dépenses courantes : c'est plus facile.`;
+  else if(!B.aBud)c=`Fais un budget pour ${nomMois(nx)} : le prochain bilan pourra te dire ce qui a été tenu.`;
   else if(B.sansBud.length)c=`${B.sansBud[0].p} a coûté ${fmt(B.sansBud[0].r)} F sans budget. Donne-lui un montant pour ${nomMois(nx)}.`;
   else if(!B.aBud)c=`Fais un budget pour ${nomMois(nx)} : le prochain bilan pourra te dire ce qui a été tenu.`;
   else c=`Mois tenu. Si le solde positif se répète, augmente ton épargne prévue : c'est l'argent qui reste vraiment.`;
