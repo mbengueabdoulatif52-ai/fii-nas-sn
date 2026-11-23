@@ -1692,7 +1692,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='50';
+const APP_VERSION='51';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1815,7 +1815,14 @@ function renderGraphs(){
       var resume=`<b style="color:${c}">${fmt(fin)} F</b> dépensés ${enCours?'au '+jMax+(jMax===1?'er':''):'sur le mois'}${budD?` · budget ${fmt(budD)} F`:''}`;
       if(!budD){msg='Fais un budget pour comparer ton rythme au prévu.';}
       else if(rouge){const j=cum.findIndex((v,d)=>d>0&&v>budD);msg=`Budget dépassé de ${fmt(fin-budD)} F${j>0?', depuis le '+j+(j===1?'er':''):''}.`;coul='var(--red)';}
-      else if(enCours){const ec=fin-attendu(jMax);msg=ec>0?`En avance de ${fmt(ec)} F sur le rythme prévu : à ce train, le budget sera dépassé.`:`${fmt(-ec)} F sous le rythme prévu. Reste ${fmt(budD-fin)} F jusqu'au ${nbJ}.`;coul=ec>0?'var(--amber)':'var(--green)';}
+      else if(enCours){
+        // Projection : le courant continue au même rythme, les fixes restants tombent comme prévu
+        const vDej=dep.filter(x=>x.cat==='Dépenses variables'&&+x.date.slice(8)<=jMax).reduce((s,x)=>s+(x.amt||0),0);
+        const fDej=dep.filter(x=>x.cat==='Dépenses fixes'&&+x.date.slice(8)<=jMax).reduce((s,x)=>s+(x.amt||0),0);
+        const proj=fin+vDej/jMax*(nbJ-jMax)+Math.max(0,budF-fDej);
+        if(proj>budD){const r=vDej/jMax;const jd=r>0?Math.min(nbJ,jMax+Math.ceil((budD-fin-Math.max(0,budF-fDej))/r)):nbJ;msg=`À ce rythme, le budget sera dépassé${jd<nbJ?' vers le '+jd:' en fin de mois'} (environ ${fmt(proj-budD)} F de trop). Reste ${fmt(budD-fin)} F jusqu'au ${nbJ}.`;coul='var(--amber)';}
+        else{msg=`À ce rythme, ça tient : environ ${fmt(budD-proj)} F de marge à la fin du mois. Reste ${fmt(budD-fin)} F jusqu'au ${nbJ}.`;coul='var(--green)';}
+      }
       else{msg=`Mois terminé dans le budget : ${fmt(budD-fin)} F de marge.`;coul='var(--green)';}
     }else msg='Ce mois n\'a pas encore commencé.';
     svg+=`<text x="${pl}" y="${H-3}" fill="var(--text3)" font-size="9">1er</text><text x="${W-pr}" y="${H-3}" fill="var(--text3)" font-size="9" text-anchor="end">${nbJ}</text></svg>`;
