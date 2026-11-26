@@ -112,7 +112,41 @@ body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin
 #page-dash.mode-env #env-dash,#page-bud.mode-env #env-page{display:block}
 #page-dash.mode-env #hero,#page-dash.mode-env #bilan-dash,#page-dash.mode-env #bilanm-dash,#page-dash.mode-env #prep-dash,#page-dash.mode-env #watch,#page-dash.mode-env #alerts-wrap{display:none!important}
 #page-bud.mode-env>:not(#env-page){display:none!important}
-#page-dash.mode-env .mnav,#page-dash.mode-env #dm,#page-dash.mode-env #detail-wrap{display:none!important}
+#page-dash.mode-env .mnav,#page-dash.mode-env #dm,#page-dash.mode-env #detail-wrap,#page-dash.mode-env #obj-dash{display:none!important}
+/* Accueil enveloppes */
+.ei{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.ed-half{flex:1;min-width:0;background:var(--surf2);border-radius:var(--rs);padding:9px 11px}
+.ed-half{display:flex;flex-direction:column;justify-content:space-between}
+.ed-half .l{font-size:11px;color:var(--text2);display:flex;align-items:flex-start;gap:5px;line-height:1.35}
+.ed-half .l .ei{margin-top:1px}
+.ed-half .v{font-size:17px;font-weight:600;margin-top:3px;color:var(--text)}
+.ed-qa{display:flex;gap:8px;margin-bottom:10px}
+.ed-qa button{flex:1;background:var(--surf);border:0.5px solid var(--border);border-radius:var(--r);padding:11px 4px 10px;color:var(--text);font-size:12.5px;font-family:var(--font);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px}
+.ed-ln{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;color:var(--text)}
+.ed-ln:last-child{border-bottom:none}
+.ed-ln .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ed-ln b{white-space:nowrap;font-weight:600}
+.ed-ln[onclick]{cursor:pointer}
+.ed-tt{display:flex;justify-content:space-between;align-items:baseline;margin:4px 2px 8px}
+.ed-tt>span:first-child{font-size:14px;font-weight:600;color:var(--text)}
+.ed-lk{font-size:12.5px;color:var(--blue);cursor:pointer;background:none;border:none;font-family:var(--font);padding:0}
+.ed-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.ed-tl{background:var(--surf);border:0.5px solid var(--border);border-radius:var(--r);padding:11px 11px 10px;cursor:pointer;min-width:0}
+.ed-tl.rouge{border-color:rgba(255,107,94,.4)}
+.ed-tl .top{display:flex;align-items:center;gap:8px;min-width:0}
+.ed-tl .nm{font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ed-tl .bar{height:6px;background:var(--surf2);border-radius:3px;overflow:hidden;margin:10px 0 6px}
+.ed-tl .bar>div{height:6px;border-radius:3px}
+.ed-tl .two{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-size:12px;white-space:nowrap}
+.ed-tl .two span{color:var(--text3)}
+.ed-tl .two b{font-size:13.5px;font-weight:600;color:var(--text)}
+.ed-ic{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.t-bl{color:var(--blue);background:var(--bd)}.t-am{color:var(--amber);background:rgba(242,179,61,.15)}.t-rd{color:var(--red);background:var(--rd)}
+.t-gr{color:var(--green);background:var(--gd)}.t-pu{color:var(--purple);background:var(--pd)}
+.ed-grp{display:flex;justify-content:space-between;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin:4px 2px 6px}
+.ed-bar{height:5px;background:var(--surf2);border-radius:3px;overflow:hidden}
+.ed-bar>div{height:5px;border-radius:3px}
+.light .ed-qa button,.light .ed-tl{box-shadow:0 1px 3px rgba(13,18,32,.06)}
 #voile{position:fixed;inset:0;z-index:20000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:rgba(13,18,32,.6);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px)}
 #voile.on{display:flex}
 #voile img{width:72px;height:72px;border-radius:18px}
@@ -1708,7 +1742,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='65';
+const APP_VERSION='66';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1862,58 +1896,185 @@ async function envSave(){await saveSettings();renderCurrent();}
 function envNouvId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 
 // ── Accueil
+// Icônes (traits) : dessinées en SVG, sans police externe
+const ENV_ICO={
+  wallet:'M3 7a2 2 0 012-2h12v4M3 7v11a2 2 0 002 2h15V9H5a2 2 0 01-2-2zM16 14.5h.01',
+  layers:'M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5',
+  trend:'M3 17l6-6 4 4 8-8M15 7h6v6',
+  basket:'M3 10h18l-2 10H5L3 10zM8 10l4-6 4 6M10 14v3M14 14v3',
+  swap:'M4 8h14l-3-3M20 16H6l3 3',
+  pie:'M21 12A9 9 0 1112 3v9h9zM15 3.5A9 9 0 0120.5 9H15z',
+  piggy:'M4 11.5C4 8 7.5 6 12 6c1.4 0 2.7.2 3.8.6L19 5v3.4c.9.8 1.5 1.8 1.8 3H22v3h-1.6c-.4 1-1.1 1.9-2 2.6V20h-3v-2a11 11 0 01-5 0v2h-3v-2.9C5.5 16 4 13.9 4 11.5zM15.5 10h.01',
+  alert:'M12 3a9 9 0 100 18 9 9 0 000-18zM12 8v5M12 16h.01',
+  warn:'M12 4l9 16H3L12 4zM12 10v4M12 17h.01',
+  users:'M9 11a4 4 0 100-8 4 4 0 000 8zM2 21v-1a6 6 0 0114 0v1M16 3.5a4 4 0 010 7.5M22 21v-1a6 6 0 00-4-5.6',
+  cart:'M3 4h2l2.4 11h11l2-8H6.2M9 20h.01M18 20h.01',
+  car:'M5 17H3v-5l2-5h14l2 5v5h-2M3 12h18M9 17h6M7 19a2 2 0 100-4 2 2 0 000 4zM17 19a2 2 0 100-4 2 2 0 000 4z',
+  health:'M4 7h16v13H4zM9 7V4h6v3M12 10.5v6M9 13.5h6',
+  heart:'M12 20s-7-4.5-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.5-7 10-7 10z',
+  home:'M3 11l9-7 9 7M5 10v10h14V10',
+  bolt:'M13 3L5 14h6l-1 7 8-11h-6l1-7z',
+  drop:'M12 3s6 7 6 11a6 6 0 01-12 0c0-4 6-11 6-11z',
+  phone:'M7 3h10v18H7zM11 18h2',
+  shield:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z',
+  bank:'M3 10l9-6 9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 20h18',
+  book:'M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2V5zM4 19a2 2 0 012-2h13',
+  shirt:'M8 3l4 2 4-2 5 4-3 3-2-1v11H8V9l-2 1-3-3 5-4z',
+  smile:'M12 3a9 9 0 100 18 9 9 0 000-18zM8 14s1.5 2 4 2 4-2 4-2M9 9.5h.01M15 9.5h.01',
+  bag:'M5 8h14l-1 13H6L5 8zM9 8V6a3 3 0 016 0v2',
+  food:'M7 3v8a2 2 0 002 2v8M11 3v8M17 3c-1.5 2-1.5 6 0 8v10',
+  fuel:'M4 21V5a2 2 0 012-2h6a2 2 0 012 2v16M3 21h12M4 11h10M14 8l4 3v7a1.5 1.5 0 003 0V9l-3-3',
+  gift:'M3 9h18v4H3zM5 13v8h14v-8M12 9v12M12 9C10 5 6 5 6 7.5S9 9 12 9zM12 9c2-4 6-4 6-1.5S15 9 12 9z',
+  tag:'M3 12V4h8l10 10-8 8L3 12zM7.5 7.5h.01'
+};
+function envIco(n,taille){const t=taille||16;return `<svg class="ei" width="${t}" height="${t}" viewBox="0 0 24 24" aria-hidden="true"><path d="${ENV_ICO[n]||ENV_ICO.tag}"/></svg>`;}
+// L'icône d'une enveloppe, d'après son nom
+const ENV_ICO_MOTS=[
+  [/epargn|tontine|tabaski|objectif/,'piggy'],[/aliment|nourrit|marche|course|cuisine|depense quotid/,'cart'],
+  [/carbur|essence|gasoil/,'fuel'],[/transport|taxi|bus|deplacement|voiture|moto/,'car'],
+  [/sante|medic|pharma|hopital|soin/,'health'],[/loyer|logement|maison|menage/,'home'],
+  [/electr|woyofal|senelec|courant/,'bolt'],[/\beau\b|sde|seneau|sen'eau/,'drop'],
+  [/abonn|telephone|internet|credit tel|mobile|canal|netflix/,'phone'],[/assur/,'shield'],
+  [/pret|mensualit|credit|dette|banque|emprunt/,'bank'],[/famille|parent|enfant/,'users'],
+  [/don|aide|zakat|sadaqa|mosq|social/,'heart'],[/educ|ecole|scolar|formation|cours|livre/,'book'],
+  [/vetem|habit|tenue|chauss|coiff|beaute/,'shirt'],[/loisir|sortie|divert|sport|voyage|vacance/,'smile'],
+  [/restau|resto|repas|cantine/,'food'],[/fete|korite|cadeau|ceremon|bapteme|mariage|evenement/,'gift'],
+  [/achat|shopping|divers|imprevu/,'bag']];
+function envIcone(p){const s=(p||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const m=ENV_ICO_MOTS.find(([re])=>re.test(s));return m?m[1]:'tag';}
+const envMont=v=>(v<0?'−':'')+fmt(v);
+
+let _envTout=false;
+function envToutBasculer(){_envTout=!_envTout;renderEnvDash();}
 function renderEnvDash(){
   const el=document.getElementById('env-dash');if(!el)return;
   const pg=document.getElementById('page-dash');
   const on=envOn()&&!isAnnual();
   pg.classList.toggle('mode-env',on);
   if(!on){el.innerHTML='';return;}
-  const C=envCalc(),P=C.P;
-  const dansEnv=C.tot-C.ar;
-  const ST=envStatsPeriode();
-  const lignes=[...P.fix,...P.vari].map(p=>({p,...ST.R[p],s:C.sol[p]||0,fix:P.fix.includes(p)}))
-    .filter(o=>o.s||o.recu||o.dep)
-    .filter(o=>!(o.fix&&o.s===0&&o.dep>0));                 // fixes payées : seulement dans l'onglet Enveloppes
-  const tri=lignes.sort((a,b)=>((a.s<0)?0:1)-((b.s<0)?0:1)||(a.s<0&&b.s<0?a.s-b.s:0)||(b.der||'').localeCompare(a.der||'')||a.p.localeCompare(b.p));
-  const ligne=o=>{
-    const pct=o.recu>0?Math.min(100,Math.round(o.dep/o.recu*100)):(o.dep>0?100:0);
-    const c=o.s<0?'var(--red)':pct>=85?'var(--amber)':'var(--blue)';
-    const droite=o.s<0?`<b style="color:var(--red)">${fmtSigne(o.s).replace(' F','')}</b>`:`<b>${fmt(o.s)}</b> <span style="color:var(--text3);font-size:11px">${o.s===0?'':'restent'}</span>`;
-    return `<div onclick="openEnv(${jsa(o.p)})" style="padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><span style="font-size:13px;color:${o.s<0?'var(--red)':'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.p)}</span><span style="font-size:13px;white-space:nowrap">${droite}</span></div>
-      <div style="height:5px;background:var(--surf2);border-radius:3px;margin:5px 0 3px;overflow:hidden"><div style="width:${pct}%;height:5px;background:${c};border-radius:3px"></div></div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3)"><span>${o.dep?`dépensé ${fmt(o.dep)} sur ${fmt(Math.max(o.recu,0))}`:'rien dépensé'}</span><span>${quandFr(o.der)}</span></div></div>`;};
-  const vis=tri.slice(0,6);
-  const epa=P.epa.map(p=>({p,s:C.sol[p]||0})).filter(o=>o.s);
-  const totEpa=epa.reduce((s,o)=>s+o.s,0);
-  el.innerHTML=`<div class="card" style="background:var(--blue);border:none;color:#fff">
-      <div style="font-size:12px;opacity:.8">Ton argent</div>
-      <div style="font-size:26px;font-weight:700;letter-spacing:-.5px;margin-top:2px">${fmtSigne(C.tot)}</div>
-      <div style="display:flex;justify-content:space-between;gap:8px;margin-top:8px;font-size:12px"><span>Dans les enveloppes <b>${fmt(dansEnv)}</b></span><span>À répartir <b>${fmtSigne(C.ar).replace(' F','')}</b></span></div>
+  const C=envCalc(),P=C.P,Pe=envPeriode(),auj=todayStr(),ST=envStatsPeriode();
+  const dep=sommeDep(txEntre(Pe.debut,auj));
+  const resteCour=P.vari.reduce((s,p)=>s+(C.sol[p]||0),0);
+  const libDep=Pe.mode==='paie'?'Dépensé depuis la paie':Pe.mode==='mois'?'Dépensé ce mois':'Dépensé sur 30 jours';
+  const A=envAlertes(C,Pe),serre=new Set(A.map(o=>o.p));
+  // Une enveloppe : ce qui y est entré depuis le début de la période, ce qui en est sorti, ce qui reste
+  const info=p=>{const r=ST.R[p]||{recu:0,dep:0,der:null},s=C.sol[p]||0,fix=P.fix.includes(p);
+    return{p,s,dep:r.dep,recu:r.recu,der:r.der,fix,paye:fix&&s===0&&r.dep>0};};
+  const tuile=o=>{
+    const pct=o.recu>0?Math.min(100,Math.round(o.dep/o.recu*100)):(o.dep>0||o.s<0?100:0);
+    const t=o.s<0?'rd':o.paye?'gr':(serre.has(o.p)||(pct>=85&&o.dep>0))?'am':'bl';
+    const col={rd:'var(--red)',gr:'var(--green)',am:'var(--amber)',bl:'var(--blue)'}[t];
+    return `<div class="ed-tl${o.s<0?' rouge':''}" onclick="openEnv(${jsa(o.p)})">
+      <div class="top"><div class="ed-ic t-${t}">${envIco(envIcone(o.p),15)}</div><span class="nm"${o.s<0?' style="color:var(--red)"':''}>${esc(o.p)}</span></div>
+      <div class="bar"><div style="width:${pct}%;background:${col}"></div></div>
+      <div class="two"><span>${fmt(o.dep)}</span>${o.paye?'<b style="color:var(--green)">payé ✓</b>':`<b${o.s<0?' style="color:var(--red)"':''}>${envMont(o.s)}</b>`}</div></div>`;};
+  const tous=[...P.vari,...P.fix];
+  // Les 4 dernières utilisées (les fixes déjà payées n'y figurent pas)
+  const actives=tous.map(info).filter(o=>!o.paye&&(o.s||o.recu||o.dep));
+  const recents=[...actives].sort((a,b)=>(b.der||'').localeCompare(a.der||'')||b.s-a.s||a.p.localeCompare(b.p)).slice(0,4);
+  const groupe=(titre,ps)=>{if(!ps.length)return'';const L=ps.map(info),tot=L.reduce((x,o)=>x+o.s,0);
+    return `<div class="ed-grp"><span>${titre}</span><span${tot<0?' style="color:var(--red)"':''}>${envMont(tot)}</span></div><div class="ed-grid">${L.map(tuile).join('')}</div>`;};
+  // À surveiller : enveloppes dans le rouge, puis celles qui ne tiendront pas
+  const rouges=tous.filter(p=>(C.sol[p]||0)<0).sort((a,b)=>C.sol[a]-C.sol[b]);
+  const surv=[...rouges.map(p=>`<div class="ed-ln" onclick="openEnv(${jsa(p)})"><span style="color:var(--red);display:flex">${envIco('alert')}</span><span class="n">${esc(p)} dans le rouge</span><b style="color:var(--red)">${envMont(C.sol[p])}</b></div>`),
+    ...A.map(o=>`<div class="ed-ln" onclick="openEnv(${jsa(o.p)})"><span style="color:var(--amber);display:flex">${envIco('warn')}</span><span class="n">${esc(o.p)} ne tiendra pas</span><span style="color:var(--text2);white-space:nowrap">${o.j} j</span></div>`)].slice(0,4);
+  // Dernières dépenses
+  const der=txs.filter(t=>ENV_DEP.includes(t.cat)&&t.date&&t.date<=auj).sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||'').localeCompare(a.ts||'')).slice(0,3);
+  // Épargne : le total et l'objectif le plus proche
+  const totEpa=P.epa.reduce((s,p)=>s+(C.sol[p]||0),0);
+  const obj=objectifs.filter(o=>o.cible>0&&P.epa.includes(o.poste||o.nom)&&progObj(o)<o.cible).sort((a,b)=>(a.echeance||'9999').localeCompare(b.echeance||'9999'))[0];
+  const arLigne=C.ar>0?`<span onclick="openRepartir()" style="color:var(--amber);cursor:pointer">${fmt(C.ar)} F à répartir · <b>Répartir ›</b></span>`
+    :C.ar<0?`<span style="color:var(--red)">${fmt(-C.ar)} F répartis en trop</span>`:'à répartir : 0';
+  el.innerHTML=`<div class="card" style="padding:16px 16px 14px">
+      <div style="font-size:12.5px;color:var(--text2)">Solde</div>
+      <div style="font-size:30px;font-weight:700;letter-spacing:-.5px;line-height:1.2;color:${C.tot<0?'var(--red)':'var(--text)'}">${fmtSigne(C.tot)}</div>
+      <div style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:5px;margin-top:2px">${envIco('layers',13)}${arLigne}</div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <div class="ed-half"><div class="l">${envIco('trend',13)}${libDep}</div><div class="v">${fmt(dep)}</div></div>
+        <div class="ed-half"><div class="l">${envIco('basket',13)}Reste dépenses courantes</div><div class="v" style="color:${resteCour<0?'var(--red)':'var(--green)'}">${envMont(resteCour)}</div></div>
+      </div></div>
+    ${C.ar<0?`<div class="card" style="border:1.5px solid var(--red);font-size:12px;color:var(--text2);line-height:1.45">Tes enveloppes contiennent plus que ton argent. Retire ${fmt(-C.ar)} F d'une enveloppe (touche-la, puis « Déplacer »).</div>`:''}
+    <div class="ed-qa">
+      <button onclick="envActDeplacer()"><span style="color:var(--blue);display:flex">${envIco('swap',19)}</span>Déplacer</button>
+      <button onclick="openRepartir()"><span style="color:var(--green);display:flex">${envIco('pie',19)}</span>Répartir</button>
+      <button onclick="envActEpargner()"><span style="color:var(--purple);display:flex">${envIco('piggy',19)}</span>Épargner</button>
     </div>
-    ${C.ar>0?`<div class="card" style="border:1.5px solid var(--amber);display:flex;justify-content:space-between;align-items:center;gap:10px">
-      <div><div style="font-size:13.5px;font-weight:600;color:var(--text)">${fmt(C.ar)} F à répartir</div><div style="font-size:11.5px;color:var(--text2);margin-top:2px">Donne un rôle à cet argent</div></div>
-      <button onclick="openRepartir()" style="background:var(--blue);color:#fff;border:none;border-radius:9px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">Répartir</button></div>`
-     :C.ar<0?`<div class="card" style="border:1.5px solid var(--red)"><div style="font-size:13px;font-weight:600;color:var(--red)">${fmt(-C.ar)} F répartis en trop</div><div style="font-size:11.5px;color:var(--text2);margin-top:3px;line-height:1.45">Tes enveloppes contiennent plus que ton argent. Retire ${fmt(-C.ar)} F d'une enveloppe (touche-la, puis « Déplacer »).</div></div>`:''}
-    ${envBlocPeriode(C)}
-    <div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:14px;font-weight:600;color:var(--text)">Mes enveloppes</div><span style="font-size:11px;color:var(--text3)">dernières utilisées</span></div>
-      ${vis.length?vis.map(ligne).join(''):`<div style="font-size:12px;color:var(--text3);padding:10px 0">Tes enveloppes sont vides. Répartis ton argent pour commencer.</div>`}
-      <div onclick="goP('bud',document.querySelectorAll('.ni')[3])" style="font-size:12.5px;color:var(--blue);cursor:pointer;margin-top:9px">${[...P.fix,...P.vari].length>6?'Les '+[...P.fix,...P.vari].length+' enveloppes':'Toutes les enveloppes'} ›</div></div>
-    ${P.epa.length?`<div class="card" onclick="goP('bud',document.querySelectorAll('.ni')[3])" style="cursor:pointer"><div style="display:flex;justify-content:space-between"><span style="font-size:14px;font-weight:600;color:var(--text)">Épargne</span><b style="color:var(--text)">${fmt(totEpa)} F</b></div>
-      <div style="font-size:11.5px;color:var(--text3);margin-top:3px">${epa.length?epa.map(o=>esc(o.p)+' '+fmt(o.s)).join(' · '):'Rien de côté pour l\'instant'}</div></div>`:''}`;
+    ${surv.length?`<div class="card" style="border-left:3px solid var(--amber);padding:10px 14px 4px"><div style="font-size:13px;font-weight:600;color:var(--amber);margin-bottom:2px">À surveiller</div>${surv.join('')}</div>`:''}
+    <div id="env-tuiles">
+    ${_envTout?`<div class="ed-tt"><span>Mes enveloppes</span><button class="ed-lk" onclick="envToutBasculer()">Réduire ‹</button></div>${groupe('Dépenses courantes',P.vari)}${groupe('Dépenses fixes',P.fix)}`
+      :`<div class="ed-tt"><span>Mes enveloppes</span>${tous.length>recents.length?`<button class="ed-lk" onclick="envToutBasculer()">Les ${tous.length} ›</button>`:''}</div>
+      ${recents.length?`<div class="ed-grid">${recents.map(tuile).join('')}</div>`:`<div class="card" style="font-size:12.5px;color:var(--text3)">Tes enveloppes sont vides. Répartis ton argent pour commencer.</div>`}`}
+    </div>
+    <div class="card" style="padding:12px 14px 6px">
+      <div class="ed-tt" style="margin:0 0 2px"><span>Dernières dépenses</span><button class="ed-lk" onclick="goP('tx',document.querySelectorAll('.ni')[1])">Tout ›</button></div>
+      ${der.length?der.map(t=>`<div class="ed-ln" onclick="openEditTx(${jsa(t.id)})"><span style="color:var(--text3);display:flex">${envIco(envIcone(t.poste))}</span><span class="n">${esc(t.cmt||t.poste)} <span style="color:var(--text3)">· ${t.cmt?esc(t.poste):quandFr(t.date)}</span></span><span style="white-space:nowrap">−${fmt(t.amt)}</span></div>`).join('')
+        :'<div style="font-size:12.5px;color:var(--text3);padding:8px 0">Aucune dépense pour l\'instant.</div>'}
+    </div>
+    ${P.epa.length?`<div class="card" onclick="openEpargne()" style="cursor:pointer;padding:12px 14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="display:flex;align-items:center;gap:7px;font-size:14px;font-weight:600;color:var(--text);min-width:0"><span style="color:var(--purple);display:flex">${envIco('piggy')}</span>Épargne${obj?` <span style="font-size:12px;font-weight:400;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">· ${esc(obj.nom)}</span>`:''}</span><b style="color:var(--text);white-space:nowrap">${fmtSigne(totEpa)} ›</b></div>
+      ${obj?`<div style="display:flex;align-items:center;gap:8px;margin-top:8px"><div class="ed-bar" style="flex:1"><div style="width:${Math.min(100,pctObj(obj))}%;background:var(--purple)"></div></div><span style="font-size:11.5px;color:var(--purple)">${pctObj(obj)} %</span></div>`:''}
+    </div>`:''}
+    ${envBilans(Pe)}`;
 }
 
-// Période, alertes « ne tiendra pas », bilan de la période précédente, bilan de la semaine
-function envBlocPeriode(C){
-  const Pe=envPeriode(),L=txEntre(Pe.debut,todayStr()),dep=sommeDep(L),rev=sommeRev(L);
-  const droite=Pe.mode==='paie'?(Pe.reste>0?`paie dans ${Pe.reste} j`:'paie attendue'):Pe.mode==='mois'?`fin du mois dans ${Pe.reste} j`:'';
-  const sansPaie=((env&&env.periode)||'paie')==='paie'&&Pe.mode!=='paie';
-  let h=`<div class="card" style="padding:11px 14px"><div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--text2)"><span>${Pe.label}${Pe.mode!=='30j'?` · jour ${Pe.jour}/${Pe.n}`:''}</span><span>${droite}</span></div>
-    <div style="font-size:13px;color:var(--text);margin-top:5px">Dépensé <b>${fmt(dep)} F</b> · Reçu <b style="color:var(--green)">${fmt(rev)} F</b></div>
-    ${sansPaie?`<div style="font-size:11.5px;color:var(--text3);margin-top:5px">Aucune paie notée pour l'instant : la période suit le mois. Elle partira de ta paie dès que tu la noteras.</div>`:''}</div>`;
-  const A=envAlertes(C,Pe);
-  if(A.length)h+=`<div class="card" style="border:1.5px solid var(--amber)"><div style="font-size:13px;font-weight:600;color:var(--amber);margin-bottom:6px">Ne tiendra pas jusqu'à ${Pe.mode==='paie'?'ta paie':'la fin du mois'}</div>
-    ${A.slice(0,3).map(o=>`<div onclick="openEnv(${jsa(o.p)})" style="font-size:12.5px;color:var(--text);line-height:1.5;padding:4px 0;cursor:pointer"><b>${esc(o.p)}</b> : ${o.j} jour${o.j>1?'s':''} de réserve, ${Pe.mode==='paie'?'paie':'fin du mois'} dans ${Pe.reste} jours. <span style="color:var(--text2)">Limite-toi à <b>${fmt(o.parJour)} F/jour</b>.</span></div>`).join('')}</div>`;
+// Actions rapides
+function envChoix(titre,G,fn){
+  const C=envCalc(),s=p=>p===ENV_AR?C.ar:(C.sol[p]||0),nom=p=>p===ENV_AR?'À répartir':p;
+  openSheet(sheetHead(titre)+G.map(([t,L])=>`<div class="ed-grp" style="margin-top:8px"><span>${t}</span></div>${L.map(p=>`<div class="ed-ln" onclick="${fn}(${jsa(p)})"><span style="color:var(--text3);display:flex">${envIco(p===ENV_AR?'layers':envIcone(p))}</span><span class="n">${esc(nom(p))}</span><b style="color:${s(p)<0?'var(--red)':'var(--text)'}">${envMont(s(p))}</b></div>`).join('')}`).join(''));
+}
+function envActDeplacer(){
+  const G=dpListe(null,'');
+  if(!G.length){toast('Aucune enveloppe n\'a d\'argent à déplacer');return;}
+  envChoix('Déplacer depuis…',G,'envDepuis');
+}
+function envDepuis(p){openDeplacer(p,null);}
+function envActEpargner(){
+  const P=envPostes();
+  if(!P.epa.length){toast('Crée d\'abord une enveloppe d\'épargne (Profil → Postes personnalisés)');return;}
+  if(P.epa.length===1){openDeplacer(null,P.epa[0]);return;}
+  envChoix('Épargner dans…',[['Épargne',P.epa]],'envVers');
+}
+function envVers(p){openDeplacer(null,p);}
+function envActPuiser(){
+  const C=envCalc(),L=C.P.epa.filter(p=>(C.sol[p]||0)>0);
+  if(!L.length){toast('Rien à puiser pour l\'instant');return;}
+  if(L.length===1){openDeplacer(L[0],null);return;}
+  envChoix('Puiser dans…',[['Épargne',L]],'envDepuis');
+}
+
+// Mon épargne : total, objectifs, derniers mouvements
+function openEpargne(){
+  const C=envCalc(),P=C.P,Pe=envPeriode(),tot=P.epa.reduce((s,p)=>s+(C.sol[p]||0),0);
+  const puise=(env.mv||[]).filter(m=>m.d>=Pe.debut&&m.t!=='rep'&&P.epa.includes(m.de)&&!P.epa.includes(m.vers)).reduce((s,m)=>s+m.amt,0);
+  const depuis=Pe.mode==='paie'?'depuis la paie':Pe.mode==='mois'?'ce mois-ci':'sur 30 jours';
+  const carte=p=>{const s=C.sol[p]||0,o=objectifs.find(x=>(x.poste||x.nom)===p);
+    let sous='sans objectif';
+    if(o&&o.cible>0){const e=effortObj(o);sous=e.etat==='atteint'?'Objectif atteint ✓':e.etat==='date'?`${moisCourt(o.echeance)} · ${fmt(e.parMois)} F par mois pour y arriver`:e.etat==='depasse'?`échéance passée · il manque ${fmt(e.reste)} F`:'sans date';}
+    return `<div onclick="openEnv(${jsa(p)})" style="background:var(--surf2);border-radius:var(--rs);padding:11px 12px;margin-bottom:8px;cursor:pointer">
+      <div style="display:flex;justify-content:space-between;gap:8px;font-size:13.5px"><b style="font-weight:600;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o?o.nom:p)}</b><span style="white-space:nowrap;color:${s<0?'var(--red)':'var(--text)'}">${envMont(s)}${o&&o.cible>0?` <span style="color:var(--text3)">/ ${fmt(o.cible)}</span>`:''}</span></div>
+      ${o&&o.cible>0?barreObj(o,6):''}
+      <div style="font-size:11.5px;color:var(--text3);${o&&o.cible>0?'':'margin-top:3px'}">${sous}</div></div>`;};
+  // Mouvements : versements notés, argent rangé ou sorti des enveloppes d'épargne
+  const M=[...txEnv().filter(t=>t.cat==='Epargne').map(t=>({d:t.date,lib:'Versement · '+(t.poste||''),v:t.amt||0})),
+    ...(env.mv||[]).filter(m=>P.epa.includes(m.vers)!==P.epa.includes(m.de)).map(m=>P.epa.includes(m.vers)
+      ?{d:m.d,lib:'Versement · '+m.vers,v:m.amt}:{d:m.d,lib:'Puisé · '+m.de+' → '+(m.vers===ENV_AR?'À répartir':m.vers),v:-m.amt})]
+    .sort((a,b)=>b.d.localeCompare(a.d)).slice(0,5);
+  openSheet(sheetHead('Mon épargne')+`
+    <div style="font-size:28px;font-weight:700;color:${tot<0?'var(--red)':'var(--text)'}">${fmtSigne(tot)}</div>
+    <div style="font-size:12px;color:${puise?'var(--amber)':'var(--text2)'};margin-bottom:14px">de côté · ${puise?`${fmt(puise)} F puisés ${depuis}`:`rien puisé ${depuis}`}</div>
+    ${P.epa.map(carte).join('')}
+    <div class="ed-grp" style="margin-top:12px"><span>Derniers mouvements</span></div>
+    ${M.length?M.map(m=>`<div class="ed-ln"><span class="n">${esc(m.lib)}<br><span style="font-size:11px;color:var(--text3)">${jFr(m.d)}</span></span><b style="color:${m.v<0?'var(--amber)':'var(--green)'}">${m.v<0?'−':'+'}${fmt(Math.abs(m.v))}</b></div>`).join('')
+      :'<div style="font-size:12px;color:var(--text3);padding:6px 0">Aucun mouvement pour l\'instant.</div>'}
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn-p" style="flex:1;margin:0" onclick="envActEpargner()">Épargner</button>
+      <button onclick="envActPuiser()" style="flex:1;padding:12px;border-radius:var(--r);border:1px solid var(--border2);background:none;color:var(--text);font-size:13.5px;cursor:pointer;font-family:var(--font)">Puiser</button>
+    </div>`);
+}
+
+// Bilan de la période précédente et bilan de la semaine (masquables)
+function envBilans(Pe){
+  let h='';
   const B=envBilanPrec(Pe);
   if(B&&!envMasque('bp-'+B.pr.debut)){
     const titre=Pe.mode==='mois'?`Bilan ${deMois(B.pr.debut.slice(0,7))}`:`Bilan du ${jFr(B.pr.debut)} au ${jFr(B.pr.fin)}`;

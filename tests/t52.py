@@ -1,0 +1,45 @@
+# Enveloppes : nouvel accueil (solde, tuiles dépensé / reste, « Les N » dépliées sur place, épargne, actions rapides)
+import os,sys,subprocess,time,json,datetime as dt;sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
+from stub import page
+from playwright.sync_api import sync_playwright
+srv=subprocess.Popen(['python3','-m','http.server','8771'],cwd=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..'),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);time.sleep(1)
+V,F='Dépenses variables','Dépenses fixes'
+rep={'Loyer':135000,'Électricité':15000,'Alimentation':10000,'Transport':5000,'Santé':7000,'Famille et dons':30000,'Tabaski':20300}
+env={'actif':True,'depart':'2026-11-26','dernierePaie':'2026-11-25','ids0':[],'ar0':242300,'initial':{},'habit':{},'mv':[{'id':'m'+str(i),'d':'2026-11-26','de':'_','vers':p,'amt':v,'t':'rep'} for i,(p,v) in enumerate(rep.items())]}
+obj=[{'id':'o1','nom':'Tabaski 2027','poste':'Tabaski','cible':50000,'echeance':'2027-05'}]
+st={'users/u1/data/settings':{'cats':{'Revenu':['Salaire'],'Dépenses fixes':['Loyer','Électricité'],'Dépenses variables':['Alimentation','Transport','Santé','Famille et dons'],'Epargne':['Tabaski']},'budget':{},'custom':{},'modules':{'objectifs':True},'objectifs':obj,'env':env}}
+T=[(135000,'2026-11-26',F,'Loyer',''),(15000,'2026-11-26',V,'Famille et dons','Don mosquée'),(5000,'2026-11-26',V,'Famille et dons','Tonton Modou'),(6500,'2026-11-27',V,'Transport','Taxi'),(3500,'2026-11-28',V,'Alimentation','Marché')]
+for i,(a,d,c,p,cm) in enumerate(T): st[f'users/u1/transactions/t{i}']={'amt':a,'date':d,'cat':c,'poste':p,'cmt':cm,'ts':d+'T15:00:00Z'}
+N=lambda s:s.replace(' ',' ').replace('\xa0',' ')
+try:
+  with sync_playwright() as p:
+    b=p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox'])
+    pg,errs=page(b,json.dumps(st),now=dt.datetime(2026,11,28,18))
+    t=N(pg.inner_text('#env-dash'))
+    print('haut:',t.split('Déplacer')[0].replace('\n',' | '))
+    C=pg.evaluate("(()=>{const C=envCalc();return [C.tot,C.ar,Object.values(C.sol).reduce((a,b)=>a+b,0)]})()")
+    print('invariant solde = à répartir + enveloppes:',C[0]==C[1]+C[2],C)
+    print('à surveiller:',t.split('À surveiller')[1].split('Mes enveloppes')[0].replace('\n',' | ') if 'À surveiller' in t else '(rien)')
+    print('tuiles:',t.split('Mes enveloppes')[1].split('Dernières')[0].replace('\n',' | '))
+    print('dernières:',t.split('Dernières dépenses')[1].split('Épargne')[0].replace('\n',' | '))
+    print('épargne:',t.split('Dernières dépenses')[1].split('Épargne')[1][:60].replace('\n',' | '))
+    pg.screenshot(path='/tmp/acc-dark.png',full_page=True)
+    pg.click('#env-tuiles .ed-lk');pg.wait_for_timeout(200)
+    t2=N(pg.inner_text('#env-tuiles'));print('déplié:',t2.replace('\n',' | '))
+    pg.screenshot(path='/tmp/acc-tout.png',full_page=True)
+    pg.click('#env-tuiles .ed-lk');pg.wait_for_timeout(200);print('réduit:','Les 6' in N(pg.inner_text('#env-tuiles')))
+    pg.click('#env-tuiles .ed-tl >> nth=0');pg.wait_for_timeout(200);print('tuile → détail:',N(pg.inner_text('#cpt-sheet')).split('\n')[0])
+    pg.evaluate('closeSheet()');pg.wait_for_timeout(200)
+    pg.click('#env-dash >> text=Tabaski 2027');pg.wait_for_timeout(200)
+    print('mon épargne:',N(pg.inner_text('#cpt-sheet')).replace('\n',' | ')[:330])
+    pg.screenshot(path='/tmp/acc-epa.png')
+    pg.click('#cpt-sheet >> button:has-text("Épargner")');pg.wait_for_timeout(200);print('épargner →',N(pg.inner_text('#cpt-sheet')).split('\n')[0])
+    pg.evaluate('closeSheet()');pg.wait_for_timeout(200)
+    pg.click('.ed-qa button:has-text("Déplacer")');pg.wait_for_timeout(200)
+    print('déplacer depuis:',N(pg.inner_text('#cpt-sheet')).replace('\n',' | ')[:200])
+    pg.click('#cpt-sheet .ed-ln >> nth=0');pg.wait_for_timeout(200);print('→',N(pg.inner_text('#cpt-sheet')).split('\n')[0])
+    pg.evaluate('closeSheet()');pg.wait_for_timeout(200)
+    pg.evaluate("document.documentElement.classList.add('light')");pg.wait_for_timeout(100)
+    pg.screenshot(path='/tmp/acc-light.png',full_page=True)
+    print('errors',errs)
+finally: srv.terminate()
