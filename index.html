@@ -1745,7 +1745,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='71';
+const APP_VERSION='72';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1850,16 +1850,20 @@ function txEnv(){if(!env)return[];const d0=env.depart,ids=new Set(env.ids0||[]);
 function envPostes(){return{fix:getAllPostes('Dépenses fixes'),vari:getAllPostes('Dépenses variables'),epa:getAllPostes('Epargne')};}
 // lim (facultatif) : la situation au début de ce jour (transactions et mouvements strictement avant)
 function envCalc(lim){
-  const T=lim?txEnv().filter(t=>t.date<lim):txEnv(),sol={},depense={},verse={};
-  const P=envPostes();[...P.fix,...P.vari,...P.epa].forEach(p=>sol[p]=0);
-  Object.entries(env.initial||{}).forEach(([p,v])=>sol[p]=(sol[p]||0)+(v||0));
+  // La poche Épargne est une poche comme les autres : on y range ce qu'on prévoit d'épargner.
+  // Un versement (transaction Épargne) en sort comme une dépense et part « de côté » (cote) : hors du solde.
+  // Puiser (mouvement t:'puise') reprend de l'argent mis de côté vers « À répartir » ou une poche.
+  const T=lim?txEnv().filter(t=>t.date<lim):txEnv(),sol={},depense={},verse={},cote={};
+  const P=envPostes();[...P.fix,...P.vari,...P.epa].forEach(p=>sol[p]=0);P.epa.forEach(p=>cote[p]=0);
+  Object.entries(env.initial||{}).forEach(([p,v])=>cote[p]=(cote[p]||0)+(v||0));   // épargne déjà de côté au démarrage
   let ar=env.ar0||0;
   T.forEach(t=>{const a=t.amt||0;
     if(t.cat==='Revenu')ar+=a;
     else if(ENV_DEP.includes(t.cat)){sol[t.poste]=(sol[t.poste]||0)-a;depense[t.poste]=(depense[t.poste]||0)+a;}
-    else if(t.cat==='Epargne'){sol[t.poste]=(sol[t.poste]||0)+a;ar-=a;verse[t.poste]=(verse[t.poste]||0)+a;}});
+    else if(t.cat==='Epargne'){sol[t.poste]=(sol[t.poste]||0)-a;verse[t.poste]=(verse[t.poste]||0)+a;cote[t.poste]=(cote[t.poste]||0)+a;}});
   (env.mv||[]).filter(m=>!lim||m.d<lim).forEach(m=>{const a=m.amt||0;
-    if(m.de===ENV_AR)ar-=a;else sol[m.de]=(sol[m.de]||0)-a;
+    if(m.t==='puise')cote[m.de]=(cote[m.de]||0)-a;
+    else if(m.de===ENV_AR)ar-=a;else sol[m.de]=(sol[m.de]||0)-a;
     if(m.vers===ENV_AR)ar+=a;else sol[m.vers]=(sol[m.vers]||0)+a;});
   // Dettes et prêts notés après le démarrage : tout passe par « À répartir ».
   // Emprunter (achat à crédit compris) et être remboursé : entrée. Prêter et rembourser : sortie.
@@ -1867,11 +1871,12 @@ function envCalc(lim){
   dettes.forEach(d=>{if(envApres(d.date,envTsDette(d),lim))ar+=(d.sens==='pret'?-1:1)*(d.montant||0);});
   mouvs.forEach(m=>{if(m.type!=='remb'||!envApres(m.date,m.ts?Date.parse(m.ts):0,lim))return;const d=dettes.find(x=>x.id===m.dette);if(d)ar+=(d.sens==='pret'?1:-1)*(m.amt||0);});
   // Retraits d'objectif faits avec l'ancien bouton (mouvement « retrait_obj ») après le départ
-  mouvs.forEach(m=>{if(m.type==='retrait_obj'&&(m.date||'')>=env.depart&&(!lim||(m.date||'')<lim)){const o=objectifs.find(x=>x.id===m.objectif);if(o){sol[o.poste||o.nom]=(sol[o.poste||o.nom]||0)-(m.amt||0);ar+=m.amt||0;}}});
+  mouvs.forEach(m=>{if(m.type==='retrait_obj'&&(m.date||'')>=env.depart&&(!lim||(m.date||'')<lim)){const o=objectifs.find(x=>x.id===m.objectif);if(o){cote[o.poste||o.nom]=(cote[o.poste||o.nom]||0)-(m.amt||0);ar+=m.amt||0;}}});
   const tot=ar+Object.values(sol).reduce((s,v)=>s+v,0);
-  return{sol,ar,tot,depense,verse,P};
+  return{sol,ar,tot,depense,verse,cote,P};
 }
 function envSolde(p){return envCalc().sol[p]||0;}
+function envCote(p){return envCalc().cote[p]||0;}
 // Compte après le démarrage : daté d'après, ou du jour même mais créé après l'activation (env.t0).
 // Sans heure de démarrage connue, ce qui est daté du jour du démarrage fait partie du point de départ.
 function envApres(date,ts,lim){if(!date||(lim&&date>=lim))return false;if(date>env.depart)return true;const t0=envT0();return date===env.depart&&!!t0&&ts>t0;}
@@ -1901,8 +1906,8 @@ function envStatsPeriode(){
   const d0=envDebutPeriode(),C0=envCalc(d0),C=envCalc(),P=C.P,R={};
   [...P.fix,...P.vari,...P.epa].forEach(p=>R[p]={recu:C0.sol[p]||0,dep:0,der:null,sol:C.sol[p]||0});
   (env.mv||[]).filter(m=>m.d>=d0).forEach(m=>{if(R[m.vers])R[m.vers].recu+=m.amt;if(R[m.de])R[m.de].recu-=m.amt;});
-  txEnv().filter(t=>t.date>=d0&&R[t.poste]).forEach(t=>{if(ENV_DEP.includes(t.cat))R[t.poste].dep+=t.amt||0;else if(t.cat==='Epargne')R[t.poste].recu+=t.amt||0;});
-  txs.filter(t=>ENV_DEP.includes(t.cat)&&R[t.poste]&&t.date<=todayStr()).forEach(t=>{if(!R[t.poste].der||t.date>R[t.poste].der)R[t.poste].der=t.date;});
+  txEnv().filter(t=>t.date>=d0&&R[t.poste]).forEach(t=>{if(ENV_DEP.includes(t.cat)||t.cat==='Epargne')R[t.poste].dep+=t.amt||0;});
+  txs.filter(t=>(ENV_DEP.includes(t.cat)||t.cat==='Epargne')&&R[t.poste]&&t.date<=todayStr()).forEach(t=>{if(!R[t.poste].der||t.date>R[t.poste].der)R[t.poste].der=t.date;});
   return{d0,R,C,P};
 }
 function quandFr(iso){if(!iso)return'';const a=todayStr();if(iso===a)return'aujourd\'hui';if(iso===addJ(a,-1))return'hier';return jFr(iso);}
@@ -1992,16 +1997,16 @@ function renderEnvDash(){
   const A=envAlertes(C,Pe),serre=new Set(A.map(o=>o.p));
   // Une enveloppe : ce qui y est entré depuis le début de la période, ce qui en est sorti, ce qui reste
   const info=p=>{const r=ST.R[p]||{recu:0,dep:0,der:null},s=C.sol[p]||0,fix=P.fix.includes(p);
-    return{p,s,dep:r.dep,recu:r.recu,der:r.der,fix,paye:fix&&s===0&&r.dep>0};};
+    return{p,s,dep:r.dep,recu:r.recu,der:r.der,fix,epa:P.epa.includes(p),paye:fix&&s===0&&r.dep>0};};
   const tuile=o=>{
     const pct=o.recu>0?Math.min(100,Math.round(o.dep/o.recu*100)):(o.dep>0||o.s<0?100:0);
-    const t=o.s<0?'rd':o.paye?'gr':(serre.has(o.p)||(pct>=85&&o.dep>0))?'am':'bl';
-    const col={rd:'var(--red)',gr:'var(--green)',am:'var(--amber)',bl:'var(--blue)'}[t];
+    const t=o.s<0?'rd':o.paye?'gr':o.epa?'pu':(serre.has(o.p)||(pct>=85&&o.dep>0))?'am':'bl';
+    const col={rd:'var(--red)',gr:'var(--green)',am:'var(--amber)',bl:'var(--blue)',pu:'var(--purple)'}[t];
     return `<div class="ed-tl${o.s<0?' rouge':''}" onclick="openEnv(${jsa(o.p)})">
       <div class="top"><div class="ed-ic t-${t}">${envIco(envIcone(o.p),15)}</div><span class="nm"${o.s<0?' style="color:var(--red)"':''}>${esc(o.p)}</span></div>
       <div class="bar"><div style="width:${pct}%;background:${col}"></div></div>
-      <div class="two"><span>${fmt(o.dep)}</span>${o.paye?'<b style="color:var(--green)">payé ✓</b>':`<b${o.s<0?' style="color:var(--red)"':''}>${envMont(o.s)}</b>`}</div></div>`;};
-  const tous=[...P.vari,...P.fix];
+      <div class="two"><span>${o.epa?'versé ':''}${fmt(o.dep)}</span>${o.paye?'<b style="color:var(--green)">payé ✓</b>':`<b${o.s<0?' style="color:var(--red)"':''}>${envMont(o.s)}</b>`}</div></div>`;};
+  const tous=[...P.vari,...P.fix,...P.epa];
   // Les 4 dernières utilisées (les fixes déjà payées n'y figurent pas)
   const actives=tous.map(info).filter(o=>!o.paye&&(o.s||o.recu||o.dep));
   const recents=[...actives].sort((a,b)=>(b.der||'').localeCompare(a.der||'')||b.s-a.s||a.p.localeCompare(b.p)).slice(0,4);
@@ -2014,7 +2019,7 @@ function renderEnvDash(){
   // Dernières dépenses
   const der=txs.filter(t=>ENV_DEP.includes(t.cat)&&t.date&&t.date<=auj).sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||'').localeCompare(a.ts||'')).slice(0,3);
   // Épargne : le total et l'objectif le plus proche
-  const totEpa=P.epa.reduce((s,p)=>s+(C.sol[p]||0),0);
+  const totEpa=P.epa.reduce((s,p)=>s+(C.cote[p]||0),0),prevuEpa=P.epa.reduce((s,p)=>s+Math.max(0,C.sol[p]||0),0);
   const obj=objectifs.filter(o=>o.cible>0&&P.epa.includes(o.poste||o.nom)&&progObj(o)<o.cible).sort((a,b)=>(a.echeance||'9999').localeCompare(b.echeance||'9999'))[0];
   const arLigne=C.ar>0?`<span onclick="openRepartir()" style="color:var(--amber);cursor:pointer">${fmt(C.ar)} F à répartir · <b>Répartir ›</b></span>`
     :C.ar<0?`<span style="color:var(--red)">${fmt(-C.ar)} F répartis en trop</span>`:'à répartir : 0';
@@ -2036,7 +2041,7 @@ function renderEnvDash(){
     </div>
     ${surv.length?`<div class="card" style="border-left:3px solid var(--amber);padding:10px 14px 4px"><div style="font-size:13px;font-weight:600;color:var(--amber);margin-bottom:2px">À surveiller</div>${surv.join('')}</div>`:''}
     <div id="env-tuiles">
-    ${_envTout?`<div class="ed-tt"><span>Mes poches</span><button class="ed-lk" onclick="envToutBasculer()">Réduire ‹</button></div>${groupe('Dépenses courantes',P.vari)}${groupe('Dépenses fixes',P.fix)}`
+    ${_envTout?`<div class="ed-tt"><span>Mes poches</span><button class="ed-lk" onclick="envToutBasculer()">Réduire ‹</button></div>${groupe('Dépenses courantes',P.vari)}${groupe('Dépenses fixes',P.fix)}${groupe('Épargne',P.epa)}`
       :`<div class="ed-tt"><span>Mes poches</span>${tous.length>recents.length?`<button class="ed-lk" onclick="envToutBasculer()">Les ${tous.length} ›</button>`:''}</div>
       ${recents.length?`<div class="ed-grid">${recents.map(tuile).join('')}</div>`:`<div class="card" style="font-size:12.5px;color:var(--text3)">Tes poches sont vides. Répartis ton argent pour commencer.</div>`}`}
     </div>
@@ -2047,8 +2052,9 @@ function renderEnvDash(){
     </div>
     ${envCarteDettes()}
     ${P.epa.length?`<div class="card" onclick="openEpargne()" style="cursor:pointer;padding:12px 14px">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="display:flex;align-items:center;gap:7px;font-size:14px;font-weight:600;color:var(--text);min-width:0"><span style="color:var(--purple);display:flex">${envIco('piggy')}</span>Épargne${obj?` <span style="font-size:12px;font-weight:400;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">· ${esc(obj.nom)}</span>`:''}</span><b style="color:var(--text);white-space:nowrap">${fmtSigne(totEpa)} ›</b></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="display:flex;align-items:center;gap:7px;font-size:14px;font-weight:600;color:var(--text);min-width:0"><span style="color:var(--purple);display:flex">${envIco('piggy')}</span>De côté${obj?` <span style="font-size:12px;font-weight:400;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">· ${esc(obj.nom)}</span>`:''}</span><b style="color:var(--text);white-space:nowrap">${fmtSigne(totEpa)} ›</b></div>
       ${obj?`<div style="display:flex;align-items:center;gap:8px;margin-top:8px"><div class="ed-bar" style="flex:1"><div style="width:${Math.min(100,pctObj(obj))}%;background:var(--purple)"></div></div><span style="font-size:11.5px;color:var(--purple)">${pctObj(obj)} %</span></div>`:''}
+      <div style="font-size:11.5px;color:var(--text3);margin-top:${obj?4:5}px">${totEpa?'Ce que tu as vraiment versé.':'Rien versé pour l\'instant.'}${prevuEpa?` ${fmt(prevuEpa)} F prévus dans la poche Épargne.`:''}</div>
     </div>`:''}
     ${envBilans(Pe)}`;
 }
@@ -2090,45 +2096,67 @@ function envDepuis(p){openDeplacer(p,null);}
 function envActEpargner(){
   const P=envPostes();
   if(!P.epa.length){toast('Crée d\'abord une poche d\'épargne (Profil → Postes personnalisés)');return;}
-  if(P.epa.length===1){openDeplacer(null,P.epa[0]);return;}
-  envChoix('Épargner dans…',[['Épargne',P.epa]],'envVers');
+  goP('add',document.querySelectorAll('.ni')[2]);
+  setTimeout(()=>{const b=[...document.querySelectorAll('.chip')].find(c=>c.getAttribute('onclick')?.includes("'Epargne'"));if(b)selCat(b,'Epargne','e');},60);
 }
 function envVers(p){openDeplacer(null,p);}
 function envActPuiser(){
-  const C=envCalc(),L=C.P.epa.filter(p=>(C.sol[p]||0)>0);
-  if(!L.length){toast('Rien à puiser pour l\'instant');return;}
-  if(L.length===1){openDeplacer(L[0],null);return;}
-  envChoix('Puiser dans…',[['Épargne',L]],'envDepuis');
+  const C=envCalc(),L=C.P.epa.filter(p=>(C.cote[p]||0)>0);
+  if(!L.length){toast('Rien de côté pour l\'instant');return;}
+  if(L.length===1){openPuiser(L[0]);return;}
+  envChoix('Reprendre de…',[['Épargne',L]],'openPuiser');
 }
 
-// Mon épargne : total, objectifs, derniers mouvements
+// Mon épargne : ce qui est vraiment de côté (versements − ce qu'on a repris), objectifs, mouvements
 function openEpargne(){
-  const C=envCalc(),P=C.P,Pe=envPeriode(),tot=P.epa.reduce((s,p)=>s+(C.sol[p]||0),0);
-  const puise=(env.mv||[]).filter(m=>m.d>=Pe.debut&&m.t!=='rep'&&P.epa.includes(m.de)&&!P.epa.includes(m.vers)).reduce((s,m)=>s+m.amt,0);
+  const C=envCalc(),P=C.P,Pe=envPeriode(),tot=P.epa.reduce((s,p)=>s+(C.cote[p]||0),0),prevu=P.epa.reduce((s,p)=>s+Math.max(0,C.sol[p]||0),0);
+  const puise=(env.mv||[]).filter(m=>m.d>=Pe.debut&&m.t==='puise').reduce((s,m)=>s+m.amt,0);
   const depuis=Pe.mode==='paie'?'depuis la paie':Pe.mode==='mois'?'ce mois-ci':'sur 30 jours';
-  const carte=p=>{const s=C.sol[p]||0,o=objectifs.find(x=>(x.poste||x.nom)===p);
+  const carte=p=>{const c=C.cote[p]||0,pv=C.sol[p]||0,o=objectifs.find(x=>(x.poste||x.nom)===p);
     let sous='sans objectif';
     if(o&&o.cible>0){const e=effortObj(o);sous=e.etat==='atteint'?'Objectif atteint ✓':e.etat==='date'?`${moisCourt(o.echeance)} · ${fmt(e.parMois)} F par mois pour y arriver`:e.etat==='depasse'?`échéance passée · il manque ${fmt(e.reste)} F`:'sans date';}
+    if(pv>0)sous+=` · ${fmt(pv)} F prévus à verser`;
     return `<div onclick="openEnv(${jsa(p)})" style="background:var(--surf2);border-radius:var(--rs);padding:11px 12px;margin-bottom:8px;cursor:pointer">
-      <div style="display:flex;justify-content:space-between;gap:8px;font-size:13.5px"><b style="font-weight:600;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o?o.nom:p)}</b><span style="white-space:nowrap;color:${s<0?'var(--red)':'var(--text)'}">${envMont(s)}${o&&o.cible>0?` <span style="color:var(--text3)">/ ${fmt(o.cible)}</span>`:''}</span></div>
+      <div style="display:flex;justify-content:space-between;gap:8px;font-size:13.5px"><b style="font-weight:600;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o?o.nom:p)}</b><span style="white-space:nowrap;color:var(--text)">${envMont(c)}${o&&o.cible>0?` <span style="color:var(--text3)">/ ${fmt(o.cible)}</span>`:''}</span></div>
       ${o&&o.cible>0?barreObj(o,6):''}
       <div style="font-size:11.5px;color:var(--text3);${o&&o.cible>0?'':'margin-top:3px'}">${sous}</div></div>`;};
-  // Mouvements : versements notés, argent rangé ou sorti des enveloppes d'épargne
-  const M=[...txEnv().filter(t=>t.cat==='Epargne').map(t=>({d:t.date,lib:'Versement · '+(t.poste||''),v:t.amt||0})),
-    ...(env.mv||[]).filter(m=>P.epa.includes(m.vers)!==P.epa.includes(m.de)).map(m=>P.epa.includes(m.vers)
-      ?{d:m.d,lib:'Versement · '+m.vers,v:m.amt}:{d:m.d,lib:'Puisé · '+m.de+' → '+(m.vers===ENV_AR?'À répartir':m.vers),v:-m.amt})]
+  const M=[...txEnv().filter(t=>t.cat==='Epargne').map(t=>({d:t.date,lib:'Versé · '+(t.poste||''),v:t.amt||0})),
+    ...(env.mv||[]).filter(m=>m.t==='puise').map(m=>({d:m.d,lib:'Repris · '+m.de+' → '+(m.vers===ENV_AR?'À répartir':m.vers),v:-m.amt}))]
     .sort((a,b)=>b.d.localeCompare(a.d)).slice(0,5);
   openSheet(sheetHead('Mon épargne')+`
     <div style="font-size:28px;font-weight:700;color:${tot<0?'var(--red)':'var(--text)'}">${fmtSigne(tot)}</div>
-    <div style="font-size:12px;color:${puise?'var(--amber)':'var(--text2)'};margin-bottom:14px">de côté · ${puise?`${fmt(puise)} F puisés ${depuis}`:`rien puisé ${depuis}`}</div>
+    <div style="font-size:12px;color:${puise?'var(--amber)':'var(--text2)'};margin-bottom:14px">de côté · ${puise?`${fmt(puise)} F repris ${depuis}`:`rien repris ${depuis}`}${prevu?` · ${fmt(prevu)} F prévus à verser`:''}</div>
     ${P.epa.map(carte).join('')}
     <div class="ed-grp" style="margin-top:12px"><span>Derniers mouvements</span></div>
     ${M.length?M.map(m=>`<div class="ed-ln"><span class="n">${esc(m.lib)}<br><span style="font-size:11px;color:var(--text3)">${jFr(m.d)}</span></span><b style="color:${m.v<0?'var(--amber)':'var(--green)'}">${m.v<0?'−':'+'}${fmt(Math.abs(m.v))}</b></div>`).join('')
-      :'<div style="font-size:12px;color:var(--text3);padding:6px 0">Aucun mouvement pour l\'instant.</div>'}
+      :'<div style="font-size:12px;color:var(--text3);padding:6px 0">Rien versé pour l\'instant. Quand tu verses vraiment, note-le avec le « + », catégorie Épargne.</div>'}
     <div style="display:flex;gap:8px;margin-top:14px">
-      <button class="btn-p" style="flex:1;margin:0" onclick="envActEpargner()">Épargner</button>
-      <button onclick="envActPuiser()" style="flex:1;padding:12px;border-radius:var(--r);border:1px solid var(--border2);background:none;color:var(--text);font-size:13.5px;cursor:pointer;font-family:var(--font)">Puiser</button>
+      <button class="btn-p" style="flex:1;margin:0" onclick="closeSheet();envActEpargner()">Verser</button>
+      <button onclick="envActPuiser()" style="flex:1;padding:12px;border-radius:var(--r);border:1px solid var(--border2);background:none;color:var(--text);font-size:13.5px;cursor:pointer;font-family:var(--font)">Reprendre</button>
     </div>`);
+}
+// Reprendre de l'argent mis de côté : il revient dans « À répartir » (et sur un compte si « Mes comptes » est actif)
+function openPuiser(p){
+  const C=envCalc(),c=C.cote[p]||0,avecCpt=modules.comptes&&comptes.length;
+  openSheet(sheetHead('Reprendre de « '+esc(p)+' »')+`
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${fmt(c)} F de côté</div>
+    <div class="flbl">Montant</div>
+    <input id="pu-amt" class="finp" inputmode="numeric" oninput="fmtAmtInput(this);puMaj(${jsa(p)})" style="font-size:22px;font-weight:700;text-align:center;padding:9px;margin-bottom:10px">
+    ${avecCpt?`<div class="flbl">Arrive sur le compte</div><select id="pu-cpt" class="fsel" style="margin-bottom:10px">${comptes.map(k=>`<option value="${esc(k.id)}">${esc(k.nom)}</option>`).join('')}</select>`:''}
+    <div id="pu-env"></div>
+    <button class="btn-p" id="pu-go" disabled onclick="puValider(${jsa(p)})">Reprendre</button>`);
+}
+function puMaj(p){
+  const a=parseAmt(document.getElementById('pu-amt').value)||0,C=envCalc(),c=C.cote[p]||0,b=document.getElementById('pu-go');
+  b.disabled=!(a>0)||a>c;
+  document.getElementById('pu-env').innerHTML=a>0?envApercu([['De côté',c,c-a],['À répartir',C.ar,C.ar+a,'var(--green)']],a>c?`<span style="color:var(--red)">Il n'y a que ${fmt(c)} F de côté.</span>`:'L\'argent repris revient dans « À répartir ».'):'';
+}
+async function puValider(p){
+  const a=parseAmt(document.getElementById('pu-amt').value)||0;if(!(a>0)||a>envCote(p))return;
+  const cpt=document.getElementById('pu-cpt')?.value||null,id=envNouvId();
+  env.mv.push(Object.assign({id,d:todayStr(),de:p,vers:ENV_AR,amt:a,t:'puise'},cpt?{compte:cpt}:{}));
+  try{await envSave();closeSheet();toast(fmt(a)+' F repris de l\'épargne',{lib:'Annuler',fn:async()=>{env.mv=env.mv.filter(m=>m.id!==id);await envSave();}});}
+  catch(e){toast('⚠ '+e.message);}
 }
 
 // Bilan de la période précédente et bilan de la semaine (masquables)
@@ -2300,7 +2328,7 @@ function openEnv(p){
   const cpt=t=>t.parts&&t.parts.length?t.parts.map(x=>nomCpt(x.compte)).join(' + '):t.compte?nomCpt(t.compte):'';
   const jour=iso=>{const d=dJ(iso);return ['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'][d.getDay()]+' '+jFr(iso);};
   const deps=txEnv().filter(t=>t.poste===p&&t.date>=d0&&(ENV_DEP.includes(t.cat)||t.cat==='Epargne')).sort((a,b)=>b.date.localeCompare(a.date));
-  const mvs=(env.mv||[]).filter(m=>(m.de===p||m.vers===p)&&m.d>=d0).map(m=>{const entre=m.vers===p,autre=entre?m.de:m.vers;
+  const mvs=(env.mv||[]).filter(m=>(m.de===p||m.vers===p)&&m.d>=d0&&m.t!=='puise').map(m=>{const entre=m.vers===p,autre=entre?m.de:m.vers;
     return{d:m.d,lib:m.t==='rep'?'Répartition':(entre?'Depuis ':'Vers ')+(autre===ENV_AR?'À répartir':autre),v:entre?m.amt:-m.amt,puise:!entre&&epa&&m.t!=='rep'};}).sort((a,b)=>b.d.localeCompare(a.d));
   const reportDebut=envCalc(d0).sol[p]||0;
   const j=!epa&&!C.P.fix.includes(p)?envJours(p,s):null;
@@ -2310,16 +2338,16 @@ function openEnv(p){
   const titre=(t,droite)=>`<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin:14px 0 2px"><span>${t}</span><span>${droite||''}</span></div>`;
   const lig=(g,sous,v,col)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px"><span style="color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g}<br><span style="color:var(--text3);font-size:11px">${sous}</span></span><b style="color:${col||'var(--text)'};white-space:nowrap">${v}</b></div>`;
   openSheet(sheetHead(`<span style="display:inline-flex;align-items:center;gap:10px"><button aria-label="Changer l'icône" onclick="openEnvIcone(${jsa(p)})" style="border:none;padding:0;background:none;cursor:pointer;display:flex">${envBadge(p,C,32)}</button>${esc(p)}</span>`)+`
-    <div style="font-size:26px;font-weight:700;color:${s<0?'var(--red)':'var(--text)'}">${fmtSigne(s)} <span style="font-size:12px;font-weight:400;color:var(--text3)">${s<0?'à combler':epa?'de côté':'restent'}</span></div>
-    ${epa?'':`<div style="height:7px;background:var(--surf2);border-radius:4px;margin:6px 0 4px;overflow:hidden"><div style="width:${pct}%;height:7px;background:${s<0?'var(--red)':'var(--blue)'};border-radius:4px"></div></div>`}
-    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${epa?(ob?`Objectif ${esc(ob.nom)} : ${fmt(ob.cible)} F · ${ob.cible>0?Math.max(0,Math.round(s/ob.cible*100)):0} %`:'Épargne'):`Dépensé ${fmt(o.dep)} F sur ${fmt(Math.max(0,o.recu))} F reçus depuis le ${jFr(d0)}${j!==null?` · de quoi tenir ${j} jour${j>1?'s':''}`:''}`}</div>
+    <div style="font-size:26px;font-weight:700;color:${s<0?'var(--red)':'var(--text)'}">${fmtSigne(s)} <span style="font-size:12px;font-weight:400;color:var(--text3)">${s<0?'à combler':epa?'prévus à verser':'restent'}</span></div>
+    ${`<div style="height:7px;background:var(--surf2);border-radius:4px;margin:6px 0 4px;overflow:hidden"><div style="width:${pct}%;height:7px;background:${s<0?'var(--red)':'var(--blue)'};border-radius:4px"></div></div>`}
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${epa?`Versé ${fmt(o.dep)} F sur ${fmt(Math.max(0,o.recu))} F prévus depuis le ${jFr(d0)} · de côté ${fmt(C.cote[p]||0)} F${ob&&ob.cible>0?` (${esc(ob.nom)} : ${pctObj(ob)} %)`:''}`:`Dépensé ${fmt(o.dep)} F sur ${fmt(Math.max(0,o.recu))} F reçus depuis le ${jFr(d0)}${j!==null?` · de quoi tenir ${j} jour${j>1?'s':''}`:''}`}</div>
     ${puise>0?`<div style="background:rgba(255,159,10,.12);border-radius:var(--rs);padding:9px 12px;font-size:12px;color:var(--amber);margin-bottom:12px">Tu as puisé ${fmt(puise)} F ici depuis le ${jFr(d0)}.</div>`:''}
     <div style="display:flex;gap:8px">
       <button class="btn-p" style="flex:1;margin:0" onclick="openDeplacer(null,${jsa(p)})">${s<0?'Combler':'Ajouter de l\'argent'}</button>
-      ${s>0?`<button onclick="openDeplacer(${jsa(p)},null)" style="flex:1;padding:12px;border-radius:var(--r);border:1px solid var(--border2);background:none;color:var(--text);font-size:13.5px;cursor:pointer;font-family:var(--font)">${epa?'Puiser':'Déplacer'}</button>`:''}
+      ${s>0?`<button onclick="openDeplacer(${jsa(p)},null)" style="flex:1;padding:12px;border-radius:var(--r);border:1px solid var(--border2);background:none;color:var(--text);font-size:13.5px;cursor:pointer;font-family:var(--font)">Déplacer</button>`:''}
     </div>
     ${titre(epa?'Versements':'Dépenses',deps.length?fmt(deps.reduce((x,t)=>x+(t.amt||0),0))+' F':'')}
-    ${deps.length?deps.map(t=>lig(esc(t.cmt||(t.cat==='Epargne'?'Versement':p)),jour(t.date)+(cpt(t)?' · '+esc(cpt(t)):''),(t.cat==='Epargne'?'+':'−')+fmt(t.amt),t.cat==='Epargne'?'var(--green)':null)).join(''):`<div style="font-size:12px;color:var(--text3);padding:8px 0">${epa?'Aucun versement':'Aucune dépense'} depuis le ${jFr(d0)}.</div>`}
+    ${deps.length?deps.map(t=>lig(esc(t.cmt||(t.cat==='Epargne'?'Versement':p)),jour(t.date)+(cpt(t)?' · '+esc(cpt(t)):''),'−'+fmt(t.amt),null)).join(''):`<div style="font-size:12px;color:var(--text3);padding:8px 0">${epa?'Aucun versement':'Aucune dépense'} depuis le ${jFr(d0)}.</div>`}
     ${mvs.length||reportDebut?titre('Mouvements'):''}
     ${mvs.map(m=>lig(esc(m.lib),jFr(m.d),(m.v<0?'−':'+')+fmt(Math.abs(m.v)),m.puise?'var(--amber)':m.v<0?null:'var(--green)')).join('')}
     ${reportDebut?lig(d0===env.depart?'Au démarrage':'Reporté de la période d\'avant',jFr(d0),fmtSigne(reportDebut).replace(' F',''),reportDebut<0?'var(--red)':null):''}
@@ -2415,7 +2443,7 @@ function dpMaj(){
     <div style="display:flex;justify-content:space-between;gap:8px"><span>${esc(nom(vers))}</span><span><span style="color:${s(vers)<0?'var(--red)':'inherit'}">${v(s(vers))}</span> → <b style="color:${s(vers)+a<0?'var(--red)':'var(--green)'}">${v(s(vers)+a)}</b></span></div>`;
   const el=document.getElementById('dp-info');let t='',c='var(--text2)';
   if(a>dispo){t=`Il n'y a que ${fmt(dispo)} F dans ${de===ENV_AR?'« À répartir »':esc(de)}.`;c='var(--red)';}
-  else if(P.epa.includes(de)&&a>0){const o=objectifs.find(x=>(x.poste||x.nom)===de);t=`Tu puises ${fmt(a)} F dans ton épargne${o&&o.cible?` : ${esc(o.nom)} passera de ${Math.round(s(de)/o.cible*100)} % à ${Math.round((s(de)-a)/o.cible*100)} %`:''}.`;c='var(--amber)';}
+  else if(P.epa.includes(de)&&a>0){t=`Tu prévois ${fmt(a)} F de moins à verser en épargne.`;c='var(--amber)';}
   el.style.color=c;el.innerHTML=t;
   const b=document.getElementById('dp-go');b.disabled=!(a>0)||a>dispo;b.textContent=a>0?`Déplacer ${fmt(a)} F`:'Déplacer';
 }
@@ -2436,7 +2464,7 @@ function renderEnvPage(){
     return `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:13px;font-weight:600;color:var(--text)">${t}</span><b style="color:${tot<0?'var(--red)':'var(--text)'}">${fmtSigne(tot)}</b></div>
     ${ps.map(p=>{const s=C.sol[p]||0,h=envHabit(p),dep=C.depense[p]||0;const pret=P.fix.includes(p)&&s===0&&dep>0;
       return `<div onclick="openEnv(${jsa(p)})" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border);cursor:pointer">
-        ${envBadge(p,C)}<div style="min-width:0;flex:1"><div style="font-size:13px;color:${s<0?'var(--red)':'var(--text)'}">${esc(p)}</div><div style="font-size:11px;color:var(--text3)">${h?'habituel '+fmt(h):'pas de montant habituel'}${dep?' · dépensé '+fmt(dep):''}</div></div>
+        ${envBadge(p,C)}<div style="min-width:0;flex:1"><div style="font-size:13px;color:${s<0?'var(--red)':'var(--text)'}">${esc(p)}</div><div style="font-size:11px;color:var(--text3)">${h?'habituel '+fmt(h):'pas de montant habituel'}${dep?' · dépensé '+fmt(dep):''}${P.epa.includes(p)?' · de côté '+fmt(C.cote[p]||0):''}${P.epa.includes(p)&&C.verse[p]?' · versé '+fmt(C.verse[p]):''}</div></div>
         <div style="font-size:13.5px;font-weight:600;white-space:nowrap;color:${s<0?'var(--red)':pret?'var(--green)':'var(--text)'}">${pret?'payé ✓':fmtSigne(s)}</div></div>`;}).join('')}</div>`;};
   el.innerHTML=`<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
       <div><div style="font-size:11.5px;color:var(--text2)">À répartir</div><div style="font-size:22px;font-weight:700;color:${C.ar<0?'var(--red)':'var(--text)'}">${fmtSigne(C.ar)}</div></div>
@@ -2485,12 +2513,13 @@ function updResteEnv(){
   const el=document.getElementById('f-reste');if(!el)return false;
   if(!envOn())return false;
   const poste=document.getElementById('f-poste')?.value;
-  if(!EXPENSE_CATS.includes(selCatVal)||!poste){el.innerHTML='';return true;}
+  if(!(EXPENSE_CATS.includes(selCatVal)||selCatVal==='Epargne')||!poste){el.innerHTML='';return true;}
   const amt=parseAmt(document.getElementById('f-amt')?.value)||0,s=envSolde(poste),apres=s-amt;
   const col=apres<0?'var(--red)':apres<Math.max(1,envHabit(poste))*0.2?'var(--amber)':'var(--green)';
   el.innerHTML=`<div style="background:var(--surf2);border-radius:10px;padding:10px 12px;margin:-2px 0 12px">
     <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text2)">Poche ${esc(poste)}</span><b style="color:${s<0?'var(--red)':'var(--text)'}">${fmtSigne(s)}</b></div>
-    ${amt>0?`<div style="font-size:11.5px;color:${col};margin-top:5px">Après cette dépense : ${fmtSigne(apres)}${apres<0?' · la poche passera dans le rouge':''}</div>`:''}</div>`;
+    ${amt>0?`<div style="font-size:11.5px;color:${col};margin-top:5px">Après ${selCatVal==='Epargne'?'ce versement':'cette dépense'} : ${fmtSigne(apres)}${apres<0?' · la poche passera dans le rouge':''}</div>`:''}
+    ${selCatVal==='Epargne'&&amt>0?`<div style="font-size:11.5px;color:var(--text2);margin-top:2px">De côté : ${fmt(envCote(poste))} → <b style="color:var(--green)">${fmt(envCote(poste)+amt)} F</b></div>`:''}</div>`;
   return true;
 }
 
@@ -2563,8 +2592,8 @@ function envBilanPrec(Pe){
   const actives=[...P.fix,...P.vari].filter(p=>L.some(t=>t.poste===p&&ENV_DEP.includes(t.cat))||(env.mv||[]).some(m=>enPeriode(m.d)&&(m.vers===p||m.de===p)));
   const rouges=actives.filter(p=>(C1.sol[p]||0)<0);
   const report=[...P.fix,...P.vari].reduce((s,p)=>s+Math.max(0,C1.sol[p]||0),0);
-  const verse=L.filter(t=>t.cat==='Epargne').reduce((s,t)=>s+(t.amt||0),0)+(env.mv||[]).filter(m=>enPeriode(m.d)&&P.epa.includes(m.vers)&&!P.epa.includes(m.de)).reduce((s,m)=>s+m.amt,0);
-  const puise=(env.mv||[]).filter(m=>enPeriode(m.d)&&P.epa.includes(m.de)&&!P.epa.includes(m.vers)).reduce((s,m)=>s+m.amt,0);
+  const verse=L.filter(t=>t.cat==='Epargne').reduce((s,t)=>s+(t.amt||0),0);
+  const puise=(env.mv||[]).filter(m=>enPeriode(m.d)&&m.t==='puise').reduce((s,m)=>s+m.amt,0);
   return{pr,actives,rouges,report,verse,puise,dep:sommeDep(L),rev:sommeRev(L),C1};
 }
 
@@ -2575,7 +2604,7 @@ function envBilanSemaine(){
   const L=txEntre(lun,dim),dep=sommeDep(L);
   const avant=envCalc(lun),apres=envCalc(addJ(dim,1)),P=apres.P;
   const rouges=[...P.fix,...P.vari].filter(p=>(apres.sol[p]||0)<0&&(avant.sol[p]||0)>=0);
-  const puise=(env.mv||[]).filter(m=>m.d>=lun&&m.d<=dim&&P.epa.includes(m.de)&&!P.epa.includes(m.vers)).reduce((s,m)=>s+m.amt,0);
+  const puise=(env.mv||[]).filter(m=>m.d>=lun&&m.d<=dim&&m.t==='puise').reduce((s,m)=>s+m.amt,0);
   const m={};L.filter(t=>ENV_DEP.includes(t.cat)).forEach(t=>m[t.poste]=(m[t.poste]||0)+(t.amt||0));
   const top=Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,3);
   return{lun,dim,dep,rouges,puise,top,n:L.filter(t=>ENV_DEP.includes(t.cat)).length};
@@ -3989,6 +4018,7 @@ function soldeCompte(c,exclTx){
     else if(m.type==='retrait_obj'&&m.compte===c.id)s+=m.amt||0;
     else if(m.type==='remb'){const d=dettes.find(x=>x.id===m.dette);if(d)add(m,m.amt||0,d.sens==='pret'?1:-1);}
   });
+  if(env&&env.mv)env.mv.forEach(m=>{if(m.t==='puise'&&m.compte===c.id)s+=m.amt||0;});   // argent repris de l'épargne (poches)
   return s;
 }
 function totalComptes(){return comptes.reduce((s,c)=>s+soldeCompte(c),0);}
@@ -4289,7 +4319,7 @@ const VIOLET='#A78BFA';
 // Un objectif est lié à un poste d'épargne (o.poste) : toute épargne sur ce poste le fait avancer
 function objDuPoste(p){return modules.objectifs?objectifs.find(o=>o.poste===p)||null:null;}
 function progObj(o){
-  if(envOn())return envSolde(o.poste||o.nom);
+  if(envOn())return envCote(o.poste||o.nom);
   let s=o.depart||0;
   txs.forEach(t=>{if(t.cat==='Epargne'&&(t.objectif?t.objectif===o.id:t.poste===(o.poste||o.nom)))s+=t.amt||0;});
   mouvs.forEach(m=>{if(m.type==='retrait_obj'&&m.objectif===o.id)s-=m.amt||0;});
