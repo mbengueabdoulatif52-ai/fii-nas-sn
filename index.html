@@ -112,7 +112,7 @@ body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin
 #page-dash.mode-env #env-dash,#page-bud.mode-env #env-page{display:block}
 #page-dash.mode-env #hero,#page-dash.mode-env #bilan-dash,#page-dash.mode-env #bilanm-dash,#page-dash.mode-env #prep-dash,#page-dash.mode-env #watch,#page-dash.mode-env #alerts-wrap{display:none!important}
 #page-bud.mode-env>:not(#env-page){display:none!important}
-#page-dash.mode-env .mnav{display:none!important}
+#page-dash.mode-env .mnav,#page-dash.mode-env #dm,#page-dash.mode-env #detail-wrap{display:none!important}
 #voile{position:fixed;inset:0;z-index:20000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:rgba(13,18,32,.6);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px)}
 #voile.on{display:flex}
 #voile img{width:72px;height:72px;border-radius:18px}
@@ -1707,7 +1707,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='59';
+const APP_VERSION='60';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1886,8 +1886,10 @@ function renderEnvDash(){
 function envBlocPeriode(C){
   const Pe=envPeriode(),L=txEntre(Pe.debut,todayStr()),dep=sommeDep(L),rev=sommeRev(L);
   const droite=Pe.mode==='paie'?(Pe.reste>0?`paie dans ${Pe.reste} j`:'paie attendue'):Pe.mode==='mois'?`fin du mois dans ${Pe.reste} j`:'';
+  const sansPaie=((env&&env.periode)||'paie')==='paie'&&Pe.mode!=='paie';
   let h=`<div class="card" style="padding:11px 14px"><div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--text2)"><span>${Pe.label}${Pe.mode!=='30j'?` · jour ${Pe.jour}/${Pe.n}`:''}</span><span>${droite}</span></div>
-    <div style="font-size:13px;color:var(--text);margin-top:5px">Dépensé <b>${fmt(dep)} F</b> · Reçu <b style="color:var(--green)">${fmt(rev)} F</b></div></div>`;
+    <div style="font-size:13px;color:var(--text);margin-top:5px">Dépensé <b>${fmt(dep)} F</b> · Reçu <b style="color:var(--green)">${fmt(rev)} F</b></div>
+    ${sansPaie?`<div style="font-size:11.5px;color:var(--text3);margin-top:5px">Aucune paie notée pour l'instant : la période suit le mois. Elle partira de ta paie dès que tu la noteras.</div>`:''}</div>`;
   const A=envAlertes(C,Pe);
   if(A.length)h+=`<div class="card" style="border:1.5px solid var(--amber)"><div style="font-size:13px;font-weight:600;color:var(--amber);margin-bottom:6px">Ne tiendra pas jusqu'à ${Pe.mode==='paie'?'ta paie':'la fin du mois'}</div>
     ${A.slice(0,3).map(o=>`<div onclick="openEnv(${jsa(o.p)})" style="font-size:12.5px;color:var(--text);line-height:1.5;padding:4px 0;cursor:pointer"><b>${esc(o.p)}</b> : ${o.j} jour${o.j>1?'s':''} de réserve, ${Pe.mode==='paie'?'paie':'fin du mois'} dans ${Pe.reste} jours. <span style="color:var(--text2)">Limite-toi à <b>${fmt(o.parJour)} F/jour</b>.</span></div>`).join('')}</div>`;
@@ -1965,6 +1967,33 @@ async function envDemarrer(){
   document.getElementById('es-go').disabled=true;
   try{await saveSettings();closeSheet();goP('dash',document.querySelectorAll('.ni')[0]);toast('Enveloppes activées');setTimeout(openRepartir,350);}
   catch(e){document.getElementById('es-go').disabled=false;err.textContent='Non enregistré : '+e.message;}
+}
+// ── Point de départ : l'argent total et l'épargne déclarés au démarrage, corrigeables ensuite.
+// Corriger le total ne touche qu'« À répartir » ; corriger une épargne de départ ne touche que son enveloppe.
+function envDepartTotal(){return (env.ar0||0)+Object.values(env.initial||{}).reduce((a,b)=>a+(b||0),0);}
+function openEnvDepart(){
+  const fa=v=>v?Number(v).toLocaleString('fr-FR').replace(/\u202f/g,' '):'';
+  const P=envPostes();
+  openSheet(sheetHead('Point de départ')+`
+    <div style="font-size:12.5px;color:var(--text2);line-height:1.5;margin-bottom:12px">Ce que tu avais le ${jFr(env.depart)}, quand tu as activé les enveloppes. Tout ce que tu notes ensuite part de là.</div>
+    <div class="fgrp"><div class="flbl">Tout ton argent ce jour-là (FCFA)</div><input class="finp" id="ed-tot" inputmode="numeric" value="${fa(envDepartTotal())}" oninput="fmtAmtInput(this);edMaj()"></div>
+    ${P.epa.length?`<div class="flbl">Dont épargne déjà mise de côté</div>${P.epa.map(p=>`<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px"><span style="flex:1;font-size:13px;color:var(--text)">${esc(p)}</span><input class="finp" data-ed="${esc(p)}" inputmode="numeric" style="width:130px;text-align:right" value="${fa((env.initial||{})[p])}" oninput="fmtAmtInput(this);edMaj()" placeholder="0"></div>`).join('')}`:''}
+    <div id="ed-info" style="font-size:12px;background:var(--surf2);border-radius:var(--rs);padding:10px 12px;margin:10px 0;line-height:1.5"></div>
+    <button class="btn-p" id="ed-go" onclick="edValider()">Enregistrer</button>`);
+  edMaj();
+}
+function edVals(){const tot=parseAmt(document.getElementById('ed-tot')?.value),ep={};document.querySelectorAll('[data-ed]').forEach(i=>{const v=parseAmt(i.value);if(v>0)ep[i.dataset.ed]=v;});return{tot,ep,sEp:Object.values(ep).reduce((a,b)=>a+b,0)};}
+function edMaj(){
+  const{tot,sEp}=edVals(),el=document.getElementById('ed-info'),b=document.getElementById('ed-go');if(!el)return;
+  if(isNaN(tot)||tot<sEp){el.innerHTML='<span style="color:var(--red)">'+(isNaN(tot)?'Indique ton argent total.':'L\'épargne dépasse le total.')+'</span>';b.disabled=true;return;}
+  const ar0=tot-sEp,d=ar0-(env.ar0||0),C=envCalc();
+  b.disabled=false;
+  el.innerHTML=d===0?'<span style="color:var(--text2)">« À répartir » ne change pas.</span>':`« À répartir » passera de <b>${fmtSigne(C.ar)}</b> à <b>${fmtSigne(C.ar+d)}</b>.${C.ar+d<0?' <span style="color:var(--red)">Il faudra retirer de l\'argent d\'une enveloppe.</span>':''}`;
+}
+async function edValider(){
+  const{tot,ep,sEp}=edVals();if(isNaN(tot)||tot<sEp)return;
+  env.ar0=tot-sEp;env.initial=ep;
+  try{await envSave();closeSheet();toast('Point de départ corrigé');}catch(e){toast('⚠ '+e.message);}
 }
 async function envDesactiver(){
   if(!await confirmer('Revenir au budget par mois ?\nTes enveloppes sont gardées : tu pourras les réactiver plus tard.','Revenir au budget'))return;
@@ -2101,6 +2130,10 @@ function renderEnvPage(){
       <div><div style="font-size:11.5px;color:var(--text2)">À répartir</div><div style="font-size:22px;font-weight:700;color:${C.ar<0?'var(--red)':'var(--text)'}">${fmtSigne(C.ar)}</div></div>
       ${C.ar>0?`<button onclick="openRepartir()" style="background:var(--blue);color:#fff;border:none;border-radius:9px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">Répartir</button>`:''}</div>
     ${bloc('Dépenses fixes',P.fix)}${bloc('Dépenses courantes',P.vari)}${bloc('Épargne',P.epa,true)}
+    <div class="card" onclick="openEnvDepart()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div><div style="font-size:11.5px;color:var(--text2)">Point de départ · ${jFr(env.depart)}</div><div style="font-size:15px;font-weight:600;color:var(--text)">${fmt(envDepartTotal())} F</div>
+      <div style="font-size:11px;color:var(--text3)">${Object.keys(env.initial||{}).length?'dont épargne '+fmt(Object.values(env.initial).reduce((a,b)=>a+b,0))+' F':'ton argent au démarrage'}</div></div>
+      <span style="color:var(--blue);font-size:12.5px;font-weight:600">Corriger ›</span></div>
     <div style="font-size:11.5px;color:var(--text3);text-align:center;line-height:1.5;margin:6px 0 14px">Ajouter ou retirer une enveloppe : Profil → Postes personnalisés.<br>Depuis le ${env.depart.slice(8)}/${env.depart.slice(5,7)}/${env.depart.slice(0,4)} · <span onclick="envDesactiver()" style="color:var(--blue);cursor:pointer">revenir au budget par mois</span></div>`;
 }
 
@@ -2251,8 +2284,11 @@ function renderGraphsEnv(){
   let h='';
   // 1. Le rythme de la période : dépenses cumulées vs l'argent mis dans les enveloppes de dépense
   {
-    const C0=envCalc(Pe.debut>env.depart?Pe.debut:addJ(env.depart,1)),P=C0.P;
-    const dansP=m=>m.d>=Pe.debut&&m.d<=Pe.fin;
+    // Point de comparaison : la situation au début de la période, ou au démarrage des enveloppes s'il est plus récent
+    // (envCalc(d) = avant les mouvements de ce jour), puis tout ce qui a été rangé depuis.
+    const d0=Pe.debut>env.depart?Pe.debut:env.depart;
+    const C0=envCalc(d0),P=C0.P;
+    const dansP=m=>m.d>=d0&&m.d<=Pe.fin;
     const apport=ps=>ps.reduce((s,p)=>s+Math.max(0,C0.sol[p]||0),0)+(env.mv||[]).filter(dansP).reduce((s,m)=>s+(ps.includes(m.vers)&&!ps.includes(m.de)?m.amt:0)-(ps.includes(m.de)&&!ps.includes(m.vers)?m.amt:0),0);
     const budF=Math.max(0,apport(P.fix)),budV=Math.max(0,apport(P.vari)),budD=budF+budV;
     const parJ=new Array(n+1).fill(0);dep.forEach(t=>{const d=idx(t.date);if(d>=1&&d<=n)parJ[d]+=t.amt||0;});
@@ -2261,7 +2297,7 @@ function renderGraphsEnv(){
     const W=320,H=130,pl=6,pr=6,pt=14,pb=18,maxY=Math.max(1,budD,cum[Math.max(jMax,1)]||0)*1.08;
     const X=d=>pl+(W-pl-pr)*(d/n),Y=v=>pt+(H-pt-pb)*(1-v/maxY);
     let svg=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;overflow:visible"><line x1="${pl}" y1="${Y(0)}" x2="${W-pr}" y2="${Y(0)}" stroke="var(--border)"/>`;
-    if(budD>0)svg+=`<polyline points="${[0,n].map(d=>X(d)+','+Y(attendu(d))).join(' ')}" fill="none" stroke="var(--text3)" stroke-width="1.2" stroke-dasharray="4 4"/><line x1="${pl}" y1="${Y(budD)}" x2="${W-pr}" y2="${Y(budD)}" stroke="var(--green)" stroke-width="1" opacity=".7"/><text x="${pl}" y="${Y(budD)-4}" fill="var(--green)" font-size="9.5">dans tes enveloppes ${fmt(budD)}</text>`;
+    if(budD>0)svg+=`<polyline points="${[0,n].map(d=>X(d)+','+Y(attendu(d))).join(' ')}" fill="none" stroke="var(--text3)" stroke-width="1.2" stroke-dasharray="4 4"/><line x1="${pl}" y1="${Y(budD)}" x2="${W-pr}" y2="${Y(budD)}" stroke="var(--green)" stroke-width="1" opacity=".7"/><text x="${pl}" y="${Y(budD)-4}" fill="var(--green)" font-size="9.5">prévu pour tes dépenses ${fmt(budD)}</text>`;
     const fin=cum[jMax],rouge=budD>0&&fin>budD,c=rouge?'var(--red)':budD>0&&fin>attendu(jMax)?'var(--amber)':'var(--blue)';
     const pts=[];for(let d=0;d<=jMax;d++)pts.push(X(d)+','+Y(cum[d]));
     svg+=`<polyline points="${pts.join(' ')}" fill="none" stroke="${c}" stroke-width="2.4" stroke-linejoin="round"/><circle cx="${X(jMax)}" cy="${Y(fin)}" r="3.5" fill="${c}"/>`;
@@ -2275,7 +2311,7 @@ function renderGraphsEnv(){
       if(proj>budD){msg=`À ce rythme, tes enveloppes seront vides avant ${finP} (environ ${fmt(proj-budD)} F de trop).`;coul='var(--amber)';}
       else{msg=`À ce rythme, ça tient jusqu'à ${finP} : environ ${fmt(budD-proj)} F de marge.`;coul='var(--green)';}
     }
-    h+=carte('Le rythme de la période',`${Pe.label} · pointillé : rythme prévu`,svg,`<div style="font-size:12px;color:var(--text2);margin-top:6px"><b style="color:${c}">${fmt(fin)} F</b> dépensés en ${jMax} jour${jMax>1?'s':''}${budD?` · ${fmt(budD)} F dans tes enveloppes`:''}</div><div style="font-size:12px;color:${coul};margin-top:3px;line-height:1.45">${msg}</div>`);
+    h+=carte('Le rythme de la période',`${Pe.label} · pointillé : rythme prévu`,svg,`<div style="font-size:12px;color:var(--text2);margin-top:6px"><b style="color:${c}">${fmt(fin)} F</b> dépensés en ${jMax} jour${jMax>1?'s':''}${budD?` · ${fmt(budD)} F prévus pour tes dépenses${d0>Pe.debut?` (depuis le ${jFr(d0)})`:''}`:''}</div><div style="font-size:12px;color:${coul};margin-top:3px;line-height:1.45">${msg}</div>`);
   }
   // 2. Par rapport à d'habitude : même nombre de jours dans les périodes d'avant (médiane)
   {
