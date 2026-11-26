@@ -1745,7 +1745,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='72';
+const APP_VERSION='73';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1859,7 +1859,9 @@ function envCalc(lim){
   let ar=env.ar0||0;
   T.forEach(t=>{const a=t.amt||0;
     if(t.cat==='Revenu')ar+=a;
-    else if(ENV_DEP.includes(t.cat)){sol[t.poste]=(sol[t.poste]||0)-a;depense[t.poste]=(depense[t.poste]||0)+a;}
+    else if(ENV_DEP.includes(t.cat)){sol[t.poste]=(sol[t.poste]||0)-a;depense[t.poste]=(depense[t.poste]||0)+a;
+      // Prêt qu'on ne récupérera pas : la dépense sort de sa poche, mais aucun argent ne bouge (il était parti au prêt)
+      if(t.dette){const d=dettes.find(x=>x.id===t.dette);if(d&&d.sens==='pret')ar+=a;}}
     else if(t.cat==='Epargne'){sol[t.poste]=(sol[t.poste]||0)-a;verse[t.poste]=(verse[t.poste]||0)+a;cote[t.poste]=(cote[t.poste]||0)+a;}});
   (env.mv||[]).filter(m=>!lim||m.d<lim).forEach(m=>{const a=m.amt||0;
     if(m.t==='puise')cote[m.de]=(cote[m.de]||0)-a;
@@ -1870,6 +1872,8 @@ function envCalc(lim){
   // L'achat à crédit est aussi une dépense notée dans sa poche : le solde ne bouge pas tant qu'on n'a pas payé.
   dettes.forEach(d=>{if(envApres(d.date,envTsDette(d),lim))ar+=(d.sens==='pret'?-1:1)*(d.montant||0);});
   mouvs.forEach(m=>{if(m.type!=='remb'||!envApres(m.date,m.ts?Date.parse(m.ts):0,lim))return;const d=dettes.find(x=>x.id===m.dette);if(d)ar+=(d.sens==='pret'?1:-1)*(m.amt||0);});
+  // Pointage d'un compte (argent retrouvé ou manquant) : la différence passe par « À répartir »
+  mouvs.forEach(m=>{if(m.type==='ajustement'&&envApres(m.date,m.ts?Date.parse(m.ts):0,lim))ar+=m.amt||0;});
   // Retraits d'objectif faits avec l'ancien bouton (mouvement « retrait_obj ») après le départ
   mouvs.forEach(m=>{if(m.type==='retrait_obj'&&(m.date||'')>=env.depart&&(!lim||(m.date||'')<lim)){const o=objectifs.find(x=>x.id===m.objectif);if(o){cote[o.poste||o.nom]=(cote[o.poste||o.nom]||0)-(m.amt||0);ar+=m.amt||0;}}});
   const tot=ar+Object.values(sol).reduce((s,v)=>s+v,0);
