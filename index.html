@@ -108,6 +108,10 @@ body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin
 .usync{font-size:11px;color:var(--text3);display:flex;align-items:center;gap:4px}
 .sdot{width:5px;height:5px;border-radius:50%;background:var(--green);display:inline-block;animation:pulse 2s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+#env-dash,#env-page{display:none}
+#page-dash.mode-env #env-dash,#page-bud.mode-env #env-page{display:block}
+#page-dash.mode-env #hero,#page-dash.mode-env #bilan-dash,#page-dash.mode-env #bilanm-dash,#page-dash.mode-env #prep-dash,#page-dash.mode-env #watch,#page-dash.mode-env #alerts-wrap{display:none!important}
+#page-bud.mode-env>:not(#env-page){display:none!important}
 #voile{position:fixed;inset:0;z-index:20000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:rgba(13,18,32,.6);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px)}
 #voile.on{display:flex}
 #voile img{width:72px;height:72px;border-radius:18px}
@@ -369,6 +373,7 @@ select option{background:#1F2840;color:#F1F4FA}
     <div class="mnav"><button class="mnav-a" onclick="shiftMonth(-1)" aria-label="Mois précédent">‹</button><div class="mnav-slot"></div><button class="mnav-a" onclick="shiftMonth(1)" aria-label="Mois suivant">›</button></div>
     <div class="vue-sw" id="vue-sw"></div>
     <div id="graphs"></div>
+    <div id="env-dash"></div>
     <div class="hero" id="hero"></div>
     <div id="foyer-dash"></div>
     <div id="maj-banner"></div>
@@ -506,6 +511,7 @@ select option{background:#1F2840;color:#F1F4FA}
   <div id="page-bud" class="page">
     <div class="ytabs" id="ytabs" style="display:none"></div>
     <div class="mtabs" id="mtabs" style="display:none"></div>
+    <div id="env-page"></div>
     <div class="bmonths" id="bmonths"></div>
     <div id="bud-solde"></div>
     <div id="bud-mini"></div>
@@ -563,6 +569,10 @@ select option{background:#1F2840;color:#F1F4FA}
     <div class="card">
       <div class="ct">Mes récurrentes</div>
       <div id="recur-ui"></div>
+    </div>
+    <div class="card">
+      <div class="ct">Enveloppes</div>
+      <div id="env-ui"></div>
     </div>
     <div class="card">
       <div class="ct">Modules</div>
@@ -1696,7 +1706,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='54';
+const APP_VERSION='55';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1785,13 +1795,312 @@ async function demanderDeconnexion(){
   if(await confirmer('Te déconnecter ?\nTu devras retaper ton identifiant et ton mot de passe pour revenir.','Me déconnecter',false,'Rester connecté'))doSignOut();
 }
 
+// ═══════════════ MODE ENVELOPPES (essai) ═══════════════
+// Le budget ne se juge plus au mois du calendrier : chaque poste de dépense ou d'épargne est une
+// enveloppe dont le solde se reporte. L'argent qui entre (à sa vraie date) arrive dans « À répartir » ;
+// on le répartit dans les enveloppes ; chaque dépense vide son enveloppe.
+// Réglages : env = {actif, depart:'AAAA-MM-JJ', ids0:[…], ar0, initial:{poste:F}, habit:{poste:F}, mv:[{id,d,de,vers,amt,t}]}
+//   de / vers : un poste, ou '_' pour « À répartir ». t : 'rep' (répartition), 'dep' (déplacement).
+// Invariant : À répartir + Σ enveloppes = argent de départ + entrées − dépenses (depuis le départ).
+let env=null;
+const ENV_AR='_';
+function envOn(){return !!(env&&env.actif&&!espace);}
+const ENV_DEP=['Dépenses fixes','Dépenses variables'];
+// Une transaction compte si elle est datée après le départ, ou du jour du départ mais notée après
+function txEnv(){if(!env)return[];const d0=env.depart,ids=new Set(env.ids0||[]);return txs.filter(t=>t.date&&(t.date>d0||(t.date===d0&&!ids.has(t.id))));}
+function envPostes(){return{fix:getAllPostes('Dépenses fixes'),vari:getAllPostes('Dépenses variables'),epa:getAllPostes('Epargne')};}
+function envCalc(){
+  const T=txEnv(),sol={},depense={},verse={};
+  const P=envPostes();[...P.fix,...P.vari,...P.epa].forEach(p=>sol[p]=0);
+  Object.entries(env.initial||{}).forEach(([p,v])=>sol[p]=(sol[p]||0)+(v||0));
+  let ar=env.ar0||0;
+  T.forEach(t=>{const a=t.amt||0;
+    if(t.cat==='Revenu')ar+=a;
+    else if(ENV_DEP.includes(t.cat)){sol[t.poste]=(sol[t.poste]||0)-a;depense[t.poste]=(depense[t.poste]||0)+a;}
+    else if(t.cat==='Epargne'){sol[t.poste]=(sol[t.poste]||0)+a;ar-=a;verse[t.poste]=(verse[t.poste]||0)+a;}});
+  (env.mv||[]).forEach(m=>{const a=m.amt||0;
+    if(m.de===ENV_AR)ar-=a;else sol[m.de]=(sol[m.de]||0)-a;
+    if(m.vers===ENV_AR)ar+=a;else sol[m.vers]=(sol[m.vers]||0)+a;});
+  // Retraits d'objectif faits avec l'ancien bouton (mouvement « retrait_obj ») après le départ
+  mouvs.forEach(m=>{if(m.type==='retrait_obj'&&(m.date||'')>=env.depart){const o=objectifs.find(x=>x.id===m.objectif);if(o){sol[o.poste||o.nom]=(sol[o.poste||o.nom]||0)-(m.amt||0);ar+=m.amt||0;}}});
+  const tot=ar+Object.values(sol).reduce((s,v)=>s+v,0);
+  return{sol,ar,tot,depense,verse,P};
+}
+function envSolde(p){return envCalc().sol[p]||0;}
+// Rythme d'une enveloppe courante : dépenses des 14 derniers jours → jours restants
+function envJours(p,solde){
+  if(solde<=0)return null;
+  const lim=new Date();lim.setDate(lim.getDate()-14);const l=lim.toISOString().slice(0,10);
+  const s=txs.filter(t=>t.poste===p&&ENV_DEP.includes(t.cat)&&t.date>l&&t.date<=todayStr()).reduce((x,t)=>x+(t.amt||0),0);
+  if(s<=0)return null;return Math.floor(solde/(s/14));
+}
+function envHabit(p){return (env.habit||{})[p]||0;}
+async function envSave(){await saveSettings();renderCurrent();}
+function envNouvId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+
+// ── Accueil
+function renderEnvDash(){
+  const el=document.getElementById('env-dash');if(!el)return;
+  const pg=document.getElementById('page-dash');
+  const on=envOn()&&!isAnnual();
+  pg.classList.toggle('mode-env',on);
+  if(!on){el.innerHTML='';return;}
+  const C=envCalc(),P=C.P;
+  const dansEnv=C.tot-C.ar;
+  const lignes=[...P.fix,...P.vari].map(p=>({p,s:C.sol[p]||0,h:envHabit(p),fix:P.fix.includes(p),dep:C.depense[p]||0}))
+    .filter(o=>o.s||o.h||o.dep);
+  const tri=lignes.sort((a,b)=>((a.s<0)?0:1)-((b.s<0)?0:1)||(a.s<0&&b.s<0?a.s-b.s:0)||((a.fix&&a.s===0&&a.dep>0)?1:0)-((b.fix&&b.s===0&&b.dep>0)?1:0)||a.s-b.s);
+  const ligne=o=>{
+    const pret=o.s===0&&o.dep>0;
+    const ref=Math.max(o.h,o.s,1),pct=o.s<0?100:Math.round(Math.max(0,o.s)/ref*100);
+    const c=o.s<0?'var(--red)':pret?'var(--green)':'var(--blue)';
+    const j=!o.fix?envJours(o.p,o.s):null;
+    const droite=o.s<0?`<b style="color:var(--red)">${fmtSigne(o.s).replace(' F','')}</b>`:pret?`<span style="color:var(--green)">payé ✓</span>`:`<b>${fmt(o.s)}</b>${j!==null?` <span style="color:var(--text3);font-size:11px">· ${j} j</span>`:''}`;
+    return `<div onclick="openEnv(${jsa(o.p)})" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer">
+      <div style="flex:1;min-width:0"><div style="font-size:13px;color:${o.s<0?'var(--red)':'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.p)}</div>
+      <div style="height:5px;background:var(--surf2);border-radius:3px;margin-top:5px;max-width:170px;overflow:hidden"><div style="width:${pct}%;height:5px;background:${c};border-radius:3px"></div></div></div>
+      <div style="font-size:13px;white-space:nowrap">${droite}</div></div>`;};
+  const vis=tri.slice(0,6);
+  const epa=P.epa.map(p=>({p,s:C.sol[p]||0})).filter(o=>o.s);
+  const totEpa=epa.reduce((s,o)=>s+o.s,0);
+  el.innerHTML=`<div class="card" style="background:var(--blue);border:none;color:#fff">
+      <div style="font-size:12px;opacity:.8">Ton argent</div>
+      <div style="font-size:26px;font-weight:700;letter-spacing:-.5px;margin-top:2px">${fmtSigne(C.tot)}</div>
+      <div style="display:flex;justify-content:space-between;gap:8px;margin-top:8px;font-size:12px"><span>Dans les enveloppes <b>${fmt(dansEnv)}</b></span><span>À répartir <b>${fmtSigne(C.ar).replace(' F','')}</b></span></div>
+    </div>
+    ${C.ar>0?`<div class="card" style="border:1.5px solid var(--amber);display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div><div style="font-size:13.5px;font-weight:600;color:var(--text)">${fmt(C.ar)} F à répartir</div><div style="font-size:11.5px;color:var(--text2);margin-top:2px">Donne un rôle à cet argent</div></div>
+      <button onclick="openRepartir()" style="background:var(--blue);color:#fff;border:none;border-radius:9px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">Répartir</button></div>`
+     :C.ar<0?`<div class="card" style="border:1.5px solid var(--red)"><div style="font-size:13px;font-weight:600;color:var(--red)">${fmt(-C.ar)} F répartis en trop</div><div style="font-size:11.5px;color:var(--text2);margin-top:3px;line-height:1.45">Tes enveloppes contiennent plus que ton argent. Retire ${fmt(-C.ar)} F d'une enveloppe (touche-la, puis « Déplacer »).</div></div>`:''}
+    <div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:14px;font-weight:600;color:var(--text)">Mes enveloppes</div><span style="font-size:11px;color:var(--text3)">reste</span></div>
+      ${vis.length?vis.map(ligne).join(''):`<div style="font-size:12px;color:var(--text3);padding:10px 0">Tes enveloppes sont vides. Répartis ton argent pour commencer.</div>`}
+      <div onclick="goP('bud',document.querySelectorAll('.ni')[3])" style="font-size:12.5px;color:var(--blue);cursor:pointer;margin-top:9px">${tri.length>6?'Les '+tri.length+' enveloppes':'Toutes les enveloppes'} ›</div></div>
+    ${P.epa.length?`<div class="card" onclick="goP('bud',document.querySelectorAll('.ni')[3])" style="cursor:pointer"><div style="display:flex;justify-content:space-between"><span style="font-size:14px;font-weight:600;color:var(--text)">Épargne</span><b style="color:var(--text)">${fmt(totEpa)} F</b></div>
+      <div style="font-size:11.5px;color:var(--text3);margin-top:3px">${epa.length?epa.map(o=>esc(o.p)+' '+fmt(o.s)).join(' · '):'Rien de côté pour l\'instant'}</div></div>`:''}`;
+}
+
+// ── Démarrage
+function openEnvStart(){
+  const auj=todayStr(),futur=txs.filter(t=>t.date>auj);
+  const totCpt=modules.comptes&&comptes.length?comptes.reduce((s,c)=>s+soldeCompte(c),0):null;
+  const P=envPostes();
+  const fa=v=>v?Number(v).toLocaleString('fr-FR').replace(/ /g,' '):'';
+  const epaInit=p=>{const o=objectifs.find(x=>(x.poste||x.nom)===p);return o?Math.max(0,progObj(o)):0;};
+  openSheet(sheetHead('Passer aux enveloppes')+`
+    <div style="font-size:12.5px;color:var(--text2);line-height:1.55;margin-bottom:14px">À partir d'aujourd'hui, tu notes tout à sa <b>vraie date</b>. L'argent qui entre arrive dans « À répartir », tu le ranges dans des enveloppes, et chaque dépense vide la sienne. Ce qui reste dans une enveloppe n'est pas perdu à la fin du mois.</div>
+    ${futur.length?`<div style="background:rgba(255,159,10,.12);border-radius:var(--rs);padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--text2);line-height:1.5"><b style="color:var(--amber)">${futur.length} transaction${futur.length>1?'s':''} datée${futur.length>1?'s':''} dans le futur</b> (${futur.slice(0,3).map(t=>esc(t.poste)+' '+fmt(t.amt)).join(', ')}${futur.length>3?'…':''}). Avec les enveloppes, plus besoin d'avancer les dates.
+      <button onclick="envRedater()" style="display:block;margin-top:8px;background:var(--amber);color:#000;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Les remettre à aujourd'hui</button></div>`:''}
+    <div class="fgrp"><div class="flbl">Tout ton argent aujourd'hui (FCFA)</div><input class="finp" id="es-tot" inputmode="numeric" value="${fa(totCpt)}" oninput="fmtAmtInput(this);envStartMaj()" placeholder="Wave + Orange Money + banque + espèces">
+      <div style="font-size:11px;color:var(--text3);margin-top:5px">${totCpt!==null?'Pré-rempli avec le total de tes comptes. ':''}Épargne comprise.</div></div>
+    ${P.epa.length?`<div class="flbl" style="margin-top:4px">Dont épargne déjà mise de côté</div>
+      ${P.epa.map(p=>`<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px"><span style="flex:1;font-size:13px;color:var(--text)">${esc(p)}</span><input class="finp" data-ep="${esc(p)}" inputmode="numeric" style="width:130px;text-align:right" value="${fa(epaInit(p))}" oninput="fmtAmtInput(this);envStartMaj()" placeholder="0"></div>`).join('')}`:''}
+    <div id="es-info" style="font-size:12.5px;background:var(--surf2);border-radius:var(--rs);padding:10px 12px;margin:10px 0;line-height:1.5"></div>
+    <div id="es-err" style="font-size:12px;color:var(--red);min-height:16px"></div>
+    <button class="btn-p" id="es-go" onclick="envDemarrer()">Démarrer et répartir</button>
+    <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:8px">Tes transactions et ton historique ne changent pas. Tu peux revenir au budget par mois dans le Profil.</div>`);
+  envStartMaj();
+}
+function envStartVals(){
+  const tot=parseAmt(document.getElementById('es-tot')?.value);
+  const ep={};document.querySelectorAll('[data-ep]').forEach(i=>{const v=parseAmt(i.value);if(v>0)ep[i.dataset.ep]=v;});
+  return{tot,ep,sEp:Object.values(ep).reduce((s,v)=>s+v,0)};
+}
+function envStartMaj(){
+  const{tot,sEp}=envStartVals(),el=document.getElementById('es-info');if(!el)return;
+  el.innerHTML=isNaN(tot)?'<span style="color:var(--text3)">Indique ton argent total pour continuer.</span>'
+    :tot<sEp?`<span style="color:var(--red)">L'épargne (${fmt(sEp)} F) dépasse ton total.</span>`
+    :`<b style="color:var(--text)">${fmt(tot-sEp)} F</b> <span style="color:var(--text2)">iront dans « À répartir » : tu les rangeras dans tes enveloppes à l'étape suivante.</span>`;
+}
+async function envRedater(){
+  const{db,doc,setDoc}=window._fb,auj=todayStr();
+  const f=txs.filter(t=>t.date>auj);
+  try{for(const t of f){t.date=auj;await setDoc(doc(db,dataPath()+'/transactions/'+t.id),{date:auj},{merge:true});}toast(f.length+' transaction(s) remise(s) à aujourd\'hui');openEnvStart();}
+  catch(e){toast('⚠ '+e.message);}
+}
+async function envDemarrer(){
+  const{tot,ep,sEp}=envStartVals(),err=document.getElementById('es-err');
+  if(isNaN(tot)){err.textContent='Indique ton argent total.';return;}
+  if(tot<sEp){err.textContent='L\'épargne dépasse ton total.';return;}
+  const auj=todayStr();
+  // Montants habituels : le budget du mois en cours (ou le plus récent)
+  const ym=auj.slice(0,7),mois=Object.keys(budget).filter(k=>k<=ym&&Object.values(budget[k]||{}).some(v=>v>0)).sort().pop();
+  const habit={};if(mois){const P=envPostes();[...P.fix,...P.vari,...P.epa].forEach(p=>{const v=gBud(mois,p);if(v>0)habit[p]=v;});}
+  const ancien=env&&env.depart?env:null;
+  env={actif:true,depart:auj,ids0:txs.filter(t=>t.date===auj).map(t=>t.id),ar0:tot-sEp,initial:ep,habit:ancien&&ancien.habit&&Object.keys(ancien.habit).length?ancien.habit:habit,mv:[]};
+  document.getElementById('es-go').disabled=true;
+  try{await saveSettings();closeSheet();goP('dash',document.querySelectorAll('.ni')[0]);toast('Enveloppes activées');setTimeout(openRepartir,350);}
+  catch(e){document.getElementById('es-go').disabled=false;err.textContent='Non enregistré : '+e.message;}
+}
+async function envDesactiver(){
+  if(!await confirmer('Revenir au budget par mois ?\nTes enveloppes sont gardées : tu pourras les réactiver plus tard.','Revenir au budget'))return;
+  env.actif=false;await envSave();toast('Budget par mois rétabli');
+}
+async function envReactiver(){env.actif=true;await envSave();toast('Enveloppes réactivées');}
+
+// ── Répartir
+let _rep={};
+function openRepartir(){
+  if(!envOn())return;
+  const C=envCalc(),P=C.P;_rep={};
+  const ligne=(p,cat)=>{const s=C.sol[p]||0,h=envHabit(p);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0"><div style="font-size:13px;color:${s<0?'var(--red)':'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p)}</div>
+      <div style="font-size:11px;color:var(--text3)">a ${fmtSigne(s)}${h?` · habituel ${fmt(h)}`:''}</div></div>
+      <input class="finp" data-rp="${esc(p)}" inputmode="numeric" style="width:110px;text-align:right;padding:8px 10px" placeholder="0" oninput="fmtAmtInput(this);repMaj()"></div>`;};
+  const bloc=(t,ps)=>ps.length?`<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin:12px 0 2px">${t}</div>${ps.map(p=>ligne(p)).join('')}`:'';
+  openSheet(sheetHead('Répartir '+fmt(Math.max(0,C.ar))+' F')+`
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Donne un rôle à chaque franc. Ce que tu ne répartis pas reste dans « À répartir ».</div>
+    <button onclick="repHabitude()" style="width:100%;padding:10px;border-radius:var(--rs);border:1.5px solid var(--blue);background:none;color:var(--blue);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">↺ Comme d'habitude</button>
+    <div style="font-size:11px;color:var(--text3);margin-top:5px">Remet à zéro les enveloppes dans le rouge, remplit les autres jusqu'à leur montant habituel, puis verse l'épargne habituelle.</div>
+    ${bloc('Dépenses fixes',P.fix)}${bloc('Dépenses courantes',P.vari)}${bloc('Épargne',P.epa)}
+    <div id="rp-reste" style="position:sticky;bottom:-24px;background:var(--surf);padding:12px 0 4px;margin-top:8px"></div>
+    <button class="btn-p" id="rp-go" onclick="repValider()">Valider la répartition</button>`);
+  repMaj();
+}
+function repVals(){const r={};document.querySelectorAll('[data-rp]').forEach(i=>{const v=parseAmt(i.value);if(v>0)r[i.dataset.rp]=v;});return r;}
+function repMaj(){
+  const C=envCalc(),r=repVals(),tot=Object.values(r).reduce((s,v)=>s+v,0),reste=C.ar-tot,el=document.getElementById('rp-reste');if(!el)return;
+  el.innerHTML=reste<0?`<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--red);font-weight:600"><span>Tu répartis plus que tu n'as</span><span>${fmt(-reste)} F de trop</span></div>`
+    :reste===0?`<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--green);font-weight:600"><span>Tout est réparti</span><span>0 F restant</span></div>`
+    :`<div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text2)"><span>Reste à répartir</span><b style="color:var(--text)">${fmt(reste)} F</b></div>`;
+  const b=document.getElementById('rp-go');if(b)b.disabled=reste<0||tot<=0;
+}
+function repHabitude(){
+  const C=envCalc(),P=C.P;let dispo=Math.max(0,C.ar);const r={};
+  const mettre=(p,v)=>{v=Math.min(v,dispo);if(v>0){r[p]=(r[p]||0)+v;dispo-=v;}};
+  [...P.fix,...P.vari,...P.epa].forEach(p=>{const s=C.sol[p]||0;if(s<0)mettre(p,-s);});          // 1. combler le rouge
+  [...P.fix,...P.vari].forEach(p=>{const s=Math.max(0,C.sol[p]||0),h=envHabit(p);if(h>s)mettre(p,h-s);}); // 2. remplir jusqu'à l'habituel
+  P.epa.forEach(p=>mettre(p,envHabit(p)));                                                          // 3. épargne habituelle
+  const fa=v=>v?Number(v).toLocaleString('fr-FR').replace(/ /g,' '):'';
+  document.querySelectorAll('[data-rp]').forEach(i=>i.value=fa(r[i.dataset.rp]));
+  repMaj();
+  if(!Object.keys(r).length)toast(C.ar>0?'Aucun montant habituel : remplis à la main, ou règle-les dans l\'onglet Enveloppes':'Rien à répartir');
+}
+async function repValider(){
+  const r=repVals(),C=envCalc(),tot=Object.values(r).reduce((s,v)=>s+v,0);
+  if(tot<=0||tot>C.ar)return;
+  const d=todayStr(),g=envNouvId();
+  Object.entries(r).forEach(([p,v])=>env.mv.push({id:envNouvId(),g,d,de:ENV_AR,vers:p,amt:v,t:'rep'}));
+  document.getElementById('rp-go').disabled=true;
+  try{await envSave();closeSheet();toast(fmt(tot)+' F répartis',{lib:'Annuler',fn:async()=>{env.mv=env.mv.filter(m=>m.g!==g);await envSave();toast('Répartition annulée');}});}
+  catch(e){toast('⚠ '+e.message);document.getElementById('rp-go').disabled=false;}
+}
+
+// ── Une enveloppe
+function openEnv(p){
+  const C=envCalc(),s=C.sol[p]||0,h=envHabit(p),epa=C.P.epa.includes(p),fix=C.P.fix.includes(p);
+  const T=txEnv().filter(t=>t.poste===p&&(ENV_DEP.includes(t.cat)||t.cat==='Epargne')).map(t=>({d:t.date,lib:t.cmt||(t.cat==='Epargne'?'Versement':'Dépense'),v:t.cat==='Epargne'?t.amt:-t.amt}));
+  const M=(env.mv||[]).filter(m=>m.de===p||m.vers===p).map(m=>{const entre=m.vers===p,autre=entre?m.de:m.vers;
+    return{d:m.d,lib:m.t==='rep'?'Répartition':(entre?'Depuis ':'Vers ')+(autre===ENV_AR?'À répartir':autre),v:entre?m.amt:-m.amt,puise:!entre&&epa&&m.t!=='rep'};});
+  const init=(env.initial||{})[p];
+  const hist=[...T,...M].sort((a,b)=>b.d.localeCompare(a.d)).slice(0,12);
+  const j=!epa&&!fix?envJours(p,s):null;
+  const o=objectifs.find(x=>(x.poste||x.nom)===p);
+  const moisCourant=todayStr().slice(0,7);
+  const puise=M.filter(m=>m.puise&&m.d.startsWith(moisCourant)).reduce((x,m)=>x-m.v,0);
+  openSheet(sheetHead(esc(p))+`
+    <div style="font-size:28px;font-weight:700;color:${s<0?'var(--red)':'var(--text)'}">${fmtSigne(s)}</div>
+    <div style="font-size:12px;color:var(--text2);margin:2px 0 12px">${s<0?'Tu as dépensé plus que ce qu\'il y avait dedans.':epa?(o?`Objectif ${esc(o.nom)} : ${fmt(o.cible)} F · ${o.cible>0?Math.max(0,Math.round(s/o.cible*100)):0} %`:'Épargne'):j!==null?`De quoi tenir environ ${j} jour${j>1?'s':''} à ton rythme.`:'Dans l\'enveloppe'}${h?` · habituel ${fmt(h)} F`:''}</div>
+    ${puise>0?`<div style="background:rgba(255,159,10,.12);border-radius:var(--rs);padding:9px 12px;font-size:12px;color:var(--amber);margin-bottom:12px">Tu as puisé ${fmt(puise)} F ici ce mois-ci.</div>`:''}
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="btn-p" style="flex:1;margin:0" onclick="openDeplacer(null,${jsa(p)})">${s<0?'Combler':'Ajouter de l\'argent'}</button>
+      ${s>0?`<button onclick="openDeplacer(${jsa(p)},null)" style="flex:1;padding:12px;border-radius:var(--r);border:1px solid var(--border2);background:none;color:var(--text);font-size:13.5px;cursor:pointer;font-family:var(--font)">${epa?'Puiser':'Déplacer'}</button>`:''}
+    </div>
+    <div class="fgrp"><div class="flbl">Montant habituel ${epa?'à verser':'pour la période'}</div><div style="display:flex;gap:8px"><input class="finp" id="ev-h" inputmode="numeric" value="${h?Number(h).toLocaleString('fr-FR').replace(/ /g,' '):''}" oninput="fmtAmtInput(this)" placeholder="0"><button onclick="envSetHabit(${jsa(p)})" style="padding:0 14px;border-radius:var(--rs);border:1px solid var(--border2);background:none;color:var(--blue);font-weight:600;cursor:pointer;font-family:var(--font)">OK</button></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Utilisé par « Comme d'habitude » quand tu répartis.</div></div>
+    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin:6px 0 4px">Historique</div>
+    ${hist.length?hist.map(x=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px"><span style="color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.lib)}<br><span style="color:var(--text3);font-size:11px">${x.d.slice(8)}/${x.d.slice(5,7)}</span></span><b style="color:${x.puise?'var(--amber)':x.v<0?'var(--text)':'var(--green)'};white-space:nowrap">${x.v<0?'−':'+'}${fmt(Math.abs(x.v))}</b></div>`).join(''):''}
+    ${init?`<div style="display:flex;justify-content:space-between;padding:7px 0;font-size:12.5px;color:var(--text2)"><span>Au départ (${env.depart.slice(8)}/${env.depart.slice(5,7)})</span><b>${fmt(init)}</b></div>`:''}
+    ${!hist.length&&!init?'<div style="font-size:12px;color:var(--text3)">Rien encore.</div>':''}`);
+}
+async function envSetHabit(p){const v=parseAmt(document.getElementById('ev-h').value);env.habit=env.habit||{};if(v>0)env.habit[p]=v;else delete env.habit[p];await envSave();toast('Montant habituel enregistré');openEnv(p);}
+
+// ── Déplacer / combler / puiser
+function openDeplacer(de,vers){
+  const C=envCalc(),P=C.P;
+  const tous=[ENV_AR,...P.fix,...P.vari,...P.epa];
+  const nom=p=>p===ENV_AR?'À répartir':p;
+  const s=p=>p===ENV_AR?C.ar:(C.sol[p]||0);
+  const def=vers&&!de?(vers&&(C.sol[vers]||0)<0?-(C.sol[vers]||0):0):0;
+  const sources=de?[de]:tous.filter(p=>p!==vers&&s(p)>0).sort((a,b)=>(P.epa.includes(a)-P.epa.includes(b))||(a===ENV_AR?-1:b===ENV_AR?1:s(b)-s(a)));
+  const dests=vers?[vers]:tous.filter(p=>p!==de);
+  const opt=(p)=>`<option value="${esc(p)}">${esc(nom(p))}${P.epa.includes(p)?' (épargne)':''} · ${fmtSigne(s(p))}</option>`;
+  openSheet(sheetHead(vers&&!de?((C.sol[vers]||0)<0?'Combler '+esc(vers):'Ajouter à '+esc(vers)):'Déplacer depuis '+esc(nom(de)))+`
+    ${sources.length?`<div class="fgrp"><div class="flbl">Prendre dans</div><select class="fsel" id="dp-de" onchange="dpMaj()">${sources.map(opt).join('')}</select></div>`:`<div style="font-size:12.5px;color:var(--text2);margin-bottom:12px">Aucune enveloppe n'a d'argent à donner. L'enveloppe restera en rouge jusqu'à ta prochaine répartition.</div>`}
+    <div class="fgrp"><div class="flbl">Mettre dans</div><select class="fsel" id="dp-vers" onchange="dpMaj()">${dests.map(opt).join('')}</select></div>
+    <div class="fgrp"><div class="flbl">Montant (FCFA)</div><input class="finp" id="dp-amt" inputmode="numeric" value="${def?Number(def).toLocaleString('fr-FR').replace(/ /g,' '):''}" oninput="fmtAmtInput(this);dpMaj()"></div>
+    <div id="dp-info" style="font-size:12px;min-height:16px;margin-bottom:10px;line-height:1.45"></div>
+    ${sources.length?`<button class="btn-p" id="dp-go" onclick="dpValider()">Déplacer</button>`:''}`);
+  dpMaj();
+}
+function dpMaj(){
+  const C=envCalc(),de=document.getElementById('dp-de')?.value,vers=document.getElementById('dp-vers')?.value,a=parseAmt(document.getElementById('dp-amt')?.value),el=document.getElementById('dp-info');if(!el||!de)return;
+  const dispo=de===ENV_AR?C.ar:(C.sol[de]||0),epa=C.P.epa.includes(de);
+  let t='',c='var(--text2)';
+  if(de===vers){t='Choisis deux enveloppes différentes.';c='var(--red)';}
+  else if(a>dispo){t=`Il n'y a que ${fmt(Math.max(0,dispo))} F dans ${de===ENV_AR?'« À répartir »':esc(de)}.`;c='var(--red)';}
+  else if(epa&&a>0){const o=objectifs.find(x=>(x.poste||x.nom)===de);t=`Tu puises ${fmt(a)} F dans ton épargne${o&&o.cible?` : ${esc(o.nom)} passera de ${Math.round(dispo/o.cible*100)} % à ${Math.round((dispo-a)/o.cible*100)} %`:''}.`;c='var(--amber)';}
+  el.style.color=c;el.innerHTML=t;
+  const b=document.getElementById('dp-go');if(b)b.disabled=!(a>0)||a>dispo||de===vers;
+}
+async function dpValider(){
+  const de=document.getElementById('dp-de').value,vers=document.getElementById('dp-vers').value,a=parseAmt(document.getElementById('dp-amt').value);
+  const C=envCalc(),dispo=de===ENV_AR?C.ar:(C.sol[de]||0);if(!(a>0)||a>dispo||de===vers)return;
+  const id=envNouvId();env.mv.push({id,d:todayStr(),de,vers,amt:a,t:'dep'});
+  try{await envSave();closeSheet();toast(fmt(a)+' F déplacés',{lib:'Annuler',fn:async()=>{env.mv=env.mv.filter(m=>m.id!==id);await envSave();}});}
+  catch(e){toast('⚠ '+e.message);}
+}
+
+// ── Onglet Enveloppes (remplace le budget par mois)
+function envNav(){const b=document.querySelectorAll('.ni')[3]?.querySelector('span');if(b)b.textContent=envOn()?'Enveloppes':'Budget';}
+function renderEnvPage(){
+  const el=document.getElementById('env-page');if(!el)return;
+  const C=envCalc(),P=C.P;
+  const bloc=(t,ps,epa)=>{if(!ps.length)return'';const tot=ps.reduce((x,p)=>x+(C.sol[p]||0),0);
+    return `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:13px;font-weight:600;color:var(--text)">${t}</span><b style="color:${tot<0?'var(--red)':'var(--text)'}">${fmtSigne(tot)}</b></div>
+    ${ps.map(p=>{const s=C.sol[p]||0,h=envHabit(p),dep=C.depense[p]||0;const pret=!epa&&s===0&&dep>0;
+      return `<div onclick="openEnv(${jsa(p)})" style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-top:1px solid var(--border);cursor:pointer">
+        <div style="min-width:0"><div style="font-size:13px;color:${s<0?'var(--red)':'var(--text)'}">${esc(p)}</div><div style="font-size:11px;color:var(--text3)">${h?'habituel '+fmt(h):'pas de montant habituel'}${dep?' · dépensé '+fmt(dep):''}</div></div>
+        <div style="font-size:13.5px;font-weight:600;white-space:nowrap;color:${s<0?'var(--red)':pret?'var(--green)':'var(--text)'}">${pret?'payé ✓':fmtSigne(s)}</div></div>`;}).join('')}</div>`;};
+  el.innerHTML=`<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div><div style="font-size:11.5px;color:var(--text2)">À répartir</div><div style="font-size:22px;font-weight:700;color:${C.ar<0?'var(--red)':'var(--text)'}">${fmtSigne(C.ar)}</div></div>
+      ${C.ar>0?`<button onclick="openRepartir()" style="background:var(--blue);color:#fff;border:none;border-radius:9px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">Répartir</button>`:''}</div>
+    ${bloc('Dépenses fixes',P.fix)}${bloc('Dépenses courantes',P.vari)}${bloc('Épargne',P.epa,true)}
+    <div style="font-size:11.5px;color:var(--text3);text-align:center;line-height:1.5;margin:6px 0 14px">Ajouter ou retirer une enveloppe : Profil → Postes personnalisés.<br>Depuis le ${env.depart.slice(8)}/${env.depart.slice(5,7)}/${env.depart.slice(0,4)} · <span onclick="envDesactiver()" style="color:var(--blue);cursor:pointer">revenir au budget par mois</span></div>`;
+}
+
+// ── Profil
+function renderEnvProfil(){
+  envNav();const el=document.getElementById('env-ui');if(!el)return;
+  if(espace){el.innerHTML='<div style="font-size:12px;color:var(--text3)">Disponible pour l\'instant dans ton espace perso seulement.</div>';return;}
+  el.innerHTML=envOn()?`<div style="font-size:12.5px;color:var(--text2);line-height:1.5;margin-bottom:10px">Activé depuis le ${env.depart.slice(8)}/${env.depart.slice(5,7)}. Ton argent se range dans des enveloppes qui se reportent d'un mois à l'autre.</div>
+      <button onclick="envDesactiver()" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:8px 14px;font-size:12.5px;color:var(--text2);cursor:pointer;font-family:var(--font)">Revenir au budget par mois</button>`
+    :`<div style="font-size:12.5px;color:var(--text2);line-height:1.5;margin-bottom:10px">Note tout à sa vraie date : l'argent qui entre se range dans des enveloppes (Alimentation, Loyer, Épargne…) qui ne se vident pas à la fin du mois. <span style="color:var(--amber)">Essai</span></div>
+      ${env&&env.depart?`<button onclick="envReactiver()" class="btn-p" style="margin-bottom:6px">Réactiver mes enveloppes</button>`:''}
+      <button onclick="openEnvStart()" ${env&&env.depart?'style="background:none;border:1px solid var(--border2);border-radius:8px;padding:8px 14px;font-size:12.5px;color:var(--text2);cursor:pointer;font-family:var(--font)"':'class="btn-p"'}>${env&&env.depart?'Repartir de zéro':'Passer aux enveloppes'}</button>`;
+}
+
+// ── Saisie : ce qui reste dans l'enveloppe
+function updResteEnv(){
+  const el=document.getElementById('f-reste');if(!el)return false;
+  if(!envOn())return false;
+  const poste=document.getElementById('f-poste')?.value;
+  if(!EXPENSE_CATS.includes(selCatVal)||!poste){el.innerHTML='';return true;}
+  const amt=parseAmt(document.getElementById('f-amt')?.value)||0,s=envSolde(poste),apres=s-amt;
+  const col=apres<0?'var(--red)':apres<Math.max(1,envHabit(poste))*0.2?'var(--amber)':'var(--green)';
+  el.innerHTML=`<div style="background:var(--surf2);border-radius:10px;padding:10px 12px;margin:-2px 0 12px">
+    <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text2)">Enveloppe ${esc(poste)}</span><b style="color:${s<0?'var(--red)':'var(--text)'}">${fmtSigne(s)}</b></div>
+    ${amt>0?`<div style="font-size:11.5px;color:${col};margin-top:5px">Après cette dépense : ${fmtSigne(apres)}${apres<0?' · l\'enveloppe passera dans le rouge':''}</div>`:''}</div>`;
+  return true;
+}
+
 // ═══════════════ VUE GRAPHIQUES DE L'ACCUEIL ═══════════════
 // Quatre graphiques, chacun pour une question : vais-je tenir ? où ça déborde ? qu'est-ce qui pèse ? est-ce que je progresse ?
 let vueGraph=false;try{vueGraph=localStorage.getItem('fiinas-vue')==='g';}catch(e){}
 function setVue(g){vueGraph=g;try{localStorage.setItem('fiinas-vue',g?'g':'r');}catch(e){}window.scrollTo(0,0);renderDash();}
 function renderVueSwitch(){
   const pg=document.getElementById('page-dash'),sw=document.getElementById('vue-sw');if(!pg||!sw)return;
-  const annuel=isAnnual();
+  const annuel=isAnnual()||envOn();   // en mode enveloppes, pas de vue graphique (elle juge au budget du mois)
   sw.style.display=annuel?'none':'';
   pg.classList.toggle('vue-g',vueGraph&&!annuel);
   sw.innerHTML=`<button class="${vueGraph?'':'on'}" onclick="setVue(false)">Résumé</button><button class="${vueGraph?'on':''}" onclick="setVue(true)">Graphiques</button>`;
@@ -2585,7 +2894,7 @@ async function initEspaces(){
 
 // ── Changer d'espace
 function viderDonnees(){
-  txs=[];mouvs=[];budget={};budgetDetails={};custom={};modules={};comptes=[];objectifs=[];dettes=[];recur=[];suggMasq={};
+  txs=[];mouvs=[];budget={};budgetDetails={};custom={};modules={};comptes=[];objectifs=[];dettes=[];recur=[];suggMasq={};env=null;
   lastSettingsHash='';_txOk=false;_setOk=false;_recurAutoFait=false;CATS=JSON.parse(JSON.stringify(DEFAULT_CATS));
 }
 function changerEspace(fid){
@@ -3006,6 +3315,7 @@ async function payCorrige(key,cid){
 // Fonctions facultatives, activées depuis Profil → Modules ou par une suggestion sur l'accueil.
 // Désactiver un module masque ses écrans sans rien effacer.
 function renderModulesUI(){
+  renderEnvProfil();
   const el=document.getElementById('modules-ui');if(!el)return;
   const on=!!modules.comptes;
   el.innerHTML=`<div class="srow">
@@ -3385,6 +3695,7 @@ const VIOLET='#A78BFA';
 // Un objectif est lié à un poste d'épargne (o.poste) : toute épargne sur ce poste le fait avancer
 function objDuPoste(p){return modules.objectifs?objectifs.find(o=>o.poste===p)||null:null;}
 function progObj(o){
+  if(envOn())return envSolde(o.poste||o.nom);
   let s=o.depart||0;
   txs.forEach(t=>{if(t.cat==='Epargne'&&(t.objectif?t.objectif===o.id:t.poste===(o.poste||o.nom)))s+=t.amt||0;});
   mouvs.forEach(m=>{if(m.type==='retrait_obj'&&m.objectif===o.id)s-=m.amt||0;});
@@ -3982,6 +4293,7 @@ const MS=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','D
 
 let pendingSaves=0,lastSettingsHash='';
 let modules={},comptes=[],objectifs=[],dettes=[],suggMasq={},mouvs=[],unsub3=null,recur=[],_txOk=false,_setOk=false;
+// (env : voir MODE ENVELOPPES)
 let uid=null,txs=[],budget={},custom={},unsub1=null,unsub2=null;
 let formDirty=false;
 let budDirty=false; // montants du budget saisis mais pas encore enregistrés
@@ -4102,13 +4414,13 @@ function subscribe(){
       const d=snap.data();
       // Empreinte de tous les réglages (budgets, détails, postes) : un changement fait sur
       // un autre appareil est toujours appliqué
-      const newHash=JSON.stringify([d.budget||{},d.budgetDetails||{},d.custom||{},d.cats||null,d.modules||{},d.comptes||[],d.suggMasq||{},d.objectifs||[],d.dettes||[],d.recur||[]]);
+      const newHash=JSON.stringify([d.budget||{},d.budgetDetails||{},d.custom||{},d.cats||null,d.modules||{},d.comptes||[],d.suggMasq||{},d.objectifs||[],d.dettes||[],d.recur||[],d.env||null]);
       if(newHash!==lastSettingsHash){
         lastSettingsHash=newHash;
         budget=d.budget||{};
         budgetDetails=d.budgetDetails||{};
         custom=d.custom||{};
-        modules=d.modules||{};comptes=d.comptes||[];suggMasq=d.suggMasq||{};objectifs=d.objectifs||[];dettes=d.dettes||[];recur=d.recur||[];
+        modules=d.modules||{};comptes=d.comptes||[];suggMasq=d.suggMasq||{};objectifs=d.objectifs||[];dettes=d.dettes||[];recur=d.recur||[];env=d.env||null;
         loadCatsFromSettings(d);
       }
       _setOk=true;if(_txOk)recurAuto();
@@ -4131,10 +4443,10 @@ function loadError(what,err){
 
 async function saveSettings(){
   const{db,doc,setDoc}=window._fb;
-  lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,CATS,modules,comptes,suggMasq,objectifs,dettes,recur]);
+  lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,CATS,modules,comptes,suggMasq,objectifs,dettes,recur,env]);
   // mergeFields : ces 4 champs sont remplacés en entier. Avec {merge:true}, Firestore fusionnait
   // les sous-niveaux et ne supprimait jamais un poste ramené à 0 : l'ancien montant revenait.
-  await setDoc(doc(db,dataPath()+'/data/settings'),{budget,budgetDetails,custom,cats:CATS,modules,comptes,suggMasq,objectifs,dettes,recur},{mergeFields:['budget','budgetDetails','custom','cats','modules','comptes','suggMasq','objectifs','dettes','recur']});
+  await setDoc(doc(db,dataPath()+'/data/settings'),{budget,budgetDetails,custom,cats:CATS,modules,comptes,suggMasq,objectifs,dettes,recur,env:env||null},{mergeFields:['budget','budgetDetails','custom','cats','modules','comptes','suggMasq','objectifs','dettes','recur','env']});
   budDirty=false;
 }
 
@@ -4252,7 +4564,7 @@ function goP(p,btn){
   if(btn)btn.classList.add('active');
   placeMonthSel(p);
   // Bandeau : ton nom sur l'accueil, le nom de l'écran ailleurs
-  const TITRES={tx:'Historique',add:'Ajouter',bud:'Budget',pro:'Profil',imp:'Importer',cpt:'Mes comptes',obj:'Objectifs',det:'Dettes et prêts'};
+  const TITRES={tx:'Historique',add:'Ajouter',bud:envOn()?'Enveloppes':'Budget',pro:'Profil',imp:'Importer',cpt:'Mes comptes',obj:'Objectifs',det:'Dettes et prêts'};
   const un=document.getElementById('uname');if(un)un.textContent=p==='dash'?(espace?espace.nom:(userName||'—')):(TITRES[p]||'');
   if(p==='dash')renderDash();
   else if(p==='tx')renderTX();
@@ -4311,7 +4623,7 @@ function actionRaccourci(){
 async function renderDash(){
   if(!_qdnFait){_qdnFait=true;if(actionRaccourci())return;setTimeout(quoiDeNeuf,600);setTimeout(guideAuto,2500);setTimeout(()=>{let g=null;try{g=localStorage.getItem('fiinas-guide');}catch(e){}if(g)proposerProtection();},4500);}
   renderBackupBanner();
-  renderVueSwitch();
+  renderVueSwitch();renderEnvDash();envNav();
   renderCptDash();renderObjDash();renderDetDash();renderPointBanner();renderRecurDash();renderMajBanner();renderBilanDash();renderBilanMoisDash();renderPrepDash();renderFoyerDash();
   if(isAnnual()){const h=document.getElementById('hero');h.className='hero';h.onclick=null;h.style.cursor='';['watch','cpt-dash','obj-dash','det-dash','point-banner','bilan-dash','bilanm-dash','prep-dash'].forEach(i=>{const e=document.getElementById(i);if(e)e.innerHTML='';});document.getElementById('detail-wrap').style.display='block';renderDashAnnual();return;}
   const ym=curYM();const t=txYM(ym);
@@ -4673,7 +4985,8 @@ async function saveTx(){
     :'Enregistré hors ligne · sync au retour du réseau');
   setFormDirty(false);
   goP('tx',document.querySelectorAll('.ni')[1]);
-  if(alertInfo&&alertInfo.crossed)showBudgetAlert(alertInfo);
+  if(envOn()){if(selCatVal==='Revenu')setTimeout(()=>toast('Argent ajouté à « À répartir »',{lib:'Répartir',fn:openRepartir}),2600);}
+  else if(alertInfo&&alertInfo.crossed)showBudgetAlert(alertInfo);
 }
 
 // ═══════════════ ALERTES BUDGET ═══════════════
@@ -4689,6 +5002,7 @@ function budgetStatus(cat,poste,ym,add){
   return{poste,ym,b,before,after,reste:b-after,pct:Math.round(after/b*100),level:lvl(after),crossed:lvl(after)>lvl(before)};
 }
 function updReste(){
+  if(updResteEnv())return;
   const el=document.getElementById('f-reste');if(!el)return;
   const poste=document.getElementById('f-poste')?.value;
   const date=document.getElementById('f-date')?.value||todayStr();
@@ -4928,6 +5242,8 @@ function renderTX(){
 
 // BUDGET
 function renderBudPage(){
+  const pb=document.getElementById('page-bud');pb.classList.toggle('mode-env',envOn());envNav();
+  if(envOn()){renderEnvPage();return;}
   const y0=new Date().getFullYear();
   // Années proposées : jusqu'à 2 ans devant, ou jusqu'au dernier mois déjà budgété
   const yMax=Math.max(y0+2,...Object.keys(budget).map(k=>parseInt(k)).filter(n=>n>0&&n<y0+20));
@@ -6463,11 +6779,11 @@ async function restoreBackup(input){
     }
     if(b.settings&&Object.keys(b.settings).length){
       await setDoc(doc(db,base+'/data/settings'),b.settings);
-      modules=b.settings.modules||{};comptes=b.settings.comptes||[];suggMasq=b.settings.suggMasq||{};objectifs=b.settings.objectifs||[];dettes=b.settings.dettes||[];recur=b.settings.recur||[];
+      modules=b.settings.modules||{};comptes=b.settings.comptes||[];suggMasq=b.settings.suggMasq||{};objectifs=b.settings.objectifs||[];dettes=b.settings.dettes||[];recur=b.settings.recur||[];env=b.settings.env||null;
       // Mise à jour immédiate de l'écran (l'écho local de cet enregistrement est ignoré)
       budget=b.settings.budget||{};budgetDetails=b.settings.budgetDetails||{};custom=b.settings.custom||{};
       loadCatsFromSettings(b.settings);
-      lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,b.settings.cats||null,modules,comptes,suggMasq,objectifs,dettes,recur]);
+      lastSettingsHash=JSON.stringify([budget,budgetDetails,custom,b.settings.cats||null,modules,comptes,suggMasq,objectifs,dettes,recur,env]);
       renderCurrent();renderCPUI();
     }
     toast('Restauration terminée ✓ ('+n+' transactions)');
