@@ -1708,7 +1708,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='64';
+const APP_VERSION='65';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -2109,60 +2109,79 @@ function openEnv(p){
 }
 async function envSetHabit(p){const v=parseAmt(document.getElementById('ev-h').value);env.habit=env.habit||{};if(v>0)env.habit[p]=v;else delete env.habit[p];await envSave();toast('Montant habituel enregistré');openEnv(p);}
 
-// ── Déplacer / combler / puiser : choisir l'autre enveloppe d'un toucher, montant pré-rempli
-// openDeplacer(de,null) : depuis « de », on choisit qui reçoit ; openDeplacer(null,vers) : on choisit d'où vient l'argent.
+// ── Déplacer / combler / puiser : un seul écran. Liste déroulante aux couleurs de l'appli (groupes :
+// dans le rouge, dernières utilisées, autres, épargne et à répartir), montant pré-rempli, effet affiché.
+// openDeplacer(de,null) : on choisit qui reçoit ; openDeplacer(null,vers) : on choisit qui donne.
 let _dp=null;
-function openDeplacer(de,vers){
-  const C=envCalc(),P=C.P,s=p=>p===ENV_AR?C.ar:(C.sol[p]||0),nom=p=>p===ENV_AR?'À répartir':p;
-  if(de&&vers)return dpMontant(de,vers);
+function dpListe(de,vers){
+  const C=envCalc(),P=C.P,s=p=>p===ENV_AR?C.ar:(C.sol[p]||0);
   const ST=envStatsPeriode(),der=p=>(ST.R[p]&&ST.R[p].der)||'';
-  let liste,titre,sous;
-  if(de){
-    titre='Déplacer depuis '+esc(nom(de));sous=`${fmt(Math.max(0,s(de)))} F disponibles · touche l'enveloppe qui reçoit`;
-    const dep=[...P.fix,...P.vari].filter(p=>p!==de);
-    liste=[...dep.filter(p=>s(p)<0).sort((a,b)=>s(a)-s(b)),...dep.filter(p=>s(p)>=0).sort((a,b)=>der(b).localeCompare(der(a))||a.localeCompare(b)),...P.epa.filter(p=>p!==de),...(de!==ENV_AR?[ENV_AR]:[])];
-  }else{
-    const manque=s(vers)<0;
-    titre=(manque?'Combler ':'Ajouter à ')+esc(nom(vers));sous=manque?`Il manque ${fmt(-s(vers))} F · touche l'enveloppe qui donne`:'Touche l\'enveloppe qui donne';
-    const src=[...P.fix,...P.vari].filter(p=>p!==vers&&s(p)>0).sort((a,b)=>s(b)-s(a));
-    liste=[...(C.ar>0&&vers!==ENV_AR?[ENV_AR]:[]),...src,...P.epa.filter(p=>p!==vers&&s(p)>0)];
+  const dep=[...P.fix,...P.vari];
+  if(de){                                   // qui reçoit
+    const L=dep.filter(p=>p!==de),rouge=L.filter(p=>s(p)<0).sort((a,b)=>s(a)-s(b));
+    const recents=L.filter(p=>s(p)>=0&&der(p)).sort((a,b)=>der(b).localeCompare(der(a))).slice(0,4);
+    const autres=L.filter(p=>s(p)>=0&&!recents.includes(p)).sort((a,b)=>a.localeCompare(b));
+    return[['Dans le rouge',rouge],['Dernières utilisées',recents],['Autres enveloppes',autres],['Épargne et à répartir',[...P.epa.filter(p=>p!==de),...(de!==ENV_AR?[ENV_AR]:[])]]].filter(g=>g[1].length);
   }
-  _dp={de,vers};
-  const pz=p=>{const v=s(p),epa=P.epa.includes(p),neg=v<0;
-    return `<button onclick="${de?`dpMontant(${jsa(de)},${jsa(p)})`:`dpMontant(${jsa(p)},${jsa(vers)})`}" style="display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;border:${neg?'1.5px solid var(--red)':epa?'1px solid var(--amber)':'1px solid var(--border2)'};background:none;border-radius:11px;padding:7px 10px;margin:0 6px 7px 0;cursor:pointer;font-family:var(--font);text-align:left">
-      <span style="font-size:12.5px;font-weight:600;color:${neg?'var(--red)':epa?'var(--amber)':'var(--text)'}">${esc(nom(p))}</span><span style="font-size:11.5px;color:${neg?'var(--red)':'var(--text3)'}">${fmtSigne(v).replace(' F','')}</span></button>`;};
-  openSheet(sheetHead(titre)+`<div style="font-size:12px;color:var(--text2);margin-bottom:12px">${sous}</div>
-    ${liste.length?`<div>${liste.map(pz).join('')}</div>`:`<div style="font-size:12.5px;color:var(--text2);line-height:1.5">Aucune enveloppe n'a d'argent à donner. L'enveloppe restera en rouge jusqu'à ta prochaine répartition.</div>`}
-    ${de&&liste.some(p=>s(p)<0)?'<div style="font-size:11px;color:var(--text3);margin-top:2px">Les enveloppes dans le rouge sont en premier.</div>':''}
-    ${!de&&liste.some(p=>P.epa.includes(p))?'<div style="font-size:11px;color:var(--text3);margin-top:2px">L\'épargne, en jaune, est proposée en dernier.</div>':''}`);
+  const src=dep.filter(p=>p!==vers&&s(p)>0).sort((a,b)=>s(b)-s(a));   // qui donne
+  return[['À répartir',C.ar>0&&vers!==ENV_AR?[ENV_AR]:[]],['Enveloppes avec de la marge',src],['Épargne',P.epa.filter(p=>p!==vers&&s(p)>0)]].filter(g=>g[1].length);
 }
-function dpMontant(de,vers){
+function openDeplacer(de,vers){
+  const C=envCalc(),s=p=>p===ENV_AR?C.ar:(C.sol[p]||0),nom=p=>p===ENV_AR?'À répartir':p;
+  const sens=de?'vers':'de',fixe=de||vers,G=dpListe(de,vers),premier=G.length?G[0][1][0]:null;
+  if(de&&vers)_dp={sens:'vers',fixe:de,choix:vers};
+  else _dp={sens,fixe,choix:premier};
+  const manque=!de&&s(vers)<0;
+  openSheet(sheetHead(de?'Déplacer depuis '+esc(nom(de)):(manque?'Combler ':'Ajouter à ')+esc(nom(vers)))+`
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${de?`${fmt(Math.max(0,s(de)))} F disponibles`:manque?`Il manque ${fmt(-s(vers))} F`:`${esc(nom(vers))} : ${fmtSigne(s(vers))}`}</div>
+    ${premier?`<div class="flbl">${sens==='vers'?'Vers':'Depuis'}</div>
+    <div style="position:relative;margin-bottom:12px">
+      <button id="dp-sel" onclick="dpOuvrir()" style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--surf2);border:1px solid var(--border2);border-radius:var(--rs);padding:11px 12px;cursor:pointer;font-family:var(--font);color:var(--text);font-size:14px;text-align:left"></button>
+      <div id="dp-liste" style="display:none;margin-top:6px;background:var(--surf2);border:1px solid var(--border2);border-radius:var(--rs);max-height:260px;overflow-y:auto"></div>
+    </div>
+    <div class="flbl">Montant</div>
+    <input id="dp-amt" class="finp" inputmode="numeric" oninput="fmtAmtInput(this);document.getElementById('dp-pour').textContent='';dpMaj()" style="font-size:22px;font-weight:700;text-align:center;padding:9px;margin-bottom:4px">
+    <div id="dp-pour" style="font-size:11.5px;color:var(--text3);text-align:center;min-height:15px;margin-bottom:6px"></div>
+    <div id="dp-rapides" style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:12px"></div>
+    <div id="dp-effet" style="background:var(--surf2);border-radius:var(--rs);padding:9px 12px;font-size:12px;margin-bottom:10px;line-height:1.6"></div>
+    <div id="dp-info" style="font-size:12px;margin-bottom:10px;line-height:1.45"></div>
+    <button class="btn-p" id="dp-go" onclick="dpValider()">Déplacer</button>`
+    :`<div style="font-size:12.5px;color:var(--text2);line-height:1.5">Aucune enveloppe n'a d'argent à donner. L'enveloppe restera en rouge jusqu'à ta prochaine répartition.</div>`}`);
+  if(premier)dpChoisir(_dp.choix);
+}
+function dpPaire(){return _dp.sens==='vers'?{de:_dp.fixe,vers:_dp.choix}:{de:_dp.choix,vers:_dp.fixe};}
+function dpOuvrir(){
+  const el=document.getElementById('dp-liste');if(!el)return;
+  if(el.style.display==='block'){el.style.display='none';return;}
   const C=envCalc(),P=C.P,s=p=>p===ENV_AR?C.ar:(C.sol[p]||0),nom=p=>p===ENV_AR?'À répartir':p;
+  const G=_dp.sens==='vers'?dpListe(_dp.fixe,null):dpListe(null,_dp.fixe);
+  el.innerHTML=G.map(([t,ps])=>`<div style="padding:8px 12px 3px;font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px">${t}</div>`+
+    ps.map(p=>{const v=s(p),epa=P.epa.includes(p),on=p===_dp.choix;
+      return `<div onclick="dpChoisir(${jsa(p)})" style="display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-top:1px solid var(--border);cursor:pointer;background:${on?'var(--bd)':'none'}"><span style="font-size:13.5px;color:${v<0?'var(--red)':epa?'var(--amber)':'var(--text)'};${on?'font-weight:600':''}">${esc(nom(p))}</span><span style="font-size:13px;color:${v<0?'var(--red)':'var(--text2)'};white-space:nowrap">${fmtSigne(v).replace(' F','')}</span></div>`;}).join('')).join('');
+  el.style.display='block';
+}
+function dpChoisir(p){
+  _dp.choix=p;const l=document.getElementById('dp-liste');if(l)l.style.display='none';
+  const C=envCalc(),P=C.P,s=x=>x===ENV_AR?C.ar:(C.sol[x]||0),nom=x=>x===ENV_AR?'À répartir':x,{de,vers}=dpPaire();
+  const v=s(p),epa=P.epa.includes(p);
+  document.getElementById('dp-sel').innerHTML=`<span style="color:${v<0?'var(--red)':epa?'var(--amber)':'var(--text)'};font-weight:600">${esc(nom(p))}</span><span style="display:flex;align-items:center;gap:8px"><span style="color:${v<0?'var(--red)':'var(--text2)'};font-size:13px">${fmtSigne(v).replace(' F','')}</span><span style="color:var(--text3)">▾</span></span>`;
   const dispo=Math.max(0,s(de)),besoin=s(vers)<0?-s(vers):0;
   const gap=vers!==ENV_AR&&!P.epa.includes(vers)?Math.max(0,envHabit(vers)-Math.max(0,s(vers))):0;
   const def=Math.min(dispo,besoin||gap||dispo);
-  const arr=v=>Math.round(v/500)*500;
-  const rapides=[...new Set([besoin,gap,arr(dispo/2),dispo].filter(v=>v>0&&v<=dispo))].sort((a,b)=>a-b).slice(0,4);
-  const retour=_dp&&_dp.de?`openDeplacer(${jsa(de)},null)`:`openDeplacer(null,${jsa(vers)})`;
-  _dp={de,vers,dispo};
-  const fa=v=>v?Number(v).toLocaleString('fr-FR').replace(/ /g,' '):'';
-  openSheet(sheetHead(esc(nom(de))+' → '+esc(nom(vers)))+`
-    <input id="dp-amt" class="finp" inputmode="numeric" value="${fa(def)}" oninput="fmtAmtInput(this);dpMaj()" style="font-size:26px;font-weight:700;text-align:center;padding:10px;margin-bottom:4px">
-    <div id="dp-pour" style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:10px">${besoin&&def===besoin?`pour remettre ${esc(nom(vers))} à zéro`:gap&&def===gap?`pour remplir ${esc(nom(vers))} jusqu'à son montant habituel`:''}</div>
-    <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:12px">${rapides.map(v=>`<button onclick="document.getElementById('dp-amt').value='${fa(v)}';document.getElementById('dp-pour').textContent='';dpMaj()" style="border:1px solid var(--border2);background:none;border-radius:16px;padding:6px 11px;font-size:12px;color:var(--text2);cursor:pointer;font-family:var(--font)">${v===dispo?'Tout ('+fmt(v)+')':fmt(v)}</button>`).join('')}</div>
-    <div id="dp-effet" style="background:var(--surf2);border-radius:var(--rs);padding:9px 12px;font-size:12px;margin-bottom:10px;line-height:1.6"></div>
-    <div id="dp-info" style="font-size:12px;min-height:4px;margin-bottom:10px;line-height:1.45"></div>
-    <button class="btn-p" id="dp-go" onclick="dpValider()">Déplacer</button>
-    <div onclick="${retour}" style="text-align:center;font-size:12.5px;color:var(--text2);cursor:pointer;margin-top:10px">‹ Changer d'enveloppe</div>`);
+  const fa=x=>x?Number(x).toLocaleString('fr-FR').replace(/ /g,' '):'';
+  document.getElementById('dp-amt').value=fa(def);
+  document.getElementById('dp-pour').textContent=besoin&&def===besoin?`pour remettre ${nom(vers)} à zéro`:gap&&def===gap?`pour remplir ${nom(vers)} jusqu'à son montant habituel`:'';
+  const rap=[...new Set([besoin,gap,Math.round(dispo/2/500)*500,dispo].filter(x=>x>0&&x<=dispo))].sort((a,b)=>a-b).slice(0,4);
+  document.getElementById('dp-rapides').innerHTML=rap.map(x=>`<button onclick="document.getElementById('dp-amt').value='${fa(x)}';document.getElementById('dp-pour').textContent='';dpMaj()" style="border:1px solid var(--border2);background:none;border-radius:16px;padding:6px 11px;font-size:12px;color:var(--text2);cursor:pointer;font-family:var(--font)">${x===dispo?'Tout ('+fmt(x)+')':fmt(x)}</button>`).join('');
   dpMaj();
 }
 function dpMaj(){
   if(!_dp||!document.getElementById('dp-amt'))return;
-  const C=envCalc(),P=C.P,{de,vers}=_dp,s=p=>p===ENV_AR?C.ar:(C.sol[p]||0),nom=p=>p===ENV_AR?'À répartir':p;
+  const C=envCalc(),P=C.P,{de,vers}=dpPaire(),s=p=>p===ENV_AR?C.ar:(C.sol[p]||0),nom=p=>p===ENV_AR?'À répartir':p;
   const a=parseAmt(document.getElementById('dp-amt').value)||0,dispo=Math.max(0,s(de));
-  const col=v=>v<0?'var(--red)':'var(--text)';
-  document.getElementById('dp-effet').innerHTML=`<div style="display:flex;justify-content:space-between;gap:8px"><span>${esc(nom(de))}</span><span>${fmtSigne(s(de)).replace(' F','')} → <b style="color:${col(s(de)-a)}">${fmtSigne(s(de)-a).replace(' F','')}</b></span></div>
-    <div style="display:flex;justify-content:space-between;gap:8px"><span>${esc(nom(vers))}</span><span style="color:${col(s(vers))}">${fmtSigne(s(vers)).replace(' F','')}</span><span>→ <b style="color:${s(vers)+a<0?'var(--red)':'var(--green)'}">${fmtSigne(s(vers)+a).replace(' F','')}</b></span></div>`;
+  const v=x=>fmtSigne(x).replace(' F','');
+  document.getElementById('dp-effet').innerHTML=`<div style="display:flex;justify-content:space-between;gap:8px"><span>${esc(nom(de))}</span><span>${v(s(de))} → <b style="color:${s(de)-a<0?'var(--red)':'var(--text)'}">${v(s(de)-a)}</b></span></div>
+    <div style="display:flex;justify-content:space-between;gap:8px"><span>${esc(nom(vers))}</span><span><span style="color:${s(vers)<0?'var(--red)':'inherit'}">${v(s(vers))}</span> → <b style="color:${s(vers)+a<0?'var(--red)':'var(--green)'}">${v(s(vers)+a)}</b></span></div>`;
   const el=document.getElementById('dp-info');let t='',c='var(--text2)';
   if(a>dispo){t=`Il n'y a que ${fmt(dispo)} F dans ${de===ENV_AR?'« À répartir »':esc(de)}.`;c='var(--red)';}
   else if(P.epa.includes(de)&&a>0){const o=objectifs.find(x=>(x.poste||x.nom)===de);t=`Tu puises ${fmt(a)} F dans ton épargne${o&&o.cible?` : ${esc(o.nom)} passera de ${Math.round(s(de)/o.cible*100)} % à ${Math.round((s(de)-a)/o.cible*100)} %`:''}.`;c='var(--amber)';}
@@ -2170,7 +2189,7 @@ function dpMaj(){
   const b=document.getElementById('dp-go');b.disabled=!(a>0)||a>dispo;b.textContent=a>0?`Déplacer ${fmt(a)} F`:'Déplacer';
 }
 async function dpValider(){
-  if(!_dp)return;const{de,vers}=_dp,a=parseAmt(document.getElementById('dp-amt').value);
+  if(!_dp)return;const{de,vers}=dpPaire(),a=parseAmt(document.getElementById('dp-amt').value);
   const C=envCalc(),dispo=de===ENV_AR?C.ar:(C.sol[de]||0);if(!(a>0)||a>dispo||de===vers)return;
   const id=envNouvId();env.mv.push({id,d:todayStr(),de,vers,amt:a,t:'dep'});
   try{await envSave();closeSheet();_dp=null;toast(fmt(a)+' F déplacés',{lib:'Annuler',fn:async()=>{env.mv=env.mv.filter(m=>m.id!==id);await envSave();}});}
