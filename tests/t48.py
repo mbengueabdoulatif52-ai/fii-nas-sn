@@ -15,6 +15,7 @@ try:
     pg,errs=page(b,json.dumps(st),now=dt.datetime(2026,11,26,14))
     E(pg,"goP('pro',document.querySelectorAll('.ni')[4])");pg.wait_for_timeout(200)
     print('caché par défaut:',not pg.locator('#env-card').is_visible())
+    print('compte développeur:',pg.evaluate("(()=>{const u=window._fb.auth.currentUser;window._fb.auth.currentUser={email:'MbengueArchibuilding@gmail.com'};const r=estDev();window._fb.auth.currentUser=u;return r})()"))
     for _ in range(7): pg.click('#version-app')
     pg.wait_for_timeout(200);print('visible en développeur:',pg.locator('#env-card').is_visible())
     pg.click('#env-ui >> text=Passer aux enveloppes');pg.wait_for_timeout(300)

@@ -1707,7 +1707,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='58';
+const APP_VERSION='59';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -2107,7 +2107,13 @@ function renderEnvPage(){
 // ── Profil
 // Réservé au développeur pendant l'essai : 7 touchers sur le numéro de version (Profil) l'affichent sur ce téléphone.
 // Un compte qui a déjà des enveloppes garde la carte, pour pouvoir revenir au budget par mois.
-function estDev(){try{return localStorage.getItem('fiinas-dev')==='1';}catch(e){return false;}}
+// Comptes développeur : le mode développeur y est actif sur tous les téléphones, sans les 7 touchers
+const DEV_EMAILS=['mbenguearchibuilding@gmail.com'];
+function estDev(){
+  const em=(window._fb?.auth?.currentUser?.email||'').toLowerCase();
+  if(DEV_EMAILS.includes(em))return true;
+  try{return localStorage.getItem('fiinas-dev')==='1';}catch(e){return false;}
+}
 let _devTaps=0,_devT=0;
 function tapVersion(){const n=Date.now();_devTaps=n-_devT<1500?_devTaps+1:1;_devT=n;
   if(_devTaps>=7){_devTaps=0;const on=!estDev();try{localStorage.setItem('fiinas-dev',on?'1':'0');}catch(e){}toast(on?'Mode développeur activé':'Mode développeur désactivé');renderEnvProfil();}}
