@@ -112,7 +112,7 @@ body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin
 #page-dash.mode-env #env-dash,#page-bud.mode-env #env-page{display:block}
 #page-dash.mode-env #hero,#page-dash.mode-env #bilan-dash,#page-dash.mode-env #bilanm-dash,#page-dash.mode-env #prep-dash,#page-dash.mode-env #watch,#page-dash.mode-env #alerts-wrap{display:none!important}
 #page-bud.mode-env>:not(#env-page){display:none!important}
-#page-dash.mode-env .mnav,#page-dash.mode-env #dm,#page-dash.mode-env #detail-wrap,#page-dash.mode-env #obj-dash{display:none!important}
+#page-dash.mode-env .mnav,#page-dash.mode-env #dm,#page-dash.mode-env #detail-wrap,#page-dash.mode-env #tiles,#page-dash.mode-env #cpt-dash{display:none!important}
 /* Accueil enveloppes */
 .ei{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
 .ed-half{flex:1;min-width:0;background:var(--surf2);border-radius:var(--rs);padding:9px 11px}
@@ -1745,7 +1745,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='69';
+const APP_VERSION='70';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1861,12 +1861,23 @@ function envCalc(lim){
   (env.mv||[]).filter(m=>!lim||m.d<lim).forEach(m=>{const a=m.amt||0;
     if(m.de===ENV_AR)ar-=a;else sol[m.de]=(sol[m.de]||0)-a;
     if(m.vers===ENV_AR)ar+=a;else sol[m.vers]=(sol[m.vers]||0)+a;});
+  // Dettes et prêts notés après le démarrage : tout passe par « À répartir ».
+  // Emprunter (achat à crédit compris) et être remboursé : entrée. Prêter et rembourser : sortie.
+  // L'achat à crédit est aussi une dépense notée dans sa poche : le solde ne bouge pas tant qu'on n'a pas payé.
+  dettes.forEach(d=>{if(envApres(d.date,envTsDette(d),lim))ar+=(d.sens==='pret'?-1:1)*(d.montant||0);});
+  mouvs.forEach(m=>{if(m.type!=='remb'||!envApres(m.date,m.ts?Date.parse(m.ts):0,lim))return;const d=dettes.find(x=>x.id===m.dette);if(d)ar+=(d.sens==='pret'?1:-1)*(m.amt||0);});
   // Retraits d'objectif faits avec l'ancien bouton (mouvement « retrait_obj ») après le départ
   mouvs.forEach(m=>{if(m.type==='retrait_obj'&&(m.date||'')>=env.depart&&(!lim||(m.date||'')<lim)){const o=objectifs.find(x=>x.id===m.objectif);if(o){sol[o.poste||o.nom]=(sol[o.poste||o.nom]||0)-(m.amt||0);ar+=m.amt||0;}}});
   const tot=ar+Object.values(sol).reduce((s,v)=>s+v,0);
   return{sol,ar,tot,depense,verse,P};
 }
 function envSolde(p){return envCalc().sol[p]||0;}
+// Compte après le démarrage : daté d'après, ou du jour même mais créé après l'activation (env.t0).
+// Sans heure de démarrage connue, ce qui est daté du jour du démarrage fait partie du point de départ.
+function envApres(date,ts,lim){if(!date||(lim&&date>=lim))return false;if(date>env.depart)return true;const t0=envT0();return date===env.depart&&!!t0&&ts>t0;}
+// Heure d'activation ; pour les comptes activés avant qu'on la note, celle de la première répartition
+function envT0(){if(env.t0)return env.t0;const L=(env.mv||[]).filter(m=>m.d===env.depart).map(m=>parseInt(String(m.id).slice(0,-4),36)).filter(t=>t>1e12);return L.length?Math.min(...L):0;}
+function envTsDette(d){const t=/^d[0-9a-z]+$/.test(d.id||'')?parseInt(d.id.slice(1),36):0;return t>1e12?t:0;}
 // Rythme d'une enveloppe courante : dépenses des 14 derniers jours → jours restants
 // Rythme quotidien d'une enveloppe, seulement s'il veut dire quelque chose : au moins 7 jours d'historique
 // et des dépenses sur au moins 3 jours différents. Un don, une facture ou un achat ponctuel n'est pas un rythme.
@@ -2015,7 +2026,9 @@ function renderEnvDash(){
         <div class="ed-half"><div class="l">${envIco('trend',13)}${libDep}</div><div class="v">${fmt(dep)}</div></div>
         <div class="ed-half"><div class="l">${envIco('basket',13)}Reste dépenses courantes</div><div class="v" style="color:${resteCour<0?'var(--red)':'var(--green)'}">${envMont(resteCour)}</div></div>
       </div></div>
-    ${C.ar<0?`<div class="card" style="border:1.5px solid var(--red);font-size:12px;color:var(--text2);line-height:1.45">Tes poches contiennent plus que ton argent. Retire ${fmt(-C.ar)} F d'une poche (touche-la, puis « Déplacer »).</div>`:''}
+    ${C.ar<0?`<div class="card" style="border:1.5px solid var(--red)"><div style="font-size:13.5px;font-weight:600;color:var(--red)">À répartir : −${fmt(-C.ar)} F</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.45;margin:3px 0 10px">Il manque ${fmt(-C.ar)} F dans « À répartir ». Reprends-les dans une poche qui a de la marge.</div>
+      <button class="btn-p" style="margin:0" onclick="envReprendre()">Reprendre dans une poche</button></div>`:''}
     <div class="ed-qa">
       <button onclick="envActDeplacer()"><span style="color:var(--blue);display:flex">${envIco('swap',19)}</span>Déplacer</button>
       <button onclick="openRepartir()"><span style="color:var(--green);display:flex">${envIco('pie',19)}</span>Répartir</button>
@@ -2032,12 +2045,36 @@ function renderEnvDash(){
       ${der.length?der.map(t=>`<div class="ed-ln" onclick="openEditTx(${jsa(t.id)})"><span style="color:var(--text3);display:flex">${envIco(envIcone(t.poste))}</span><span class="n">${esc(t.cmt||t.poste)} <span style="color:var(--text3)">· ${t.cmt?esc(t.poste):quandFr(t.date)}</span></span><span style="white-space:nowrap">−${fmt(t.amt)}</span></div>`).join('')
         :'<div style="font-size:12.5px;color:var(--text3);padding:8px 0">Aucune dépense pour l\'instant.</div>'}
     </div>
+    ${envCarteDettes()}
     ${P.epa.length?`<div class="card" onclick="openEpargne()" style="cursor:pointer;padding:12px 14px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="display:flex;align-items:center;gap:7px;font-size:14px;font-weight:600;color:var(--text);min-width:0"><span style="color:var(--purple);display:flex">${envIco('piggy')}</span>Épargne${obj?` <span style="font-size:12px;font-weight:400;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">· ${esc(obj.nom)}</span>`:''}</span><b style="color:var(--text);white-space:nowrap">${fmtSigne(totEpa)} ›</b></div>
       ${obj?`<div style="display:flex;align-items:center;gap:8px;margin-top:8px"><div class="ed-bar" style="flex:1"><div style="width:${Math.min(100,pctObj(obj))}%;background:var(--purple)"></div></div><span style="font-size:11.5px;color:var(--purple)">${pctObj(obj)} %</span></div>`:''}
     </div>`:''}
     ${envBilans(Pe)}`;
 }
+
+// Dettes et prêts sur l'accueil : les totaux, puis les deux personnes les plus urgentes
+function envCarteDettes(){
+  if(!modules.dettes)return'';
+  const ouv=dettes.filter(d=>resteDette(d)>0);if(!ouv.length)return'';
+  const urg=[...ouv].sort((a,b)=>(enRetard(b)-enRetard(a))||((a.echeance||'9999').localeCompare(b.echeance||'9999'))).slice(0,2);
+  const sous=d=>enRetard(d)?`<span style="color:var(--red)">en retard · ${dCourt(d.echeance)}</span>`:(d.credit?'crédit · ':'')+(d.echeance?'pour le '+dCourt(d.echeance):'sans date');
+  return `<div class="card" style="padding:12px 14px 6px">
+    <div class="ed-tt" style="margin:0 0 8px"><span style="display:flex;align-items:center;gap:7px"><span style="color:var(--blue);display:flex">${envIco('swap')}</span>Dettes et prêts</span><button class="ed-lk" onclick="goP('det',null)">Tout ›</button></div>
+    <div style="display:flex;gap:8px;margin-bottom:4px">
+      <div class="ed-half"><div class="l">On me doit</div><div class="v" style="color:var(--green)">${fmt(totDettes('pret'))}</div></div>
+      <div class="ed-half"><div class="l">Je dois</div><div class="v">${fmt(totDettes('emprunt'))}</div></div></div>
+    ${urg.map(d=>`<div class="ed-ln" onclick="openDetteDetail(${jsa(d.id)})">${avatar(d)}<span class="n">${esc(d.personne)}<br><span style="font-size:11px;color:var(--text3)">${sous(d)}</span></span><b style="color:${d.sens==='pret'?'var(--green)':'var(--text)'}">${fmt(resteDette(d))}</b></div>`).join('')}
+    ${ouv.length>2?`<div style="font-size:11px;color:var(--text3);text-align:center;padding:4px 0 6px">+ ${ouv.length-2} autre${ouv.length>3?'s':''}</div>`:''}
+  </div>`;
+}
+function envReprendre(){
+  const C=envCalc(),P=C.P,s=p=>C.sol[p]||0;
+  const G=[['Dépenses courantes avec de la marge',P.vari.filter(p=>s(p)>0).sort((a,b)=>s(b)-s(a))],['Dépenses fixes',P.fix.filter(p=>s(p)>0).sort((a,b)=>s(b)-s(a))],['Épargne',P.epa.filter(p=>s(p)>0)]].filter(g=>g[1].length);
+  if(!G.length){toast('Aucune poche n\'a d\'argent à reprendre');return;}
+  envChoix('Reprendre dans…',G,'envVersAR');
+}
+function envVersAR(p){openDeplacer(p,ENV_AR);}
 
 // Actions rapides
 function envChoix(titre,G,fn){
@@ -2170,7 +2207,7 @@ async function envDemarrer(){
   const habit={};if(mois){const P=envPostes();[...P.fix,...P.vari,...P.epa].forEach(p=>{const v=gBud(mois,p);if(v>0)habit[p]=v;});}
   const ancien=env&&env.depart?env:null;
   const paie=document.getElementById('es-paie')?.value||null;
-  env={actif:true,dernierePaie:paie&&paie<=auj?paie:null,periode:paie?'paie':((env&&env.periode)||'paie'),depart:auj,ids0:txs.filter(t=>t.date===auj).map(t=>t.id),ar0:tot-sEp,initial:ep,habit:ancien&&ancien.habit&&Object.keys(ancien.habit).length?ancien.habit:habit,mv:[]};
+  env={actif:true,t0:Date.now(),dernierePaie:paie&&paie<=auj?paie:null,periode:paie?'paie':((env&&env.periode)||'paie'),depart:auj,ids0:txs.filter(t=>t.date===auj).map(t=>t.id),ar0:tot-sEp,initial:ep,habit:ancien&&ancien.habit&&Object.keys(ancien.habit).length?ancien.habit:habit,mv:[]};
   document.getElementById('es-go').disabled=true;
   try{await saveSettings();closeSheet();goP('dash',document.querySelectorAll('.ni')[0]);toast('Poches activées');setTimeout(openRepartir,350);}
   catch(e){document.getElementById('es-go').disabled=false;err.textContent='Non enregistré : '+e.message;}
@@ -4609,18 +4646,19 @@ function openAddDette(editId){
   const fa=v=>v?Number(v).toLocaleString('fr-FR').replace(/ /g,' '):'';
   openSheet(sheetHead(d?'Modifier':'Nouveau')+`
     ${d?'':`<div id="nd-seg" style="display:grid;grid-template-columns:1fr 1fr;background:var(--surf2);border-radius:10px;padding:3px;gap:3px;margin-bottom:12px"></div>`}
-    <div class="fgrp"><div class="flbl" id="nd-lp">À qui</div><input class="finp" id="nd-pers" maxlength="40" value="${esc(d?d.personne:'')}" placeholder="Moussa, Tata Awa, Boutique Lamine…"></div>
+    <div class="fgrp"><div class="flbl" id="nd-lp">À qui</div><input class="finp" id="nd-pers" maxlength="40" oninput="ndEnvMaj()" value="${esc(d?d.personne:'')}" placeholder="Moussa, Tata Awa, Boutique Lamine…"></div>
     <div class="frow">
       <div class="fgrp"><div class="flbl">Montant (FCFA)</div><input class="finp" id="nd-amt" inputmode="numeric" value="${fa(d&&d.montant)}" oninput="fmtAmtInput(this);payRefresh('nd');renderNdNote()"></div>
       <div class="fgrp"><div class="flbl">À rendre le (facultatif)</div><input class="finp" type="date" id="nd-ech" value="${d?esc(d.echeance||''):''}"></div>
     </div>
     <div class="frow">
-      <div class="fgrp"><div class="flbl">Date</div><input class="finp" type="date" id="nd-date" value="${d?esc(d.date):todayStr()}"></div>
+      <div class="fgrp"><div class="flbl">Date</div><input class="finp" type="date" id="nd-date" onchange="ndEnvMaj()" value="${d?esc(d.date):todayStr()}"></div>
       <div class="fgrp"><div class="flbl">Téléphone (facultatif)</div><input class="finp" id="nd-tel" inputmode="tel" value="${esc(d?d.tel||'':'')}" placeholder="77 123 45 67"></div>
     </div>
     <div id="nd-credit-wrap"></div>
     <div id="nd-cpt-wrap"></div>
     <div id="nd-note" style="font-size:11px;color:var(--text2);line-height:1.5;background:var(--surf2);border-radius:var(--rs);padding:9px 12px;margin-bottom:8px"></div>
+    <div id="nd-env"></div>
     <div id="nd-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
     <button class="btn-p" id="nd-go" onclick="saveDette(${d?jsa(d.id):''})">Enregistrer</button>`);
   renderNd(!!d);
@@ -4632,12 +4670,27 @@ function renderNd(edit){
   document.getElementById('nd-lp').textContent=p?'À qui':'Auprès de qui';
   const cw=document.getElementById('nd-credit-wrap'),kw=document.getElementById('nd-cpt-wrap');
   cw.innerHTML=(!p&&!edit)?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin-bottom:10px;cursor:pointer"><input type="checkbox" ${ndCredit?'checked':''} onchange="ndCredit=this.checked;renderNd()" style="width:18px;height:18px;accent-color:var(--green)"> C'est un achat à crédit</label>
-    ${ndCredit?`<div class="fgrp"><div class="flbl">Ce que tu as acheté</div><select class="fsel" id="nd-poste">${optionsDepenses(getAllPostes('Dépenses variables').includes('Alimentation')?'Dépenses variables|Alimentation':'')}</select></div>`:''}`:'';
+    ${ndCredit?`<div class="fgrp"><div class="flbl">Ce que tu as acheté</div><select class="fsel" id="nd-poste" onchange="renderNdNote()">${optionsDepenses(getAllPostes('Dépenses variables').includes('Alimentation')?'Dépenses variables|Alimentation':'')}</select></div>`:''}`:'';
   if(PAY.nd)payRender('nd');else kw.innerHTML='';
   ndEdit=!!edit;renderNdNote();
 }
 let ndEdit=false;
+// Effet sur les poches, affiché avant d'enregistrer (mode poches)
+function envApercu(lignes,note){
+  return `<div style="border:1.5px solid var(--blue);background:var(--bd);border-radius:var(--rs);padding:8px 12px;margin-bottom:8px;font-size:12px;line-height:1.7">${lignes.map(([l,a,b,c])=>`<div style="display:flex;justify-content:space-between;gap:8px"><span style="color:var(--text2)">${l}</span><span style="white-space:nowrap">${a===null?`<span style="color:var(--text2)">${b}</span>`:`${envMont(a)} → <b style="color:${c||(b<0?'var(--red)':'var(--text)')}">${envMont(b)}</b>`}</span></div>`).join('')}${note?`<div style="font-size:11px;color:var(--text3);line-height:1.45;margin-top:2px">${note}</div>`:''}</div>`;
+}
+function ndEnvMaj(){
+  const el=document.getElementById('nd-env');if(!el)return;
+  const a=parseAmt(document.getElementById('nd-amt')?.value)||0,date=document.getElementById('nd-date')?.value||todayStr();
+  if(!envOn()||ndEdit||!(a>0)||date<env.depart){el.innerHTML='';return;}
+  const C=envCalc();
+  if(ndCredit){const poste=(document.getElementById('nd-poste')?.value||'|').split('|')[1],s=C.sol[poste]||0;
+    el.innerHTML=envApercu([['Poche '+esc(poste),s,s-a],['À répartir',C.ar,C.ar+a,'var(--green)'],['Ton solde',null,'ne bouge pas']],'La dépense compte aujourd\'hui. Le montant attend dans « À répartir » pour payer '+esc(document.getElementById('nd-pers')?.value||'plus tard')+'.');return;}
+  const p=ndSens==='pret';
+  el.innerHTML=envApercu([['À répartir',C.ar,C.ar+(p?-a:a),p?null:'var(--green)']],p?'L\'argent prêté sort de « À répartir ». Il y reviendra quand on te remboursera.':'L\'argent emprunté arrive dans « À répartir ».');
+}
 function renderNdNote(){
+  ndEnvMaj();
   const p=ndSens==='pret',pr=PAY.nd?payResult('nd'):{},avec=!!(PAY.nd&&!ndCredit&&(pr.compte||pr.parts));
   const nomC=pr.parts?pr.parts.map(x=>nomCpt(x.compte)).join(' et '):(pr.compte?nomCpt(pr.compte):'');
   document.getElementById('nd-note').textContent=ndEdit?'Le montant et la personne peuvent être corrigés ; les remboursements déjà notés sont conservés.'
@@ -4730,15 +4783,24 @@ function openRemb(id){
   openSheet(sheetHead('Remboursement')+`
     <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${p?esc(d.personne)+' te doit':'Tu dois à '+esc(d.personne)} : <b style="color:var(--text)">${fmt(r)} F</b></div>
     <div class="frow">
-      <div class="fgrp"><div class="flbl">Montant remboursé</div><input class="finp" id="rb-amt" inputmode="numeric" value="${fmtSansMasque(r)}" oninput="fmtAmtInput(this);payRefresh('rb')"></div>
+      <div class="fgrp"><div class="flbl">Montant remboursé</div><input class="finp" id="rb-amt" inputmode="numeric" value="${fmtSansMasque(r)}" oninput="fmtAmtInput(this);payRefresh('rb');rbEnvMaj(${jsa(id)})"></div>
       <div class="fgrp"><div class="flbl">Intérêts (facultatif)</div><input class="finp" id="rb-int" inputmode="numeric" placeholder="0" oninput="fmtAmtInput(this)"></div>
     </div>
     <div class="fgrp"><div class="flbl">Date</div><input class="finp" type="date" id="rb-date" value="${todayStr()}"></div>
     <div class="fgrp" id="rb-pay" style="display:none"></div>
     <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:8px">Le remboursement n'est ni un revenu ni une dépense. Les intérêts, eux, comptent en ${p?'revenu':'dépense'}.</div>
+    <div id="rb-env"></div>
     <div id="rb-err" style="font-size:12px;color:var(--red);min-height:16px;margin-bottom:6px"></div>
     <button class="btn-p" id="rb-go" onclick="saveRemb(${jsa(id)})">Enregistrer</button>`);
   if(PAY.rb)payRender('rb');
+  rbEnvMaj(id);
+}
+function rbEnvMaj(id){
+  const el=document.getElementById('rb-env'),d=dettes.find(x=>x.id===id);if(!el||!d)return;
+  const a=parseAmt(document.getElementById('rb-amt')?.value)||0;
+  if(!envOn()||!(a>0)){el.innerHTML='';return;}
+  const C=envCalc(),p=d.sens==='pret';
+  el.innerHTML=envApercu([['À répartir',C.ar,C.ar+(p?a:-a),p?'var(--green)':null]],p?'L\'argent rendu revient dans « À répartir ».':'Le remboursement sort de « À répartir ».'+(C.ar-a<0?' <span style="color:var(--red)">Il faudra reprendre '+fmt(a-C.ar)+' F dans une poche.</span>':''));
 }
 async function saveRemb(id){
   const d=dettes.find(x=>x.id===id);if(!d)return;
