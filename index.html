@@ -488,6 +488,7 @@ select option{background:#1F2840;color:#F1F4FA}
       <svg style="position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:.4;pointer-events:none" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
       <input id="tx-search" class="finp" type="text" placeholder="Rechercher : Yango, Wave, 2500…" style="padding-left:36px;font-size:13px" oninput="renderTX()">
     </div>
+    <div id="tx-periode" style="display:none;margin-bottom:10px"></div>
     <div id="poste-banner" style="display:none;align-items:center;justify-content:space-between;background:rgba(77,159,255,.1);border:0.5px solid rgba(77,159,255,.3);border-radius:var(--rs);padding:8px 12px;margin-bottom:8px">
       <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--blue)">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
@@ -1707,7 +1708,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='62';
+const APP_VERSION='63';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1845,6 +1846,18 @@ function envJours(p,solde){
   const r=envRythme(p);return r>0?Math.floor(solde/r):null;
 }
 function envHabit(p){return (env.habit||{})[p]||0;}
+// Depuis le début de la période (ou le démarrage s'il est plus récent) : reçu = ce qui restait au début +
+// ce qui y a été rangé ou déplacé ; dépensé = ses dépenses. reçu − dépensé = reste.
+function envDebutPeriode(){const Pe=envPeriode();return Pe.debut>env.depart?Pe.debut:env.depart;}
+function envStatsPeriode(){
+  const d0=envDebutPeriode(),C0=envCalc(d0),C=envCalc(),P=C.P,R={};
+  [...P.fix,...P.vari,...P.epa].forEach(p=>R[p]={recu:C0.sol[p]||0,dep:0,der:null,sol:C.sol[p]||0});
+  (env.mv||[]).filter(m=>m.d>=d0).forEach(m=>{if(R[m.vers])R[m.vers].recu+=m.amt;if(R[m.de])R[m.de].recu-=m.amt;});
+  txEnv().filter(t=>t.date>=d0&&R[t.poste]).forEach(t=>{if(ENV_DEP.includes(t.cat))R[t.poste].dep+=t.amt||0;else if(t.cat==='Epargne')R[t.poste].recu+=t.amt||0;});
+  txs.filter(t=>ENV_DEP.includes(t.cat)&&R[t.poste]&&t.date<=todayStr()).forEach(t=>{if(!R[t.poste].der||t.date>R[t.poste].der)R[t.poste].der=t.date;});
+  return{d0,R,C,P};
+}
+function quandFr(iso){if(!iso)return'';const a=todayStr();if(iso===a)return'aujourd\'hui';if(iso===addJ(a,-1))return'hier';return jFr(iso);}
 async function envSave(){await saveSettings();renderCurrent();}
 function envNouvId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 
@@ -1857,19 +1870,19 @@ function renderEnvDash(){
   if(!on){el.innerHTML='';return;}
   const C=envCalc(),P=C.P;
   const dansEnv=C.tot-C.ar;
-  const lignes=[...P.fix,...P.vari].map(p=>({p,s:C.sol[p]||0,h:envHabit(p),fix:P.fix.includes(p),dep:C.depense[p]||0}))
-    .filter(o=>o.s||o.h||o.dep);
-  const tri=lignes.sort((a,b)=>((a.s<0)?0:1)-((b.s<0)?0:1)||(a.s<0&&b.s<0?a.s-b.s:0)||((a.fix&&a.s===0&&a.dep>0)?1:0)-((b.fix&&b.s===0&&b.dep>0)?1:0)||a.s-b.s);
+  const ST=envStatsPeriode();
+  const lignes=[...P.fix,...P.vari].map(p=>({p,...ST.R[p],s:C.sol[p]||0,fix:P.fix.includes(p)}))
+    .filter(o=>o.s||o.recu||o.dep)
+    .filter(o=>!(o.fix&&o.s===0&&o.dep>0));                 // fixes payées : seulement dans l'onglet Enveloppes
+  const tri=lignes.sort((a,b)=>((a.s<0)?0:1)-((b.s<0)?0:1)||(a.s<0&&b.s<0?a.s-b.s:0)||(b.der||'').localeCompare(a.der||'')||a.p.localeCompare(b.p));
   const ligne=o=>{
-    const pret=o.fix&&o.s===0&&o.dep>0,vide0=!o.fix&&o.s===0&&o.dep>0;
-    const ref=Math.max(o.h,o.s,1),pct=o.s<0?100:Math.round(Math.max(0,o.s)/ref*100);
-    const c=o.s<0?'var(--red)':pret?'var(--green)':'var(--blue)';
-    const j=!o.fix?envJours(o.p,o.s):null;
-    const droite=o.s<0?`<b style="color:var(--red)">${fmtSigne(o.s).replace(' F','')}</b>`:pret?`<span style="color:var(--green)">payé ✓</span>`:vide0?`<span style="color:var(--text3)">vide</span>`:`<b>${fmt(o.s)}</b>${j!==null?` <span style="color:var(--text3);font-size:11px">· ${j} j</span>`:''}`;
-    return `<div onclick="openEnv(${jsa(o.p)})" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer">
-      <div style="flex:1;min-width:0"><div style="font-size:13px;color:${o.s<0?'var(--red)':'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.p)}</div>
-      <div style="height:5px;background:var(--surf2);border-radius:3px;margin-top:5px;max-width:170px;overflow:hidden"><div style="width:${pct}%;height:5px;background:${c};border-radius:3px"></div></div></div>
-      <div style="font-size:13px;white-space:nowrap">${droite}</div></div>`;};
+    const pct=o.recu>0?Math.min(100,Math.round(o.dep/o.recu*100)):(o.dep>0?100:0);
+    const c=o.s<0?'var(--red)':pct>=85?'var(--amber)':'var(--blue)';
+    const droite=o.s<0?`<b style="color:var(--red)">${fmtSigne(o.s).replace(' F','')}</b>`:`<b>${fmt(o.s)}</b> <span style="color:var(--text3);font-size:11px">${o.s===0?'':'restent'}</span>`;
+    return `<div onclick="openEnv(${jsa(o.p)})" style="padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><span style="font-size:13px;color:${o.s<0?'var(--red)':'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.p)}</span><span style="font-size:13px;white-space:nowrap">${droite}</span></div>
+      <div style="height:5px;background:var(--surf2);border-radius:3px;margin:5px 0 3px;overflow:hidden"><div style="width:${pct}%;height:5px;background:${c};border-radius:3px"></div></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3)"><span>${o.dep?`dépensé ${fmt(o.dep)} sur ${fmt(Math.max(o.recu,0))}`:'rien dépensé'}</span><span>${quandFr(o.der)}</span></div></div>`;};
   const vis=tri.slice(0,6);
   const epa=P.epa.map(p=>({p,s:C.sol[p]||0})).filter(o=>o.s);
   const totEpa=epa.reduce((s,o)=>s+o.s,0);
@@ -1883,9 +1896,9 @@ function renderEnvDash(){
       <button onclick="openRepartir()" style="background:var(--blue);color:#fff;border:none;border-radius:9px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">Répartir</button></div>`
      :C.ar<0?`<div class="card" style="border:1.5px solid var(--red)"><div style="font-size:13px;font-weight:600;color:var(--red)">${fmt(-C.ar)} F répartis en trop</div><div style="font-size:11.5px;color:var(--text2);margin-top:3px;line-height:1.45">Tes enveloppes contiennent plus que ton argent. Retire ${fmt(-C.ar)} F d'une enveloppe (touche-la, puis « Déplacer »).</div></div>`:''}
     ${envBlocPeriode(C)}
-    <div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:14px;font-weight:600;color:var(--text)">Mes enveloppes</div><span style="font-size:11px;color:var(--text3)">reste</span></div>
+    <div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:14px;font-weight:600;color:var(--text)">Mes enveloppes</div><span style="font-size:11px;color:var(--text3)">dernières utilisées</span></div>
       ${vis.length?vis.map(ligne).join(''):`<div style="font-size:12px;color:var(--text3);padding:10px 0">Tes enveloppes sont vides. Répartis ton argent pour commencer.</div>`}
-      <div onclick="goP('bud',document.querySelectorAll('.ni')[3])" style="font-size:12.5px;color:var(--blue);cursor:pointer;margin-top:9px">${tri.length>6?'Les '+tri.length+' enveloppes':'Toutes les enveloppes'} ›</div></div>
+      <div onclick="goP('bud',document.querySelectorAll('.ni')[3])" style="font-size:12.5px;color:var(--blue);cursor:pointer;margin-top:9px">${[...P.fix,...P.vari].length>6?'Les '+[...P.fix,...P.vari].length+' enveloppes':'Toutes les enveloppes'} ›</div></div>
     ${P.epa.length?`<div class="card" onclick="goP('bud',document.querySelectorAll('.ni')[3])" style="cursor:pointer"><div style="display:flex;justify-content:space-between"><span style="font-size:14px;font-weight:600;color:var(--text)">Épargne</span><b style="color:var(--text)">${fmt(totEpa)} F</b></div>
       <div style="font-size:11.5px;color:var(--text3);margin-top:3px">${epa.length?epa.map(o=>esc(o.p)+' '+fmt(o.s)).join(' · '):'Rien de côté pour l\'instant'}</div></div>`:''}`;
 }
@@ -2063,30 +2076,36 @@ async function repValider(){
 
 // ── Une enveloppe
 function openEnv(p){
-  const C=envCalc(),s=C.sol[p]||0,h=envHabit(p),epa=C.P.epa.includes(p),fix=C.P.fix.includes(p);
-  const T=txEnv().filter(t=>t.poste===p&&(ENV_DEP.includes(t.cat)||t.cat==='Epargne')).map(t=>({d:t.date,lib:t.cmt||(t.cat==='Epargne'?'Versement':'Dépense'),v:t.cat==='Epargne'?t.amt:-t.amt}));
-  const M=(env.mv||[]).filter(m=>m.de===p||m.vers===p).map(m=>{const entre=m.vers===p,autre=entre?m.de:m.vers;
-    return{d:m.d,lib:m.t==='rep'?'Répartition':(entre?'Depuis ':'Vers ')+(autre===ENV_AR?'À répartir':autre),v:entre?m.amt:-m.amt,puise:!entre&&epa&&m.t!=='rep'};});
-  const init=(env.initial||{})[p];
-  const hist=[...T,...M].sort((a,b)=>b.d.localeCompare(a.d)).slice(0,12);
-  const j=!epa&&!fix?envJours(p,s):null;
-  const o=objectifs.find(x=>(x.poste||x.nom)===p);
-  const moisCourant=todayStr().slice(0,7);
-  const puise=M.filter(m=>m.puise&&m.d.startsWith(moisCourant)).reduce((x,m)=>x-m.v,0);
+  const ST=envStatsPeriode(),C=ST.C,o=ST.R[p]||{recu:0,dep:0,sol:0},s=C.sol[p]||0,h=envHabit(p),epa=C.P.epa.includes(p),d0=ST.d0;
+  const cpt=t=>t.parts&&t.parts.length?t.parts.map(x=>nomCpt(x.compte)).join(' + '):t.compte?nomCpt(t.compte):'';
+  const jour=iso=>{const d=dJ(iso);return ['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'][d.getDay()]+' '+jFr(iso);};
+  const deps=txEnv().filter(t=>t.poste===p&&t.date>=d0&&(ENV_DEP.includes(t.cat)||t.cat==='Epargne')).sort((a,b)=>b.date.localeCompare(a.date));
+  const mvs=(env.mv||[]).filter(m=>(m.de===p||m.vers===p)&&m.d>=d0).map(m=>{const entre=m.vers===p,autre=entre?m.de:m.vers;
+    return{d:m.d,lib:m.t==='rep'?'Répartition':(entre?'Depuis ':'Vers ')+(autre===ENV_AR?'À répartir':autre),v:entre?m.amt:-m.amt,puise:!entre&&epa&&m.t!=='rep'};}).sort((a,b)=>b.d.localeCompare(a.d));
+  const reportDebut=envCalc(d0).sol[p]||0;
+  const j=!epa&&!C.P.fix.includes(p)?envJours(p,s):null;
+  const ob=objectifs.find(x=>(x.poste||x.nom)===p);
+  const puise=mvs.filter(m=>m.puise).reduce((x,m)=>x-m.v,0);
+  const pct=o.recu>0?Math.min(100,Math.round(o.dep/o.recu*100)):(o.dep>0?100:0);
+  const titre=(t,droite)=>`<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin:14px 0 2px"><span>${t}</span><span>${droite||''}</span></div>`;
+  const lig=(g,sous,v,col)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px"><span style="color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g}<br><span style="color:var(--text3);font-size:11px">${sous}</span></span><b style="color:${col||'var(--text)'};white-space:nowrap">${v}</b></div>`;
   openSheet(sheetHead(esc(p))+`
-    <div style="font-size:28px;font-weight:700;color:${s<0?'var(--red)':'var(--text)'}">${fmtSigne(s)}</div>
-    <div style="font-size:12px;color:var(--text2);margin:2px 0 12px">${s<0?'Tu as dépensé plus que ce qu\'il y avait dedans.':epa?(o?`Objectif ${esc(o.nom)} : ${fmt(o.cible)} F · ${o.cible>0?Math.max(0,Math.round(s/o.cible*100)):0} %`:'Épargne'):j!==null?`De quoi tenir environ ${j} jour${j>1?'s':''} à ton rythme.`:'Dans l\'enveloppe'}${h?` · habituel ${fmt(h)} F`:''}</div>
-    ${puise>0?`<div style="background:rgba(255,159,10,.12);border-radius:var(--rs);padding:9px 12px;font-size:12px;color:var(--amber);margin-bottom:12px">Tu as puisé ${fmt(puise)} F ici ce mois-ci.</div>`:''}
-    <div style="display:flex;gap:8px;margin-bottom:14px">
+    <div style="font-size:26px;font-weight:700;color:${s<0?'var(--red)':'var(--text)'}">${fmtSigne(s)} <span style="font-size:12px;font-weight:400;color:var(--text3)">${s<0?'à combler':epa?'de côté':'restent'}</span></div>
+    ${epa?'':`<div style="height:7px;background:var(--surf2);border-radius:4px;margin:6px 0 4px;overflow:hidden"><div style="width:${pct}%;height:7px;background:${s<0?'var(--red)':'var(--blue)'};border-radius:4px"></div></div>`}
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${epa?(ob?`Objectif ${esc(ob.nom)} : ${fmt(ob.cible)} F · ${ob.cible>0?Math.max(0,Math.round(s/ob.cible*100)):0} %`:'Épargne'):`Dépensé ${fmt(o.dep)} F sur ${fmt(Math.max(0,o.recu))} F reçus depuis le ${jFr(d0)}${j!==null?` · de quoi tenir ${j} jour${j>1?'s':''}`:''}`}</div>
+    ${puise>0?`<div style="background:rgba(255,159,10,.12);border-radius:var(--rs);padding:9px 12px;font-size:12px;color:var(--amber);margin-bottom:12px">Tu as puisé ${fmt(puise)} F ici depuis le ${jFr(d0)}.</div>`:''}
+    <div style="display:flex;gap:8px">
       <button class="btn-p" style="flex:1;margin:0" onclick="openDeplacer(null,${jsa(p)})">${s<0?'Combler':'Ajouter de l\'argent'}</button>
       ${s>0?`<button onclick="openDeplacer(${jsa(p)},null)" style="flex:1;padding:12px;border-radius:var(--r);border:1px solid var(--border2);background:none;color:var(--text);font-size:13.5px;cursor:pointer;font-family:var(--font)">${epa?'Puiser':'Déplacer'}</button>`:''}
     </div>
-    <div class="fgrp"><div class="flbl">Montant habituel ${epa?'à verser':'pour la période'}</div><div style="display:flex;gap:8px"><input class="finp" id="ev-h" inputmode="numeric" value="${h?Number(h).toLocaleString('fr-FR').replace(/ /g,' '):''}" oninput="fmtAmtInput(this)" placeholder="0"><button onclick="envSetHabit(${jsa(p)})" style="padding:0 14px;border-radius:var(--rs);border:1px solid var(--border2);background:none;color:var(--blue);font-weight:600;cursor:pointer;font-family:var(--font)">OK</button></div>
-      <div style="font-size:11px;color:var(--text3);margin-top:4px">Utilisé par « Comme d'habitude » quand tu répartis.</div></div>
-    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin:6px 0 4px">Historique</div>
-    ${hist.length?hist.map(x=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px"><span style="color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.lib)}<br><span style="color:var(--text3);font-size:11px">${x.d.slice(8)}/${x.d.slice(5,7)}</span></span><b style="color:${x.puise?'var(--amber)':x.v<0?'var(--text)':'var(--green)'};white-space:nowrap">${x.v<0?'−':'+'}${fmt(Math.abs(x.v))}</b></div>`).join(''):''}
-    ${init?`<div style="display:flex;justify-content:space-between;padding:7px 0;font-size:12.5px;color:var(--text2)"><span>Au départ (${env.depart.slice(8)}/${env.depart.slice(5,7)})</span><b>${fmt(init)}</b></div>`:''}
-    ${!hist.length&&!init?'<div style="font-size:12px;color:var(--text3)">Rien encore.</div>':''}`);
+    ${titre(epa?'Versements':'Dépenses',deps.length?fmt(deps.reduce((x,t)=>x+(t.amt||0),0))+' F':'')}
+    ${deps.length?deps.map(t=>lig(esc(t.cmt||(t.cat==='Epargne'?'Versement':p)),jour(t.date)+(cpt(t)?' · '+esc(cpt(t)):''),(t.cat==='Epargne'?'+':'−')+fmt(t.amt),t.cat==='Epargne'?'var(--green)':null)).join(''):`<div style="font-size:12px;color:var(--text3);padding:8px 0">${epa?'Aucun versement':'Aucune dépense'} depuis le ${jFr(d0)}.</div>`}
+    ${mvs.length||reportDebut?titre('Mouvements'):''}
+    ${mvs.map(m=>lig(esc(m.lib),jFr(m.d),(m.v<0?'−':'+')+fmt(Math.abs(m.v)),m.puise?'var(--amber)':m.v<0?null:'var(--green)')).join('')}
+    ${reportDebut?lig(d0===env.depart?'Au démarrage':'Reporté de la période d\'avant',jFr(d0),fmtSigne(reportDebut).replace(' F',''),reportDebut<0?'var(--red)':null):''}
+    <div onclick="closeSheet();txPosteFilter=${jsa(p)};goP('tx',document.querySelectorAll('.ni')[1])" style="font-size:12.5px;color:var(--blue);cursor:pointer;margin:12px 0 4px">Tout l'historique de ${esc(p)} ›</div>
+    <div class="fgrp" style="margin-top:10px"><div class="flbl">Montant habituel ${epa?'à verser':'pour la période'}</div><div style="display:flex;gap:8px"><input class="finp" id="ev-h" inputmode="numeric" value="${h?Number(h).toLocaleString('fr-FR').replace(/\u202f/g,' '):''}" oninput="fmtAmtInput(this)" placeholder="0"><button onclick="envSetHabit(${jsa(p)})" style="padding:0 14px;border-radius:var(--rs);border:1px solid var(--border2);background:none;color:var(--blue);font-weight:600;cursor:pointer;font-family:var(--font)">OK</button></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Utilisé par « Comme d'habitude » quand tu répartis.</div></div>`);
 }
 async function envSetHabit(p){const v=parseAmt(document.getElementById('ev-h').value);env.habit=env.habit||{};if(v>0)env.habit[p]=v;else delete env.habit[p];await envSave();toast('Montant habituel enregistré');openEnv(p);}
 
@@ -5454,10 +5473,16 @@ function setTF(el,f){
   el.classList.add('active');txFilt=f;txPosteFilter='';renderTX();
 }
 let txLim=200,txQPrec='';
+let txPeriode=false;
 function renderTX(){
   // Avec une recherche : tous les mois (« combien chez Yango cette année ? »)
   const q=(document.getElementById('tx-search')?.value||'').toLowerCase().trim();
-  let t=q?txs.slice():isAnnual()?txYear(annualYear()):txYM(curYM());
+  if(!envOn())txPeriode=false;
+  const Pe=envOn()?envPeriode():null;
+  let t=q?txs.slice():txPeriode?txEntre(Pe.debut,Pe.fin):isAnnual()?txYear(annualYear()):txYM(curYM());
+  const pc=document.getElementById('tx-periode');
+  if(pc){pc.style.display=envOn()?'flex':'none';if(Pe)pc.innerHTML=`<button onclick="txPeriode=!txPeriode;renderTX()" style="border:1px solid ${txPeriode?'var(--blue)':'var(--border2)'};background:${txPeriode?'var(--bd)':'none'};color:${txPeriode?'var(--blue)':'var(--text2)'};border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:var(--font)">Cette période · ${esc(Pe.label.replace(/^Du /,'du '))}</button>`;}
+  const mn=document.querySelector('#page-tx .mnav');if(mn)mn.style.visibility=txPeriode?'hidden':'';
   // Filtre catégorie
   const catFromFilt={'rev':'Revenu','fix':'Dépenses fixes','var':'Dépenses variables','epa':'Epargne'};
   if(txFilt!=='all'&&catFromFilt[txFilt])t=t.filter(x=>x.cat===catFromFilt[txFilt]);
