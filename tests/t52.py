@@ -15,6 +15,8 @@ try:
   with sync_playwright() as p:
     b=p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox'])
     pg,errs=page(b,json.dumps(st),now=dt.datetime(2026,11,28,18))
+    pg.evaluate("setVue(true)");pg.wait_for_timeout(300)
+    print('barre Résumé/Graphiques visible:',pg.is_visible('#vue-sw'),'· accueil poches visible:',pg.is_visible('#env-dash'))
     t=N(pg.inner_text('#env-dash'))
     print('haut:',t.split('Déplacer')[0].replace('\n',' | '))
     C=pg.evaluate("(()=>{const C=envCalc();return [C.tot,C.ar,Object.values(C.sol).reduce((a,b)=>a+b,0)]})()")

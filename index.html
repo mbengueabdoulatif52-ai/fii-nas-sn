@@ -1745,7 +1745,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='70';
+const APP_VERSION='71';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -2693,8 +2693,9 @@ let vueGraph=false;try{vueGraph=localStorage.getItem('fiinas-vue')==='g';}catch(
 function setVue(g){vueGraph=g;try{localStorage.setItem('fiinas-vue',g?'g':'r');}catch(e){}window.scrollTo(0,0);renderDash();}
 function renderVueSwitch(){
   const pg=document.getElementById('page-dash'),sw=document.getElementById('vue-sw');if(!pg||!sw)return;
-  const annuel=isAnnual();
-  sw.style.display=annuel?'none':'';
+  const annuel=isAnnual(),poches=envOn();          // en mode poches : pas de graphiques, l'accueil seul
+  sw.style.display=annuel||poches?'none':'';
+  if(poches){pg.classList.remove('vue-g');const g=document.getElementById('graphs');if(g)g.innerHTML='';return;}
   pg.classList.toggle('vue-g',vueGraph&&!annuel);
   sw.innerHTML=`<button class="${vueGraph?'':'on'}" onclick="setVue(false)">Résumé</button><button class="${vueGraph?'on':''}" onclick="setVue(true)">Graphiques</button>`;
   if(vueGraph&&!annuel)(envOn()?renderGraphsEnv:renderGraphs)();
