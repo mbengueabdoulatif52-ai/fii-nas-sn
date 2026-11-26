@@ -22,5 +22,8 @@ try:
     print('départ visible:','716 200' in pg.inner_text('#env-page').replace(' ',' '))
     pg.evaluate("openEnvDepart()");pg.fill('#ed-tot','720 000');pg.wait_for_timeout(100);print('info:',pg.inner_text('#ed-info'))
     pg.click('#ed-go');pg.wait_for_timeout(400);print('après correction:',pg.evaluate("envCalc().ar"),'(attendu 3 800)')
+    pg.evaluate("env.dernierePaie='2026-11-25';renderCurrent()");pg.evaluate("goP('dash',document.querySelectorAll('.ni')[0])");pg.wait_for_timeout(300)
+    print('période avec paie déclarée:',pg.evaluate("JSON.stringify((({mode,debut,fin,jour})=>({mode,debut,fin,jour}))(envPeriode()))"))
+    pg.evaluate("setVue(true)");pg.wait_for_timeout(300);print('rythme:',[l for l in pg.inner_text('#graphs').replace('\u202f',' ').split('\n') if 'dépensés' in l])
     print('errors',errs)
 finally: srv.terminate()
