@@ -17,7 +17,7 @@ try:
     t=pg.inner_text('#env-dash').replace(' ',' ');print('sans paie expliqué:','Aucune paie notée' in t)
     print('tableaux budget masqués:',not pg.locator('#dm').is_visible())
     pg.evaluate("setVue(true)");pg.wait_for_timeout(300);g=pg.inner_text('#graphs').replace(' ',' ')
-    print('graphique:',[l for l in g.split('\n') if 'prévu' in l][:2])
+    print('graphique:',[l for l in g.split('\n') if 'prévu' in l][:2],'· trop tôt:','Trop tôt pour juger' in g)
     pg.evaluate("setVue(false);goP('bud',document.querySelectorAll('.ni')[3])");pg.wait_for_timeout(300)
     print('départ visible:','716 200' in pg.inner_text('#env-page').replace(' ',' '))
     pg.evaluate("openEnvDepart()");pg.fill('#ed-tot','720 000');pg.wait_for_timeout(100);print('info:',pg.inner_text('#ed-info'))

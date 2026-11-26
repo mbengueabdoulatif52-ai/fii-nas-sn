@@ -1707,7 +1707,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='61';
+const APP_VERSION='62';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1830,11 +1830,19 @@ function envCalc(lim){
 }
 function envSolde(p){return envCalc().sol[p]||0;}
 // Rythme d'une enveloppe courante : dépenses des 14 derniers jours → jours restants
+// Rythme quotidien d'une enveloppe, seulement s'il veut dire quelque chose : au moins 7 jours d'historique
+// et des dépenses sur au moins 3 jours différents. Un don, une facture ou un achat ponctuel n'est pas un rythme.
+function envRythme(p){
+  const auj=todayStr(),prem=txs.reduce((m,t)=>t.date&&t.date<m?t.date:m,auj);
+  const debut=[addJ(auj,-13),prem].sort().pop(),jours=nbJours(debut,auj);
+  if(jours<7)return null;
+  const L=txs.filter(t=>t.poste===p&&ENV_DEP.includes(t.cat)&&t.date>=debut&&t.date<=auj);
+  if(new Set(L.map(t=>t.date)).size<3)return null;
+  return L.reduce((x,t)=>x+(t.amt||0),0)/jours;
+}
 function envJours(p,solde){
   if(solde<=0)return null;
-  const lim=new Date();lim.setDate(lim.getDate()-14);const l=lim.toISOString().slice(0,10);
-  const s=txs.filter(t=>t.poste===p&&ENV_DEP.includes(t.cat)&&t.date>l&&t.date<=todayStr()).reduce((x,t)=>x+(t.amt||0),0);
-  if(s<=0)return null;return Math.floor(solde/(s/14));
+  const r=envRythme(p);return r>0?Math.floor(solde/r):null;
 }
 function envHabit(p){return (env.habit||{})[p]||0;}
 async function envSave(){await saveSettings();renderCurrent();}
@@ -2313,10 +2321,14 @@ function renderGraphsEnv(){
     if(!budD)msg='Répartis ton argent dans tes enveloppes pour comparer ton rythme.';
     else if(rouge){msg=`Tu as dépensé ${fmt(fin-budD)} F de plus que ce qu'il y avait dans tes enveloppes de dépense.`;coul='var(--red)';}
     else if(Pe.reste){
-      const vDej=dep.filter(t=>t.cat==='Dépenses variables').reduce((s,t)=>s+(t.amt||0),0),fDej=dep.filter(t=>t.cat==='Dépenses fixes').reduce((s,t)=>s+(t.amt||0),0);
-      const proj=fin+vDej/Math.max(1,jMax)*(n-jMax)+Math.max(0,budF-fDej);
+      const fDej=dep.filter(t=>t.cat==='Dépenses fixes').reduce((s,t)=>s+(t.amt||0),0);
+      const rv=C0.P.vari.map(envRythme);
+      if(rv.every(r=>r===null)){msg=`Trop tôt pour juger ton rythme : il faut quelques jours de dépenses courantes. ${fmt(Math.max(0,budD-fin))} F restent prévus pour tes dépenses.`;}
+      else{
+      const proj=fin+rv.reduce((s,r)=>s+(r||0),0)*Pe.reste+Math.max(0,budF-fDej);
       if(proj>budD){msg=`À ce rythme, tes enveloppes seront vides avant ${finP} (environ ${fmt(proj-budD)} F de trop).`;coul='var(--amber)';}
       else{msg=`À ce rythme, ça tient jusqu'à ${finP} : environ ${fmt(budD-proj)} F de marge.`;coul='var(--green)';}
+      }
     }
     const nbj=d0>Pe.debut?nbJours(d0,auj<Pe.fin?auj:Pe.fin):jMax;
     h+=carte('Le rythme de la période',`${Pe.label} · pointillé : rythme prévu`,svg,`<div style="font-size:12px;color:var(--text2);margin-top:6px"><b style="color:${c}">${fmt(fin)} F</b> dépensés ${d0>Pe.debut?'depuis le '+jFr(d0):'en '+nbj+' jour'+(nbj>1?'s':'')}${budD?` · ${fmt(budD)} F prévus pour tes dépenses${d0>Pe.debut?` (depuis le ${jFr(d0)})`:''}`:''}</div><div style="font-size:12px;color:${coul};margin-top:3px;line-height:1.45">${msg}</div>`);
