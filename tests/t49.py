@@ -17,7 +17,7 @@ for i,(a,d,c,p) in enumerate(T): st[f'users/u1/transactions/t{i}']={'amt':a,'dat
 def voir(now,label):
     pg,errs=page(b,json.dumps(st),now=now);pg.wait_for_timeout(700)
     t=pg.inner_text('#env-dash').replace(' ',' ')
-    print('==',label);print(t.split('Mes enveloppes')[0].replace('\n',' | '))
+    print('==',label);print(t.split('Mes poches')[0].replace('\n',' | '))
     return pg,errs
 try:
   with sync_playwright() as p:

@@ -18,7 +18,7 @@ try:
     print('compte développeur:',pg.evaluate("(()=>{const u=window._fb.auth.currentUser;window._fb.auth.currentUser={email:'MbengueArchibuilding@gmail.com'};const r=estDev();window._fb.auth.currentUser=u;return r})()"))
     for _ in range(7): pg.click('#version-app')
     pg.wait_for_timeout(200);print('visible en développeur:',pg.locator('#env-card').is_visible())
-    pg.click('#env-ui >> text=Passer aux enveloppes');pg.wait_for_timeout(300)
+    pg.click('#env-ui >> text=Passer aux poches');pg.wait_for_timeout(300)
     print('futur signalé:','1 transaction datée dans le futur' in pg.inner_text('#cpt-sheet'))
     print('épargne pré-remplie:',pg.input_value('[data-ep="Tabaski"]'))
     pg.click('text=Les remettre à aujourd\'hui');pg.wait_for_timeout(500)

@@ -13,7 +13,7 @@ try:
   with sync_playwright() as p:
     b=p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox'])
     pg,errs=page(b,json.dumps(st),now=dt.datetime(2026,11,28,18))
-    t=pg.inner_text('#env-dash').replace(' ',' ').split('Mes enveloppes')[1].split('Toutes')[0]
+    t=pg.inner_text('#env-dash').replace(' ',' ').split('Mes poches')[1].split('Toutes')[0]
     print(t.replace('\n',' | '))
     pg.evaluate("openEnv('Famille et dons')");pg.wait_for_timeout(200)
     d=pg.inner_text('#cpt-sheet').replace(' ',' ');print('---',d.replace('\n',' | ')[:420])
