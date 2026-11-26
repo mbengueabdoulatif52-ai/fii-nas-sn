@@ -1707,7 +1707,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='57';
+const APP_VERSION='58';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -2093,7 +2093,7 @@ function renderEnvPage(){
   const C=envCalc(),P=C.P;
   const bloc=(t,ps,epa)=>{if(!ps.length)return'';const tot=ps.reduce((x,p)=>x+(C.sol[p]||0),0);
     return `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:13px;font-weight:600;color:var(--text)">${t}</span><b style="color:${tot<0?'var(--red)':'var(--text)'}">${fmtSigne(tot)}</b></div>
-    ${ps.map(p=>{const s=C.sol[p]||0,h=envHabit(p),dep=C.depense[p]||0;const pret=!epa&&s===0&&dep>0;
+    ${ps.map(p=>{const s=C.sol[p]||0,h=envHabit(p),dep=C.depense[p]||0;const pret=P.fix.includes(p)&&s===0&&dep>0;
       return `<div onclick="openEnv(${jsa(p)})" style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-top:1px solid var(--border);cursor:pointer">
         <div style="min-width:0"><div style="font-size:13px;color:${s<0?'var(--red)':'var(--text)'}">${esc(p)}</div><div style="font-size:11px;color:var(--text3)">${h?'habituel '+fmt(h):'pas de montant habituel'}${dep?' · dépensé '+fmt(dep):''}</div></div>
         <div style="font-size:13.5px;font-weight:600;white-space:nowrap;color:${s<0?'var(--red)':pret?'var(--green)':'var(--text)'}">${pret?'payé ✓':fmtSigne(s)}</div></div>`;}).join('')}</div>`;};
