@@ -15,6 +15,7 @@ try:
     pg,errs=page(b,json.dumps(st),now=dt.datetime(2026,11,26,16))
     C=pg.evaluate("(()=>{const C=envCalc();return{tot:C.tot,ar:C.ar}})()");print('total:',C,'attendu 421 200')
     t=pg.inner_text('#env-dash').replace(' ',' ');print('sans paie expliqué:','Aucune paie notée' in t)
+    print('pas de fausse alerte (don ponctuel):','Ne tiendra pas' not in t)
     print('tableaux budget masqués:',not pg.locator('#dm').is_visible())
     pg.evaluate("setVue(true)");pg.wait_for_timeout(300);g=pg.inner_text('#graphs').replace(' ',' ')
     print('graphique:',[l for l in g.split('\n') if 'prévu' in l][:2],'· trop tôt:','Trop tôt pour juger' in g)
