@@ -39,7 +39,7 @@ try:
     pg.click('#page-add .btn-p, #page-add button:has-text("Enregistrer")');pg.wait_for_timeout(700)
     print('imprévus:',E(pg,"envSolde('Imprévus')"))
     E(pg,"goP('dash',document.querySelectorAll('.ni')[0])");pg.wait_for_timeout(300)
-    E(pg,"openEnv('Imprévus')");pg.wait_for_timeout(200);pg.click('#cpt-sheet >> text=Combler');pg.wait_for_timeout(200)
+    E(pg,"openEnv('Imprévus')");pg.wait_for_timeout(200);pg.click('#cpt-sheet button:has-text("Combler")');pg.wait_for_timeout(200)
     pg.select_option('#dp-de','Tabaski');pg.wait_for_timeout(100);print('puiser:',pg.inner_text('#dp-info'),'· montant',pg.input_value('#dp-amt'))
     pg.click('#dp-go');pg.wait_for_timeout(500)
     C=E(pg,"(()=>{const C=envCalc();return{ar:C.ar,tot:C.tot,imp:C.sol['Imprévus'],tab:C.sol['Tabaski'],obj:progObj(objectifs[0])}})()");print('après comblement:',C)
