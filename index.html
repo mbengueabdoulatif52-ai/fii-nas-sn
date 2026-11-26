@@ -570,8 +570,8 @@ select option{background:#1F2840;color:#F1F4FA}
       <div class="ct">Mes récurrentes</div>
       <div id="recur-ui"></div>
     </div>
-    <div class="card">
-      <div class="ct">Enveloppes</div>
+    <div class="card" id="env-card" style="display:none">
+      <div class="ct">Enveloppes <span style="font-size:10px;color:var(--amber);font-weight:500">· développeur</span></div>
       <div id="env-ui"></div>
     </div>
     <div class="card">
@@ -1706,7 +1706,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='55';
+const APP_VERSION='56';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1766,7 +1766,7 @@ document.addEventListener('visibilitychange',()=>{
   if(_cacheLe&&typeof hasPin==='function'&&hasPin()&&!isLocked&&uid&&Date.now()-_cacheLe>=LOCK_TIMEOUT)lockApp();
   _cacheLe=0;
 });
-document.addEventListener('DOMContentLoaded',()=>{const v=document.getElementById('version-app');if(v)v.textContent='FII\'NAS SN · version '+APP_VERSION;});
+document.addEventListener('DOMContentLoaded',()=>{const v=document.getElementById('version-app');if(v){v.textContent='FII\'NAS SN · version '+APP_VERSION;v.addEventListener('click',tapVersion);}});
 setInterval(verifMaj,30*60000);
 setTimeout(verifMaj,4000);
 
@@ -2070,8 +2070,15 @@ function renderEnvPage(){
 }
 
 // ── Profil
+// Réservé au développeur pendant l'essai : 7 touchers sur le numéro de version (Profil) l'affichent sur ce téléphone.
+// Un compte qui a déjà des enveloppes garde la carte, pour pouvoir revenir au budget par mois.
+function estDev(){try{return localStorage.getItem('fiinas-dev')==='1';}catch(e){return false;}}
+let _devTaps=0,_devT=0;
+function tapVersion(){const n=Date.now();_devTaps=n-_devT<1500?_devTaps+1:1;_devT=n;
+  if(_devTaps>=7){_devTaps=0;const on=!estDev();try{localStorage.setItem('fiinas-dev',on?'1':'0');}catch(e){}toast(on?'Mode développeur activé':'Mode développeur désactivé');renderEnvProfil();}}
 function renderEnvProfil(){
   envNav();const el=document.getElementById('env-ui');if(!el)return;
+  const card=document.getElementById('env-card');if(card)card.style.display=estDev()||(env&&env.depart)?'':'none';
   if(espace){el.innerHTML='<div style="font-size:12px;color:var(--text3)">Disponible pour l\'instant dans ton espace perso seulement.</div>';return;}
   el.innerHTML=envOn()?`<div style="font-size:12.5px;color:var(--text2);line-height:1.5;margin-bottom:10px">Activé depuis le ${env.depart.slice(8)}/${env.depart.slice(5,7)}. Ton argent se range dans des enveloppes qui se reportent d'un mois à l'autre.</div>
       <button onclick="envDesactiver()" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:8px 14px;font-size:12.5px;color:var(--text2);cursor:pointer;font-family:var(--font)">Revenir au budget par mois</button>`
