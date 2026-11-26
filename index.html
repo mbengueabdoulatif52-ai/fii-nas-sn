@@ -143,6 +143,9 @@ body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin
 .ed-ic{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .t-bl{color:var(--blue);background:var(--bd)}.t-am{color:var(--amber);background:rgba(242,179,61,.15)}.t-rd{color:var(--red);background:var(--rd)}
 .t-gr{color:var(--green);background:var(--gd)}.t-pu{color:var(--purple);background:var(--pd)}
+.ed-icos{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.ed-icos button{aspect-ratio:1;border-radius:12px;border:none;background:var(--surf2);color:var(--text2);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.ed-icos button.on{background:var(--bd);color:var(--blue);outline:1.5px solid var(--blue)}
 .ed-grp{display:flex;justify-content:space-between;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin:4px 2px 6px}
 .ed-bar{height:5px;background:var(--surf2);border-radius:3px;overflow:hidden}
 .ed-bar>div{height:5px;border-radius:3px}
@@ -1742,7 +1745,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='66';
+const APP_VERSION='67';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1935,14 +1938,33 @@ const ENV_ICO_MOTS=[
   [/sante|medic|pharma|hopital|soin/,'health'],[/loyer|logement|maison|menage/,'home'],
   [/electr|woyofal|senelec|courant/,'bolt'],[/\beau\b|sde|seneau|sen'eau/,'drop'],
   [/abonn|telephone|internet|credit tel|mobile|canal|netflix/,'phone'],[/assur/,'shield'],
-  [/pret|mensualit|credit|dette|banque|emprunt/,'bank'],[/famille|parent|enfant/,'users'],
-  [/don|aide|zakat|sadaqa|mosq|social/,'heart'],[/educ|ecole|scolar|formation|cours|livre/,'book'],
+  [/pret|mensualit|credit|dette|banque|emprunt/,'bank'],[/educ|ecole|scolar|formation|cours|livre/,'book'],
+  [/famille|parent|enfant/,'users'],[/don|aide|zakat|sadaqa|mosq|social/,'heart'],
   [/vetem|habit|tenue|chauss|coiff|beaute/,'shirt'],[/loisir|sortie|divert|sport|voyage|vacance/,'smile'],
   [/restau|resto|repas|cantine/,'food'],[/fete|korite|cadeau|ceremon|bapteme|mariage|evenement/,'gift'],
   [/achat|shopping|divers|imprevu/,'bag']];
-function envIcone(p){const s=(p||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+function envIcone(p){if(env&&env.ico&&env.ico[p]&&ENV_ICO[env.ico[p]])return env.ico[p];const s=(p||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
   const m=ENV_ICO_MOTS.find(([re])=>re.test(s));return m?m[1]:'tag';}
 const envMont=v=>(v<0?'−':'')+fmt(v);
+// Couleur de l'icône d'une enveloppe : rouge si dans le rouge, vert si fixe payée, violet pour l'épargne
+function envTon(p,C){C=C||envCalc();const s=C.sol[p]||0;if(s<0)return'rd';if(C.P.epa.includes(p))return'pu';if(C.P.fix.includes(p)&&s===0&&(C.depense[p]||0)>0)return'gr';return'bl';}
+function envBadge(p,C,taille){const t=taille||30;return `<div class="ed-ic t-${envTon(p,C)}" style="width:${t}px;height:${t}px">${envIco(envIcone(p),Math.round(t/2))}</div>`;}
+const ENV_ICO_CHOIX=['cart','car','fuel','health','home','bolt','drop','phone','shield','bank','users','heart','book','shirt','smile','food','gift','bag','piggy','tag'];
+let _icoSel=null;
+function openEnvIcone(p){
+  _icoSel=(env.ico||{})[p]||null;
+  const auto=(()=>{const g=env.ico;env.ico=null;const r=envIcone(p);env.ico=g;return r;})();
+  openSheet(sheetHead('Icône de « '+esc(p)+' »')+`
+    <div style="display:flex;align-items:center;gap:10px;background:var(--surf2);border-radius:var(--rs);padding:10px 12px">${envBadge(p,null,36).replace('class="ed-ic','id="ico-apercu" class="ed-ic')}
+      <div><div style="font-size:13.5px;color:var(--text)">${esc(p)}</div><div style="font-size:11px;color:var(--text3)">${_icoSel?'icône choisie à la main':'choisie automatiquement d\'après le nom'}</div></div></div>
+    <div class="ed-grp" style="margin-top:14px"><span>Choisis une icône</span></div>
+    <div class="ed-icos">${ENV_ICO_CHOIX.map(n=>`<button aria-label="${n}" data-ico="${n}" class="${n===(_icoSel||auto)?'on':''}" onclick="envIcoSel('${n}')">${envIco(n,19)}</button>`).join('')}</div>
+    <button class="btn-p" style="margin-top:14px" onclick="envIcoValider(${jsa(p)})">Enregistrer</button>
+    ${_icoSel?`<div onclick="envIcoAuto(${jsa(p)})" style="text-align:center;font-size:12.5px;color:var(--blue);cursor:pointer;margin-top:10px">Revenir à l'icône automatique</div>`:''}`);
+}
+function envIcoSel(n){_icoSel=n;document.querySelectorAll('.ed-icos button').forEach(b=>b.classList.toggle('on',b.dataset.ico===n));const a=document.getElementById('ico-apercu');if(a)a.innerHTML=envIco(n,18);}
+async function envIcoValider(p){if(!_icoSel){closeSheet();openEnv(p);return;}env.ico=Object.assign({},env.ico||{},{[p]:_icoSel});try{await envSave();openEnv(p);toast('Icône enregistrée');}catch(e){toast('⚠ '+e.message);}}
+async function envIcoAuto(p){const o=Object.assign({},env.ico||{});delete o[p];env.ico=o;try{await envSave();openEnv(p);toast('Icône automatique');}catch(e){toast('⚠ '+e.message);}}
 
 let _envTout=false;
 function envToutBasculer(){_envTout=!_envTout;renderEnvDash();}
@@ -2250,7 +2272,7 @@ function openEnv(p){
   const pct=o.recu>0?Math.min(100,Math.round(o.dep/o.recu*100)):(o.dep>0?100:0);
   const titre=(t,droite)=>`<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin:14px 0 2px"><span>${t}</span><span>${droite||''}</span></div>`;
   const lig=(g,sous,v,col)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px"><span style="color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g}<br><span style="color:var(--text3);font-size:11px">${sous}</span></span><b style="color:${col||'var(--text)'};white-space:nowrap">${v}</b></div>`;
-  openSheet(sheetHead(esc(p))+`
+  openSheet(sheetHead(`<span style="display:inline-flex;align-items:center;gap:10px"><button aria-label="Changer l'icône" onclick="openEnvIcone(${jsa(p)})" style="border:none;padding:0;background:none;cursor:pointer;display:flex">${envBadge(p,C,32)}</button>${esc(p)}</span>`)+`
     <div style="font-size:26px;font-weight:700;color:${s<0?'var(--red)':'var(--text)'}">${fmtSigne(s)} <span style="font-size:12px;font-weight:400;color:var(--text3)">${s<0?'à combler':epa?'de côté':'restent'}</span></div>
     ${epa?'':`<div style="height:7px;background:var(--surf2);border-radius:4px;margin:6px 0 4px;overflow:hidden"><div style="width:${pct}%;height:7px;background:${s<0?'var(--red)':'var(--blue)'};border-radius:4px"></div></div>`}
     <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${epa?(ob?`Objectif ${esc(ob.nom)} : ${fmt(ob.cible)} F · ${ob.cible>0?Math.max(0,Math.round(s/ob.cible*100)):0} %`:'Épargne'):`Dépensé ${fmt(o.dep)} F sur ${fmt(Math.max(0,o.recu))} F reçus depuis le ${jFr(d0)}${j!==null?` · de quoi tenir ${j} jour${j>1?'s':''}`:''}`}</div>
@@ -2365,8 +2387,8 @@ function renderEnvPage(){
   const bloc=(t,ps,epa)=>{if(!ps.length)return'';const tot=ps.reduce((x,p)=>x+(C.sol[p]||0),0);
     return `<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:13px;font-weight:600;color:var(--text)">${t}</span><b style="color:${tot<0?'var(--red)':'var(--text)'}">${fmtSigne(tot)}</b></div>
     ${ps.map(p=>{const s=C.sol[p]||0,h=envHabit(p),dep=C.depense[p]||0;const pret=P.fix.includes(p)&&s===0&&dep>0;
-      return `<div onclick="openEnv(${jsa(p)})" style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-top:1px solid var(--border);cursor:pointer">
-        <div style="min-width:0"><div style="font-size:13px;color:${s<0?'var(--red)':'var(--text)'}">${esc(p)}</div><div style="font-size:11px;color:var(--text3)">${h?'habituel '+fmt(h):'pas de montant habituel'}${dep?' · dépensé '+fmt(dep):''}</div></div>
+      return `<div onclick="openEnv(${jsa(p)})" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border);cursor:pointer">
+        ${envBadge(p,C)}<div style="min-width:0;flex:1"><div style="font-size:13px;color:${s<0?'var(--red)':'var(--text)'}">${esc(p)}</div><div style="font-size:11px;color:var(--text3)">${h?'habituel '+fmt(h):'pas de montant habituel'}${dep?' · dépensé '+fmt(dep):''}</div></div>
         <div style="font-size:13.5px;font-weight:600;white-space:nowrap;color:${s<0?'var(--red)':pret?'var(--green)':'var(--text)'}">${pret?'payé ✓':fmtSigne(s)}</div></div>`;}).join('')}</div>`;};
   el.innerHTML=`<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
       <div><div style="font-size:11.5px;color:var(--text2)">À répartir</div><div style="font-size:22px;font-weight:700;color:${C.ar<0?'var(--red)':'var(--text)'}">${fmtSigne(C.ar)}</div></div>
