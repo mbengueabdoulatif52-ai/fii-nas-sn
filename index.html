@@ -1745,7 +1745,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='67';
+const APP_VERSION='68';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -2306,18 +2306,22 @@ function dpListe(de,vers){
     const autres=L.filter(p=>s(p)>=0&&!recents.includes(p)).sort((a,b)=>a.localeCompare(b));
     return[['Dans le rouge',rouge],['Dernières utilisées',recents],['Autres enveloppes',autres],['Épargne et à répartir',[...P.epa.filter(p=>p!==de),...(de!==ENV_AR?[ENV_AR]:[])]]].filter(g=>g[1].length);
   }
-  const src=dep.filter(p=>p!==vers&&s(p)>0).sort((a,b)=>s(b)-s(a));   // qui donne
-  return[['À répartir',C.ar>0&&vers!==ENV_AR?[ENV_AR]:[]],['Enveloppes avec de la marge',src],['Épargne',P.epa.filter(p=>p!==vers&&s(p)>0)]].filter(g=>g[1].length);
+  // qui donne ; pour épargner, jamais l'argent d'une dépense fixe (loyer, facture, prêt)
+  const versEpa=P.epa.includes(vers);
+  const src=(versEpa?P.vari:dep).filter(p=>p!==vers&&s(p)>0).sort((a,b)=>s(b)-s(a));
+  return[['À répartir',C.ar>0&&vers!==ENV_AR?[ENV_AR]:[]],[versEpa?'Dépenses courantes avec de la marge':'Enveloppes avec de la marge',src],['Épargne',P.epa.filter(p=>p!==vers&&s(p)>0)]].filter(g=>g[1].length);
 }
 function openDeplacer(de,vers){
   const C=envCalc(),s=p=>p===ENV_AR?C.ar:(C.sol[p]||0),nom=p=>p===ENV_AR?'À répartir':p;
-  const sens=de?'vers':'de',fixe=de||vers,G=dpListe(de,vers),premier=G.length?G[0][1][0]:null;
+  const sens=de?'vers':'de',fixe=de||vers,G=dpListe(de,vers),ok=G.length>0;
+  // Épargner sans argent à répartir : rien n'est choisi d'avance, on choisit soi-même l'enveloppe qui donne
+  const versEpa=!de&&C.P.epa.includes(vers),premier=ok&&!(versEpa&&C.ar<=0)?G[0][1][0]:null;
   if(de&&vers)_dp={sens:'vers',fixe:de,choix:vers};
   else _dp={sens,fixe,choix:premier};
   const manque=!de&&s(vers)<0;
   openSheet(sheetHead(de?'Déplacer depuis '+esc(nom(de)):(manque?'Combler ':'Ajouter à ')+esc(nom(vers)))+`
     <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${de?`${fmt(Math.max(0,s(de)))} F disponibles`:manque?`Il manque ${fmt(-s(vers))} F`:`${esc(nom(vers))} : ${fmtSigne(s(vers))}`}</div>
-    ${premier?`<div class="flbl">${sens==='vers'?'Vers':'Depuis'}</div>
+    ${ok?`<div class="flbl">${sens==='vers'?'Vers':'Depuis'}</div>
     <div style="position:relative;margin-bottom:12px">
       <button id="dp-sel" onclick="dpOuvrir()" style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--surf2);border:1px solid var(--border2);border-radius:var(--rs);padding:11px 12px;cursor:pointer;font-family:var(--font);color:var(--text);font-size:14px;text-align:left"></button>
       <div id="dp-liste" style="display:none;margin-top:6px;background:var(--surf2);border:1px solid var(--border2);border-radius:var(--rs);max-height:260px;overflow-y:auto"></div>
@@ -2329,8 +2333,13 @@ function openDeplacer(de,vers){
     <div id="dp-effet" style="background:var(--surf2);border-radius:var(--rs);padding:9px 12px;font-size:12px;margin-bottom:10px;line-height:1.6"></div>
     <div id="dp-info" style="font-size:12px;margin-bottom:10px;line-height:1.45"></div>
     <button class="btn-p" id="dp-go" onclick="dpValider()">Déplacer</button>`
-    :`<div style="font-size:12.5px;color:var(--text2);line-height:1.5">Aucune enveloppe n'a d'argent à donner. L'enveloppe restera en rouge jusqu'à ta prochaine répartition.</div>`}`);
-  if(premier)dpChoisir(_dp.choix);
+    :`<div style="font-size:12.5px;color:var(--text2);line-height:1.5">${versEpa?'Rien à mettre de côté pour l\'instant : « À répartir » est vide et tes dépenses courantes n\'ont pas de marge.':'Aucune enveloppe n\'a d\'argent à donner. L\'enveloppe restera en rouge jusqu\'à ta prochaine répartition.'}</div>`}`);
+  if(premier)dpChoisir(_dp.choix);else if(ok)dpVide();
+}
+function dpVide(){
+  document.getElementById('dp-sel').innerHTML=`<span style="color:var(--text3)">Choisis d'où vient l'argent</span><span style="color:var(--text3)">▾</span>`;
+  document.getElementById('dp-amt').value='';document.getElementById('dp-rapides').innerHTML='';document.getElementById('dp-effet').style.display='none';
+  const b=document.getElementById('dp-go');b.disabled=true;b.textContent='Déplacer';
 }
 function dpPaire(){return _dp.sens==='vers'?{de:_dp.fixe,vers:_dp.choix}:{de:_dp.choix,vers:_dp.fixe};}
 function dpOuvrir(){
@@ -2360,6 +2369,8 @@ function dpChoisir(p){
 }
 function dpMaj(){
   if(!_dp||!document.getElementById('dp-amt'))return;
+  if(!_dp.choix){const b=document.getElementById('dp-go');if(b)b.disabled=true;return;}
+  document.getElementById('dp-effet').style.display='';
   const C=envCalc(),P=C.P,{de,vers}=dpPaire(),s=p=>p===ENV_AR?C.ar:(C.sol[p]||0),nom=p=>p===ENV_AR?'À répartir':p;
   const a=parseAmt(document.getElementById('dp-amt').value)||0,dispo=Math.max(0,s(de));
   const v=x=>fmtSigne(x).replace(' F','');
