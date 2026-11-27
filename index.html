@@ -150,10 +150,6 @@ body{font-family:var(--font);color:var(--text);max-width:480px;width:100%;margin
 .ed-bar{height:5px;background:var(--surf2);border-radius:3px;overflow:hidden}
 .ed-bar>div{height:5px;border-radius:3px}
 .light .ed-qa button,.light .ed-tl{box-shadow:0 1px 3px rgba(13,18,32,.06)}
-#voile{position:fixed;inset:0;z-index:20000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:rgba(13,18,32,.6);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px)}
-#voile.on{display:flex}
-#voile img{width:72px;height:72px;border-radius:18px}
-#voile span{color:#C9CFDB;font-size:13px}
 .vue-sw{display:flex;background:var(--surf2);border-radius:12px;padding:3px;margin:0 0 12px}
 .vue-sw button{flex:1;border:none;background:none;color:var(--text2);font-family:var(--font);font-size:13px;padding:8px;border-radius:9px;cursor:pointer}
 .vue-sw button.on{background:var(--blue);color:#fff;font-weight:600}
@@ -1745,7 +1741,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='75';
+const APP_VERSION='76';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -1784,20 +1780,6 @@ function quoiDeNeuf(){
     <button class="btn-p" onclick="closeSheet()">C'est parti</button>`);
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')verifMaj();});
-// Voile flou quand l'appli passe en arrière-plan : la miniature du sélecteur d'applis ne montre pas les montants.
-// (Une appli web ne peut pas interdire la miniature comme une appli native : on couvre l'écran dès qu'elle perd la main.)
-(function(){
-  const v=document.createElement('div');v.id='voile';v.setAttribute('aria-hidden','true');
-  v.innerHTML='<img src="/icon-192.png" alt=""><span>Contenu masqué</span>';
-  const go=()=>{if(!document.body.contains(v))document.body.appendChild(v);};
-  const on=()=>{go();v.classList.add('on');},off=()=>v.classList.remove('on');
-  document.addEventListener('visibilitychange',()=>document.visibilityState==='hidden'?on():setTimeout(off,120));
-  window.addEventListener('pagehide',on);
-  window.addEventListener('blur',on);
-  window.addEventListener('focus',()=>setTimeout(off,120));
-  window.addEventListener('pageshow',()=>setTimeout(off,120));
-  v.addEventListener('pointerdown',off);   // filet de sécurité : un toucher enlève le voile
-})();
 // Verrouillage aussi au retour dans l'appli : le minuteur de 5 min peut être gelé en arrière-plan
 let _cacheLe=0;
 document.addEventListener('visibilitychange',()=>{
