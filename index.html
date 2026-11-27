@@ -1745,7 +1745,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='74';
+const APP_VERSION='75';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -2244,6 +2244,36 @@ async function envDemarrer(){
   try{await saveSettings();closeSheet();goP('dash',document.querySelectorAll('.ni')[0]);toast('Poches activées');setTimeout(openRepartir,350);}
   catch(e){document.getElementById('es-go').disabled=false;err.textContent='Non enregistré : '+e.message;}
 }
+// ── Passage de tout le monde aux poches : à l'ouverture, ceux qui n'ont jamais activé les poches
+// voient une annonce qu'on ne peut pas fermer, puis le point de départ. Ceux qui sont revenus au budget
+// par mois (env.depart existe) ne la revoient pas. Les espaces Foyer restent au budget par mois.
+function envDoitDemarrer(){
+  if(espace||!_setOk||!_txOk||(env&&env.depart))return false;
+  if(document.getElementById('onb')||document.getElementById('cpt-sheet'))return false;
+  try{if(localStorage.getItem('fiinas-sans-annonce')==='1')return false;}catch(e){}
+  return true;
+}
+function envVerifAnnonce(){
+  if(!envDoitDemarrer()){if(env&&env.depart)document.getElementById('env-annonce')?.remove();return;}
+  if(document.getElementById('env-annonce'))return;
+  const bg=document.createElement('div');bg.id='env-annonce';
+  bg.style.cssText='position:fixed;inset:0;background:var(--bg);z-index:1000;overflow-y:auto;display:flex;justify-content:center';
+  const pt=(ic,col,bgc,t,st)=>`<div style="display:flex;gap:13px;align-items:flex-start;margin-bottom:18px"><div style="width:42px;height:42px;border-radius:12px;background:${bgc};color:${col};display:flex;align-items:center;justify-content:center;flex-shrink:0">${envIco(ic,21)}</div><div><div style="font-size:14px;font-weight:500;color:var(--text)">${t}</div><div style="font-size:12.5px;color:var(--text3);margin-top:3px;line-height:1.45">${st}</div></div></div>`;
+  bg.innerHTML=`<div style="width:100%;max-width:440px;padding:48px 22px 28px;display:flex;flex-direction:column;min-height:100%">
+    <div style="font-size:12px;font-weight:600;letter-spacing:.08em;color:var(--green);margin-bottom:8px">NOUVEAU</div>
+    <div style="font-size:24px;font-weight:600;color:var(--text);line-height:1.25;margin-bottom:10px">FII'NAS passe aux poches</div>
+    <div style="font-size:14px;color:var(--text2);line-height:1.55;margin-bottom:28px">Fini le budget qui repart de zéro chaque mois. Ton argent se range dans des poches qui se reportent d'une paie à l'autre.</div>
+    ${pt('layers','var(--green)','var(--gd)','L\'argent qui entre attend dans « À répartir »','Salaire, emprunt, remboursement…')}
+    ${pt('pie','var(--blue)','var(--bd)','Tu le ranges dans tes poches','Loyer, Alimentation, Épargne… Chaque dépense sort de sa poche.')}
+    ${pt('trend','var(--amber)','rgba(242,179,61,.15)','Tu notes tout à sa vraie date','Tes bilans comptent de paie en paie.')}
+    <div style="flex:1;min-height:20px"></div>
+    <div style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:12px">Ton historique ne change pas. Ça prend une minute.</div>
+    <button class="btn-p" style="margin:0" onclick="envCommencer()">Commencer</button>
+  </div>`;
+  document.body.appendChild(bg);
+}
+function envCommencer(){document.getElementById('env-annonce')?.remove();openEnvStart();}
+
 // ── Point de départ : l'argent total et l'épargne déclarés au démarrage, corrigeables ensuite.
 // Corriger le total ne touche qu'« À répartir » ; corriger une épargne de départ ne touche que son enveloppe.
 function envDepartTotal(){return (env.ar0||0)+Object.values(env.initial||{}).reduce((a,b)=>a+(b||0),0);}
@@ -2496,7 +2526,7 @@ function tapVersion(){const n=Date.now();_devTaps=n-_devT<1500?_devTaps+1:1;_dev
   if(_devTaps>=7){_devTaps=0;const on=!estDev();try{localStorage.setItem('fiinas-dev',on?'1':'0');}catch(e){}toast(on?'Mode développeur activé':'Mode développeur désactivé');renderEnvProfil();}}
 function renderEnvProfil(){
   envNav();const el=document.getElementById('env-ui');if(!el)return;
-  const card=document.getElementById('env-card');if(card)card.style.display=estDev()||(env&&env.depart)?'':'none';
+  const card=document.getElementById('env-card');if(card)card.style.display='';
   if(espace){el.innerHTML='<div style="font-size:12px;color:var(--text3)">Disponible pour l\'instant dans ton espace perso seulement.</div>';return;}
   const per=(env&&env.periode)||'paie',pp=envOn()?envPaiePoste():null;
   const seg=(v,l)=>`<button onclick="envSetPeriode('${v}')" style="flex:1;border:none;border-radius:7px;padding:7px 4px;font-size:12px;cursor:pointer;font-family:var(--font);background:${per===v?'var(--blue)':'none'};color:${per===v?'#fff':'var(--text2)'};font-weight:${per===v?600:400}">${l}</button>`;
@@ -4037,7 +4067,7 @@ function openSheet(html){
   bg.addEventListener('click',e=>{if(e.target===bg)closeSheet();});
   document.body.appendChild(bg);
 }
-function closeSheet(){document.getElementById('cpt-sheet')?.remove();}
+function closeSheet(){document.getElementById('cpt-sheet')?.remove();if(typeof envVerifAnnonce==='function')setTimeout(envVerifAnnonce,0);}
 function sheetHead(t){return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span style="font-size:15px;font-weight:600;color:var(--text)">${t}</span><button onclick="closeSheet()" aria-label="Fermer" style="background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;padding:4px">✕</button></div>`;}
 
 // ── Accueil : total ou suggestion
@@ -5190,6 +5220,7 @@ function renderSkeleton(){
 }
 
 function renderCurrent(){
+  envVerifAnnonce();
   const id=document.querySelector('.page.active')?.id;
   if(id==='page-dash')renderDash();
   else if(id==='page-tx')renderTX();

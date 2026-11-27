@@ -18,7 +18,7 @@ srv=subprocess.Popen(['python3','-m','http.server','8771'],cwd=os.path.join(os.p
 calls=[]
 with sync_playwright() as p:
     b=p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--no-sandbox'])
-    ctx=b.new_context(viewport={'width':390,'height':844},service_workers='block');pg=ctx.new_page()
+    ctx=b.new_context(viewport={'width':390,'height':844},service_workers='block');pg=ctx.new_page();pg.add_init_script("localStorage.setItem('fiinas-sans-annonce','1')")
     errs=[];pg.on('pageerror',lambda e:errs.append(str(e)));pg.on('dialog',lambda d:d.accept())
     pg.route('**/firebase-app.js',lambda r:r.fulfill(body=APP,content_type='text/javascript'))
     pg.route('**/firebase-auth.js',lambda r:r.fulfill(body=AUTH,content_type='text/javascript'))
