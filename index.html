@@ -1745,7 +1745,7 @@ async function effacerBudgets(){
 // ═══════════════ MISES À JOUR ═══════════════
 // APP_VERSION est comparée à /version.json. Une version plus récente en ligne → bandeau « Mettre à jour ».
 // APP_NOTES : nouveautés de cette version, montrées une fois après la mise à jour (vide = correction discrète).
-const APP_VERSION='73';
+const APP_VERSION='74';
 const APP_NOTES=[]; // version 39 : correction foyers // version 36 : corrections de l'audit // version 31 : correction discrète // version 29 : petite amélioration, pas de fenêtre « Quoi de neuf »
 let majDispo=null,majPlusTard=false;
 async function verifMaj(){
@@ -7118,11 +7118,108 @@ async function exportPDFAnnuel(){
   toast('PDF annuel telecharge !');
 }
 
+// ── Relevé PDF en mode poches : période de paie, argent du début à la fin, poches (mis / dépensé / reste),
+//    épargne (prévu / versé / de côté), dettes et prêts
+function envFluxPeriode(d0){
+  // Ce qui est entré sur la période ; ce qui est sorti s'en déduit (début + entré − fin), pour que tout tombe juste
+  const dans=d=>d&&d>=d0;let entre=0;
+  txEnv().forEach(t=>{if(t.cat==='Revenu'&&dans(t.date))entre+=t.amt||0;});
+  dettes.forEach(d=>{if(d.sens!=='pret'&&dans(d.date)&&envApres(d.date,envTsDette(d)))entre+=d.montant||0;});
+  mouvs.forEach(m=>{if(!dans(m.date)||!envApres(m.date,m.ts?Date.parse(m.ts):0))return;
+    if(m.type==='remb'){const d=dettes.find(x=>x.id===m.dette);if(d&&d.sens==='pret')entre+=m.amt||0;}
+    else if(m.type==='ajustement'&&(m.amt||0)>0)entre+=m.amt;});
+  (env.mv||[]).forEach(m=>{if(m.t==='puise'&&dans(m.d))entre+=m.amt||0;});
+  return entre;
+}
+async function exportPDFPoches(){
+  const{jsPDF}=window.jspdf;
+  const Pe=envPeriode(),ST=envStatsPeriode(),d0=ST.d0,C=ST.C,P=ST.P,R=ST.R,C0=envCalc(d0);
+  const debut=C0.tot,fin=C.tot,entre=envFluxPeriode(d0),sorti=debut+entre-fin;
+  const rev=txEnv().filter(t=>t.cat==='Revenu'&&t.date>=d0).reduce((s,t)=>s+(t.amt||0),0);
+  const verse=P.epa.reduce((s,p)=>s+(R[p]?.dep||0),0),cote=P.epa.reduce((s,p)=>s+(C.cote[p]||0),0);
+  const taux=rev>0?Math.round(verse/rev*100):0;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const W=210,M=14;
+  const cDARK=[10,22,40],cGREEN=[0,168,107],cRED=[220,60,80],cVIO=[124,58,237];
+  const cTEXT=[30,45,70],cTEXT2=[100,120,150],cSURF=[245,247,252],cBORDER=[210,218,230],cLIGHT=[248,250,253],cHD=[232,237,245];
+  const num=n=>Math.round(Math.abs(n||0)).toLocaleString('fr-FR').replace(/[  ]/g,' ');
+  const sgn=n=>(n<0?'-':'')+num(n);
+  const dCourtPDF=d=>{if(!d)return'';const p=d.split('-');return p[2]+'/'+p[1];};
+  const txt=s=>String(s||'').replace(/[−–]/g,'-').replace(/[  ]/g,' ').replace(/[‘’]/g,"'").replace(/[^\x00-\xff]/g,'');
+  const dLong=d=>{const x=new Date(d+'T12:00:00');return x.toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}).replace('.','');};
+  let y;
+  const saut=h=>{if(y+h>282){doc.addPage();y=16;}};
+
+  // En-tête
+  doc.setFillColor(...cDARK);doc.rect(0,0,W,38,'F');doc.setFillColor(0,200,130);doc.rect(0,35,W,3,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(18);doc.setTextColor(0,200,130);doc.text("FII'NAS SN",M,15);
+  doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(180,200,220);doc.text('Relevé financier personnel',M,22);
+  doc.setFont('helvetica','bold');doc.setTextColor(255,255,255);
+  doc.text(txt(('Période du '+dLong(d0)+' au '+dLong(Pe.fin)+(Pe.mode==='paie'?' · depuis la paie':'')).toUpperCase()),M,29);
+  doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(180,200,220);doc.text('Généré le '+new Date().toLocaleDateString('fr-FR'),W-M,29,{align:'right'});
+
+  // Ton argent sur la période
+  y=46;doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(...cTEXT2);doc.text('TON ARGENT SUR LA PÉRIODE',M,y);y+=3;
+  const cw=(W-2*M)/4;
+  [['Au début',sgn(debut)+' F',cTEXT],['Entré','+'+num(entre)+' F',cGREEN],['Sorti','-'+num(sorti)+' F',cRED],['À la fin',sgn(fin)+' F',fin<0?cRED:cTEXT]].forEach(([l,v,c],i)=>{
+    const x=M+i*cw;doc.setFillColor(...cSURF);doc.roundedRect(x,y,cw-2,13,2,2,'F');
+    doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...cTEXT2);doc.text(l,x+3,y+4.5);
+    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...c);doc.text(v,x+3,y+10.5);});
+  y+=18;doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(...cTEXT2);
+  doc.text(txt('dont À répartir : '+sgn(C.ar)+' F · De côté : '+num(cote)+' F'),M,y);
+  doc.text("Taux d'épargne : "+taux+' %',W-M,y,{align:'right'});y+=6;
+
+  // Une section de poches
+  const entete=(titre,droite,cols)=>{saut(20);
+    doc.setFillColor(...cDARK);doc.rect(M,y,W-2*M,7,'F');doc.setFont('helvetica','bold');doc.setFontSize(8);
+    doc.setTextColor(180,200,220);doc.text(txt(titre),M+3,y+5);doc.text(txt(droite),W-M-3,y+5,{align:'right'});y+=8.5;
+    if(cols){doc.setFillColor(...cHD);doc.rect(M,y-1,W-2*M,5,'F');doc.setFontSize(7);doc.setTextColor(...cTEXT2);
+      doc.text(cols[0],M+2,y+2.8);doc.text(cols[1],W-M-46,y+2.8,{align:'right'});doc.text(cols[2],W-M-24,y+2.8,{align:'right'});doc.text(cols[3],W-M-2,y+2.8,{align:'right'});y+=6;}};
+  const ligne=(i,nom,a,b,c,cc)=>{saut(7);doc.setFillColor(...(i%2?[255,255,255]:cLIGHT));doc.rect(M,y-1,W-2*M,6,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...cTEXT);doc.text(txt(nom).slice(0,44),M+2,y+3.5);
+    doc.setFont('helvetica','normal');doc.text(a,W-M-46,y+3.5,{align:'right'});doc.text(b,W-M-24,y+3.5,{align:'right'});
+    doc.setFont('helvetica','bold');doc.setTextColor(...(cc||cTEXT));doc.text(c,W-M-2,y+3.5,{align:'right'});y+=6.5;};
+  const details=p=>txEnv().filter(t=>t.poste===p&&t.date>=d0&&(ENV_DEP.includes(t.cat)||t.cat==='Epargne')).sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
+    saut(5);doc.setFillColor(250,252,254);doc.rect(M,y-0.5,W-2*M,5,'F');doc.setDrawColor(...cBORDER);doc.setLineWidth(0.2);doc.line(M+4,y+2,M+6,y+2);
+    doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...cTEXT2);doc.text(dCourtPDF(t.date),M+8,y+3);
+    if(t.cmt){doc.setTextColor(120,140,160);doc.text(txt(t.cmt).slice(0,48),M+22,y+3);}
+    doc.setTextColor(...cTEXT2);doc.text(num(t.amt),W-M-24,y+3,{align:'right'});y+=5;});
+  const section=(titre,ps)=>{const L=ps.filter(p=>R[p]&&(R[p].recu||R[p].dep||R[p].sol));if(!L.length)return;
+    entete(titre,num(L.reduce((s,p)=>s+R[p].dep,0))+' F dépensés',['Poche / date / détail','Mis','Dépensé','Reste']);
+    L.forEach((p,i)=>{const r=R[p],fix=P.fix.includes(p),paye=fix&&r.sol===0&&r.dep>0;
+      ligne(i,p,num(r.recu),num(r.dep),paye?'payé':sgn(r.sol),paye?cGREEN:r.sol<0?cRED:cTEXT);details(p);y+=1;});y+=3;};
+  section('DÉPENSES FIXES',P.fix);
+  section('DÉPENSES COURANTES',P.vari);
+
+  // Épargne
+  if(P.epa.length){entete('ÉPARGNE',num(verse)+' F versé · '+num(cote)+' F de côté',['Poche','Prévu','Versé','De côté']);
+    P.epa.forEach((p,i)=>{const r=R[p]||{recu:0,dep:0},o=objectifs.find(x=>(x.poste||x.nom)===p);
+      ligne(i,p+(o&&o.cible>0?' · '+o.nom+' : '+pctObj(o)+' %':''),num(r.recu),num(r.dep),num(C.cote[p]||0),cVIO);details(p);});y+=4;}
+
+  // Dettes et prêts
+  const ouv=dettes.filter(d=>resteDette(d)>0);
+  if(ouv.length){entete('DETTES ET PRÊTS','au '+new Date().toLocaleDateString('fr-FR'),null);
+    [['pret','On me doit',cGREEN],['emprunt','Je dois',cTEXT]].forEach(([s,l,c],i)=>{const L=ouv.filter(d=>(d.sens==='pret')===(s==='pret'));if(!L.length)return;
+      saut(7);doc.setFillColor(...(i%2?[255,255,255]:cLIGHT));doc.rect(M,y-1,W-2*M,6,'F');doc.setFont('helvetica','bold');doc.setFontSize(8);
+      doc.setTextColor(...cTEXT);doc.text(l,M+2,y+3.5);doc.setTextColor(...c);doc.text(num(totDettes(s))+' F',M+48,y+3.5,{align:'right'});
+      doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...cTEXT2);
+      const det=L.map(d=>d.personne+' '+num(resteDette(d))+(enRetard(d)?' (en retard)':'')).join(' · ');
+      doc.splitTextToSize(txt(det),W-2*M-56).forEach((t,k)=>{if(k){y+=4.2;saut(5);}doc.text(t,M+54,y+3.5);});y+=6.5;});}
+
+  // Pied de page
+  const pages=doc.getNumberOfPages();
+  for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...cTEXT2);
+    doc.text("FII'NAS SN — Suivi financier personnel".replace('—','-'),M,292);doc.text('Page '+i+'/'+pages,W-M,292,{align:'right'});}
+  doc.save('FiiNas_poches_'+d0+'.pdf');
+  toast('PDF téléchargé !');
+}
+
 async function exportPDF(){
   if(typeof window.jspdf==='undefined'){toast('jsPDF non charge');return;}
   const{jsPDF}=window.jspdf;
   const ym=curYM();
   if(isAnnual()){exportPDFAnnuel();return;}
+  if(envOn()){exportPDFPoches();return;}
   const t=txYM(ym);
   const rev=sumC(t,'Revenu');
   const fix=sumC(t,'Dépenses fixes');
